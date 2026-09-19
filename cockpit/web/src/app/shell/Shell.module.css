@@ -1,0 +1,335 @@
+.shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-frame);
+}
+
+/* ── top bar 44px ───────────────────────────────────────────────────────── */
+
+.topbar {
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.assetName {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.turnReadout {
+  color: var(--muted);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* the right-aligned status readout: the set-aside count, a button
+   into the tray; pressed while the tray is open */
+.trayToggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.trayToggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.trayToggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--tint-accent);
+}
+
+/* ── body: sidebar + canvas ─────────────────────────────────────────────── */
+
+/* The canvas has a floor. The dock grows with what is selected (the verb
+   row's own reason lines, the irreversible tier, an open promote
+   plinth), and a flex row with `min-height: 0` would let it take the last
+   pixel, at which point React Flow culls the cards out of the DOM and the
+   canvas is gone rather than small. The dock shrinks and scrolls first
+   (`.composer`, `VerbRow.module.css .row`); only past this floor does the
+   canvas give way. The row does not yet choose what to cut when it is
+   over-full. */
+.body {
+  flex: 1;
+  min-height: 260px;
+  display: flex;
+}
+
+.canvas {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background-color: var(--bg-canvas);
+}
+
+/* ── the dock: verb row + composer + queue strip as one island ─────────── */
+
+/* The three below the canvas share one cap, `--dock-max`, set by dragging
+   the canvas/dock edge (ResizeHandle.tsx, shell/layout.ts). The dock stays
+   content-driven beneath it — the row and the composer still take what
+   they need and shrink-and-scroll when over-full — so the cap is the
+   artist's answer to how much of a short screen the dock may have.
+   Unset = no cap, only the canvas floor above holds it back; and that
+   floor still wins over any cap, by flex. */
+.dock {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: var(--dock-max, none);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── resize handles ─────────────────────────────────────────────────────── */
+
+/* A handle takes no layout space: a zero-size flex child at the seam, with
+   the grip absolutely positioned over the ISLAND's own edge (its padding),
+   never over the canvas — so it needs to beat nothing but the island's own
+   unpositioned content. Invisible at rest but for the cursor; a 2 px accent
+   line on hover, focus and while dragging. Focusable: arrows nudge, Home/End
+   go to the bounds, double-click resets (the pointer isn't the only
+   way to move an edge). */
+.splitX {
+  position: relative;
+  flex: none;
+  width: 0;
+  z-index: 3;
+}
+
+.splitY {
+  position: relative;
+  flex: none;
+  height: 0;
+  z-index: 3;
+}
+
+.grip {
+  position: absolute;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  outline-offset: -2px;
+}
+
+.grip::after {
+  content: "";
+  position: absolute;
+  background: transparent;
+  transition: background 80ms linear;
+}
+
+.splitX > .grip {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+}
+
+.splitX > .grip::after {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+
+/* the sidebar's grip sits over its right edge, the tray's over its left */
+.splitX > .grip[data-island="sidebar"] {
+  left: -8px;
+}
+
+.splitX > .grip[data-island="sidebar"]::after {
+  right: 0;
+}
+
+.splitX > .grip[data-island="tray"] {
+  left: 0;
+}
+
+.splitX > .grip[data-island="tray"]::after {
+  left: 0;
+}
+
+.splitY > .grip {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 8px;
+  cursor: row-resize;
+}
+
+.splitY > .grip::after {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+}
+
+.grip:hover::after,
+.grip:focus-visible::after,
+.grip[data-active]::after {
+  background: var(--accent);
+}
+
+/* While an edge is held, the whole shell reads as the drag: no text
+   selection under a fast pointer, and the resize cursor everywhere the
+   pointer may wander (React Flow's pane and cards set their own). */
+.shell[data-resizing] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.shell[data-resizing="x"],
+.shell[data-resizing="x"] * {
+  cursor: col-resize !important;
+}
+
+.shell[data-resizing="y"],
+.shell[data-resizing="y"] * {
+  cursor: row-resize !important;
+}
+
+/* Hint branches only (no workspace / loading / missing): centered copy on a
+   static dot grid. The loaded canvas is React Flow: its Background
+   pans/zooms with the viewport, so the static grid must not double-print. */
+.idle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: radial-gradient(#171b20 1px, transparent 1px);
+  background-size: 27px 27px;
+}
+
+.canvasHint {
+  text-align: center;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── docked composer: the queue strip's rules live in
+   batch/Batch.module.css with its live surface ──────────────────────────── */
+
+/* Shrinks and scrolls when the column is over-full (a selection's verb row
+   + an armed sweep at 720px) rather than running under
+   the app footer, where Run would be unreachable. Nothing changes while it
+   fits. */
+.composer {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  gap: 24px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel);
+}
+
+.composerLeft {
+  width: 412px;
+}
+
+/* ── the money corner (the top bar's right-aligned readout): the LOCAL
+   ONLY switch — green when it means it — and the charged totals, on every
+   screen ─────────────────────────────────────────────────────────────── */
+
+.localOnly {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 4px 9px;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.localOnly:hover {
+  border-color: var(--border-strong);
+  color: var(--secondary);
+}
+
+.localOnly[aria-checked="true"] {
+  color: var(--good);
+  border-color: rgba(95, 192, 140, 0.4);
+  background: var(--tint-good);
+}
+
+.knob {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 12px;
+  border-radius: 7px;
+  background: var(--border);
+}
+
+.knob::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.localOnly[aria-checked="true"] .knob {
+  background: var(--good);
+}
+
+.localOnly[aria-checked="true"] .knob::after {
+  left: auto;
+  right: 1px;
+  background: var(--bg-frame);
+}
+
+/* $0.00 reads quiet; money that moved reads amber (gold = money) */
+.totals {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.totals b {
+  font-weight: 400;
+  color: var(--secondary);
+}
+
+.totals b[data-spent="true"] {
+  color: var(--money);
+}

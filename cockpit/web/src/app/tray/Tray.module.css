@@ -1,0 +1,284 @@
+/* The set-aside tray. A right-edge column mirroring the sidebar's frame;
+   `.hold*` is the hold-to-confirm button (HoldButton.tsx). Tokens only. */
+
+/* The list takes the free height and scrolls; the held verb stays pinned
+   beneath it. On a short window the list keeps a usable minimum and the
+   whole column scrolls instead — an entry is never clipped to nothing. */
+.tray {
+  /* The artist's width (`--tray-w`, shell/layout.ts); unset = the
+     default 248 px. The 40% guard mirrors the sidebar's. */
+  width: var(--tray-w, 248px);
+  max-width: 40%;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-left: 1px solid var(--hairline);
+  background: var(--panel-alt);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.headBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.headBtn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.lede {
+  margin: 0;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input,
+.select {
+  width: 100%;
+  min-width: 0;
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 5px 7px;
+  font: 12px/1.4 var(--font-ui);
+}
+
+.select {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.emptyLine {
+  margin: 6px 0;
+}
+
+/* ── the grid of thumbnails ──────────────────────────────────────────── */
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 150px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  padding: 5px;
+}
+
+.plateBtn {
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: zoom-in;
+  background: linear-gradient(155deg, #1a2026, #14181c);
+  color: var(--faint);
+}
+
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.entryLabel {
+  color: var(--secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entryFacts {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entryPrompt {
+  font: 10.5px/1.4 var(--font-ui);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.restore {
+  align-self: flex-start;
+  margin-top: 2px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--accent);
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.restore:hover {
+  border-color: var(--accent);
+}
+
+/* ── the one irreversible verb, below the hairline ───────────────────── */
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.irreversible {
+  color: var(--danger);
+}
+
+.hold {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  text-align: left;
+  background: var(--tint-danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-control);
+  color: var(--danger);
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+
+.hold:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.holdFill {
+  position: absolute;
+  inset: 0;
+  background: rgba(219, 106, 87, 0.28);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 120ms ease-out;
+  pointer-events: none;
+}
+
+.hold[data-holding] .holdFill {
+  transform: scaleX(1);
+  transition: transform var(--hold-ms, 900ms) linear;
+}
+
+.holdLabel {
+  position: relative;
+  color: var(--danger);
+  display: block;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.lastPurge {
+  color: var(--secondary);
+}
+
+.err {
+  margin: 0;
+  font: 11.5px/1.5 var(--font-ui);
+  color: var(--danger);
+}
+
+/* ── the tray as a drop destination (dashed #98A1A9) ────────────────────── */
+
+/* the open column lights on lift; solid while the pointer is on it */
+.tray[data-drag] {
+  outline: 1px dashed var(--secondary);
+  outline-offset: -1px;
+}
+
+.tray[data-drag="over"] {
+  outline-style: solid;
+  outline-color: var(--text);
+  background: var(--raised);
+}
+
+/* closed tray: a right-edge zone over the canvas, up only while a card is
+   lifted. Wider than React Flow's 40px auto-pan band, so resting a card on
+   it doesn't scroll the canvas beneath. Above the grid overlay's z-index 4
+   by design — a lift can't start under the grid, but the layering stays
+   honest. */
+.zone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 148px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px;
+  text-align: center;
+  border-left: 1px dashed var(--secondary);
+  background: rgba(14, 17, 20, 0.88);
+  color: var(--secondary);
+}
+
+.zone[data-over] {
+  border-left-style: solid;
+  border-left-color: var(--text);
+  background: var(--raised);
+  color: var(--text);
+}
+
+.zone[data-live="false"] {
+  opacity: 0.62;
+}
+
+/* A tray entry that has already gone out to the asset tree. Purge
+   empties the tray; the promoted copy on the other side is untouched. */
+.entryPromoted {
+  color: var(--good);
+}

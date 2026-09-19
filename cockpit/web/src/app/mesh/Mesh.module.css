@@ -1,0 +1,496 @@
+/* The To-3D plinth, in the dock under the verb row (the seam the
+   promote plinth cut). It is NOT below the irreversible hairline:
+   a mesh run spends GPU minutes and nothing else, and every take it makes
+   is a node a second click can set aside. So it wears the ordinary frame,
+   with the MESH edge colour (--good, graph.ts EDGE_KIND) naming the lane
+   the way the accent names the image one. */
+
+.plinth {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 13px 13px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--good);
+  border-radius: var(--r-inner);
+  background: var(--card);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+}
+
+.what {
+  color: var(--good);
+}
+
+.source {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sourceThumb {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.sourceName {
+  color: var(--secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.discard {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.discard:hover {
+  color: var(--text);
+}
+
+/* the two controls this lane does NOT have, said once rather than left as
+   two absences the artist has to notice (law 3's register) */
+.noInput {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+/* ── the roster ──────────────────────────────────────────────────────── */
+
+.roster {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.laneHead {
+  color: var(--muted);
+}
+
+.engineRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+
+.engineName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* a stepped row reads as part of the batch */
+.engineRow[data-on="true"] {
+  color: var(--text);
+}
+
+/* the runner is down: visible, dimmed, reason in words (law 12) */
+.engineRow[data-dim="true"] {
+  color: var(--faint);
+}
+
+.reason {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: var(--faint);
+}
+
+/* capability badges: the same 9 px line every roster row wears */
+.badges {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  line-height: 1.35;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.engineRow[data-dim="true"] .badges {
+  color: var(--faint);
+}
+
+/* ── the run bar ─────────────────────────────────────────────────────── */
+
+/* wider than the composer's 160px column: this bar sits across the plinth
+   rather than beside a dial grid, so its sentence gets a line length */
+.runBar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: 62ch;
+}
+
+.runCounts {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.runTruth {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--secondary);
+}
+
+.runWhy {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.runErr {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--danger);
+}
+
+.runBtn {
+  background: var(--good);
+  border: none;
+  border-radius: var(--r-inner);
+  color: var(--bg-frame);
+  font: 600 13px/1.25 var(--font-ui);
+  padding: 9px 18px;
+  cursor: pointer;
+}
+
+.runBtn:disabled {
+  background: var(--input);
+  color: var(--muted);
+  cursor: default;
+}
+
+.foot {
+  color: var(--faint);
+}
+
+/* ── the DECIMATE plinth's own controls ──────────────────────────────────
+   Same frame, same lane colour — a mesh verb is still the 3D lane, and the
+   artist should not have to learn a second plinth shape to use its second
+   verb. What is new is a HANDLE (the target) and an OVERRIDE (force), so
+   only those get styles. */
+
+/* the parent's own numbers, above the handle: a target means nothing
+   without the count it is measured against */
+.parentFacts {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  line-height: 1.35;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.handle {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 62ch;
+}
+
+.handleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.handleLabel {
+  color: var(--secondary);
+}
+
+.handleInput {
+  width: 11ch;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font: 500 13px/1.3 var(--font-mono);
+  padding: 5px 7px;
+  text-align: right;
+}
+
+.handleInput:focus {
+  outline: none;
+  border-color: var(--good);
+}
+
+.handleUnit {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.handleLine {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* the override: a checkbox and the sentence for whichever state it is in.
+   It is not danger-coloured while off — off is the ordinary answer, and
+   colouring the control rather than the consequence would make the trade
+   look like a mistake to avoid instead of a choice to make. */
+.force {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 62ch;
+  padding-top: 2px;
+}
+
+.forceRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.forceRow input {
+  accent-color: var(--money);   /* the palette's attention colour */
+  margin: 0;
+}
+
+.forceLabel {
+  color: var(--secondary);
+  cursor: pointer;
+}
+
+.force[data-on="true"] .forceLabel {
+  color: var(--text);
+}
+
+.forceLine {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.force[data-on="true"] .forceLine {
+  color: var(--danger);
+}
+
+/* The reference picker: the TEXTURE verb's second parent. A strip
+   of image-take thumbs, newest first, one selected. It scrolls inside its
+   own row (the plinth never widens the dock), and the selected thumb wears
+   the lane colour the way a stepped engine row does. */
+.refStrip {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.refThumb {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
+.refThumb img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: var(--r-control);
+  display: block;
+}
+
+.refThumb[data-on="true"] {
+  border-color: var(--good);
+  outline: 1px solid var(--good);
+}
+
+.refThumbName {
+  color: var(--muted);
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refThumb[data-on="true"] .refThumbName {
+  color: var(--text);
+}
+
+/* ── the Advanced fold ────────────────────────────────────────────────────
+   The composer's fold, on the 3D lane: same hairline seam, same collapsed
+   head, same accent for a moved handle. It reads as one control the artist
+   already knows rather than a second thing to learn. */
+.fold {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 5px;
+}
+
+.foldHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.foldHead:hover .foldName {
+  color: var(--text);
+}
+
+.foldName {
+  color: var(--secondary);
+}
+
+.foldLead {
+  font-size: 10.5px;
+  color: var(--secondary);
+}
+
+.foldChanged {
+  color: var(--accent);
+}
+
+.foldBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* one group per engine, plus the run's own — the seed belongs to the run,
+   so it is grouped under that rather than repeated into each engine */
+.foldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.foldGroupName {
+  color: var(--muted);
+}
+
+.foldRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.foldRow[data-inert="true"] {
+  color: var(--faint);
+}
+
+.foldRowHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.foldLabel {
+  color: var(--secondary);
+}
+
+.foldRow[data-inert="true"] .foldLabel {
+  color: var(--faint);
+}
+
+.foldRow[data-changed="true"] select,
+.foldRow[data-changed="true"] input[type="number"] {
+  border-color: var(--accent);
+}
+
+.seedRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.seedRow input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.seedRow .handleInput {
+  flex: 1;
+}
+
+.foldRowReset,
+.foldResetAll {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font: 8.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.foldResetAll {
+  align-self: flex-start;
+  padding: 3px 8px;
+}
+
+.foldRowReset:hover,
+.foldResetAll:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* the readout under a control: what will be sent (the raw), and the dashed
+   variant for a handle this engine does not have (law 12) */
+.raw {
+  color: var(--faint);
+}
+
+.badge {
+  color: var(--muted);
+}

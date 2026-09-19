@@ -1,0 +1,54 @@
+/* tokens.css: THE single styling truth.
+   The :root block holds the colour, type, radius and shadow values.
+   Three values are chosen points in a range: tint-accent .07,
+   shadow 18/44/.66, mono letter-spacing .12em.
+   Component classes live per surface in CSS Modules, never globally here. */
+
+:root {
+  --bg-canvas: #08090b;
+  --bg-frame: #0b0d10;
+  --panel: #101317;
+  --panel-alt: #0e1114;
+  --card: #121519;
+  --card-alt: #131619;
+  --input: #15191e;
+  --raised: #171b20; /* menus */
+  --hairline: #23282e;
+  --border: #2f353c;
+  --border-strong: #3a424a;
+
+  --text: #e4e8eb;
+  --secondary: #98a1a9;
+  --muted: #5f686f;
+  --faint: #4a5158;
+  --faint-2: #3c444c;
+
+  --accent: #7fb2ff;       /* select */
+  --money: #d2a24c;        /* also running/waiting */
+  --good: #5fc08c;
+  --danger: #db6a57;       /* irreversible / dead */
+
+  --tint-accent: rgba(127, 178, 255, 0.07);
+  --tint-good: rgba(95, 192, 140, 0.06);
+  --tint-money: rgba(210, 162, 76, 0.05);
+  --tint-danger: rgba(219, 106, 87, 0.05);
+
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* radius: 3 controls · 4 inner cards · 5 panels/nodes · 6 frame shells */
+  --r-control: 3px;
+  --r-inner: 4px;
+  --r-panel: 5px;
+  --r-frame: 6px;
+
+  --shadow-menu: 0 18px 44px rgba(0, 0, 0, 0.66);
+
+  /* ── additions beyond the base palette ─────────────────────────────────
+     The base palette has no focus ring, and the app must stay keyboard-
+     operable, so the ring is a token here. color-scheme keeps the
+     native chrome (scrollbars, inputs) dark. */
+  --focus-outline: 2px solid var(--accent);
+  --focus-offset: 1px;
+  color-scheme: dark;
+}

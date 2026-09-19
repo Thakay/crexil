@@ -1,0 +1,265 @@
+/*
+ * Canvas + node card metrics: the card 158×132, selected 176×148 +
+ * ACTING ON pill, and the edge legend. Every card metric lives in THIS
+ * file on purpose, so a design pass tunes these numbers in one place.
+ * If CARD_W/CARD_H change here, mirror graph.ts.
+ * Motion bar: transform/opacity only — no width/height transitions; the
+ * select size switch is deliberately instant.
+ */
+
+.flow {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── node card ──────────────────────────────────────────────────────────── */
+
+.card {
+  width: 158px;
+  height: 132px;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  overflow: hidden;
+}
+
+.selected {
+  width: 176px;
+  height: 148px;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14);
+}
+
+.plate {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(155deg, #1a2026, #14181c);
+}
+
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.plateWord {
+  color: var(--faint);
+}
+
+.pill {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  color: #0b0d10;
+  background: var(--accent);
+  border-radius: 2px;
+  padding: 2px 6px;
+}
+
+/* The promoted mark: a green chip, outlined rather than filled (ACTING ON
+   is the filled one, and a card can be both). Bottom-right so it never
+   sits under the pill. */
+.promoted {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 1;
+  color: var(--good);
+  border: 1px solid rgba(95, 192, 140, 0.4);
+  background: rgba(11, 13, 16, 0.72);
+  border-radius: 2px;
+  padding: 2px 5px;
+}
+
+.strip {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--secondary);
+  white-space: nowrap;
+}
+
+/* Identity first: the cell + take is what tells two cards apart, so
+   it holds its ground and the ENGINE half truncates. Without this the strip
+   is nowrap with nothing allowed to shrink, and the right span slides off
+   the card: a long engine name alone does it, take number or not. */
+.stripLeft {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stripRight {
+  flex: none;
+  color: var(--muted);
+}
+
+/* RF wants handles; the card shows none (no ports). */
+.handle {
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+}
+
+/* ── EDGE TYPES legend ──────────────────────────────────────────────────── */
+
+.legend {
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-panel);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legendSwatch {
+  width: 16px;
+  height: 1px;
+  flex: none;
+}
+
+/* ── empty state overlay ────────────────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+/* ── the drag layer ─────────────────────────────────────────────────────── */
+
+/* The card under the pointer is pointer-transparent while React Flow drags
+   it, so elementFromPoint finds the destination beneath it (another card,
+   the tray's zone, the pane). RF's drag listeners sit on the window — it
+   never needs the card's events after the lift. !important because RF
+   writes `pointer-events: all` INLINE on every node wrapper. */
+.flow :global(.react-flow__node.dragging) {
+  pointer-events: none !important;
+}
+
+/* On lift the pane is a destination: dashed #7FB2FF on its .07 tint. */
+.flow[data-dragging] :global(.react-flow__pane) {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+  background: var(--tint-accent);
+}
+
+/* The lifted card carries the one shadow (shadows: menus and dragged
+   objects only); every other card is a destination — dashed #5FC08C on a
+   .06 tint — solid while the pointer is on it. Later than .selected on
+   purpose: a selected card can be either. */
+.card[data-drag="lifted"] {
+  box-shadow:
+    0 0 0 3px rgba(127, 178, 255, 0.14),
+    var(--shadow-menu);
+}
+
+.card[data-drag="target"],
+.card[data-drag="over"] {
+  border: 1px dashed var(--good);
+  box-shadow: 0 0 0 3px var(--tint-good);
+}
+
+.card[data-drag="over"] {
+  border-style: solid;
+  box-shadow: 0 0 0 3px rgba(95, 192, 140, 0.28);
+}
+
+/* the words half — every destination and its effect, the hovered one
+   marked; see-through to the pointer so it is never a target of its own */
+.dropLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 12px;
+  max-width: 600px;
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-panel);
+  box-shadow: var(--shadow-menu);
+  pointer-events: none;
+}
+
+.dropHead {
+  color: var(--muted);
+}
+
+.dropRow {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding-left: 8px;
+  border-left: 2px solid transparent;
+}
+
+.dropRow[data-live="false"] {
+  opacity: 0.62;
+}
+
+.dropRow[data-over] {
+  border-left-color: var(--text);
+}
+
+/* each label in its ring's colour, so the words and the rings read as one */
+.dropLabel {
+  flex: 0 0 150px;
+}
+
+.dropRow[data-kind="canvas"] .dropLabel {
+  color: var(--accent);
+}
+
+.dropRow[data-kind="node"] .dropLabel {
+  color: var(--good);
+}
+
+.dropRow[data-kind="tray"] .dropLabel {
+  color: var(--secondary);
+}
+
+.dropLine {
+  margin: 0;
+}
+
+/* a drop the server refused, in its own words — the card is back where it
+   was lifted from (nothing lost); clears on the next lift */
+.dropErr {
+  font: 11.5px/1.5 var(--font-ui);
+  color: var(--danger);
+  background: var(--raised);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-panel);
+  padding: 8px 12px;
+  max-width: 520px;
+}

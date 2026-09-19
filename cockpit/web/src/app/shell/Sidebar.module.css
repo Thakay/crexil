@@ -1,0 +1,149 @@
+/* Width is the artist's (`--sidebar-w`, written on the shell root
+   by the handle; shell/layout.ts). Unset = the default 232 px; the 40% guard
+   keeps a size persisted on a wide window from starving the canvas on a
+   narrow one. */
+.sidebar {
+  width: var(--sidebar-w, 232px);
+  max-width: 40%;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-right: 1px solid var(--hairline);
+  background: var(--panel-alt);
+  overflow-y: auto;
+}
+
+.create {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.createRow {
+  display: flex;
+  gap: 6px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 5px 7px;
+  font: 12px/1.4 var(--font-ui);
+}
+
+.button {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 5px 10px;
+  font: 12px/1.4 var(--font-ui);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--card-alt);
+}
+
+.button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  padding: 6px 9px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+  background: var(--card-alt);
+}
+
+/* selected-workspace treatment mirrors the selected-node rule */
+.row[aria-current="page"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14);
+}
+
+.rowName {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* The row's own readout: what is in the workspace, and how much of
+   it has left for the asset tree. */
+.tally {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--muted);
+}
+
+/* The promoted chip at list scale: green, outlined, never filled (the
+   same mark the canvas card and the grid cell wear). */
+.promoted {
+  flex: none;
+  color: var(--good);
+  border: 1px solid rgba(95, 192, 140, 0.4);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Rename hangs under the open row, indented to read as part of it. */
+.rename {
+  align-self: flex-start;
+  margin: 4px 0 0 9px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.rename:hover {
+  color: var(--text);
+}
+
+.renameForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 0 9px;
+}
+
+.renameRow {
+  display: flex;
+  gap: 6px;
+}

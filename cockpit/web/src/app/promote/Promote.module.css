@@ -1,0 +1,334 @@
+/* The promote plinth, below the verb row's hairline (irreversible verbs
+   sit below the line, red-ruled, held). The danger
+   token carries the frame; everything above the inner rule is fact, and
+   everything below it is the consequence and the hold. */
+
+.plinth {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px 13px 13px;
+  border: 1px solid var(--danger);
+  border-radius: var(--r-inner);
+  background: var(--tint-danger);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 11px;
+}
+
+.title {
+  color: var(--danger);
+}
+
+.facts,
+.colHead {
+  color: var(--muted);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.close {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  letter-spacing: 0.06em;
+}
+
+.close:hover {
+  color: var(--secondary);
+}
+
+/* ── the facts: where it goes, and what lands there ──────────────────── */
+
+.cols {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 260px;
+  flex: 1 1 300px;
+}
+
+.path {
+  font: 11px/1.5 var(--font-mono);
+  color: var(--text);
+  word-break: break-all;
+}
+
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.file {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.filePath {
+  font: 10px/1.4 var(--font-mono);
+  color: var(--secondary);
+  word-break: break-all;
+}
+
+.fileWhat {
+  font: 10.5px/1.4 var(--font-ui);
+  color: var(--muted);
+}
+
+.cost {
+  font: 11.5px/1.5 var(--font-ui);
+  color: var(--money);
+}
+
+.note {
+  font: 10.5px/1.5 var(--font-ui);
+  color: var(--muted);
+}
+
+/* ── below the inner rule: the consequence, then the hold ────────────── */
+
+.rule {
+  height: 1px;
+  background: var(--danger);
+  opacity: 0.45;
+}
+
+.irreversible {
+  font: 11.5px/1.5 var(--font-ui);
+  color: var(--danger);
+}
+
+.broken {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.brokenLine {
+  font: 11.5px/1.5 var(--font-ui);
+  color: var(--danger);
+}
+
+.err {
+  font: 11px/1.5 var(--font-ui);
+  color: var(--danger);
+}
+
+.done {
+  font: 10.5px/1.5 var(--font-mono);
+  color: var(--good);
+  word-break: break-all;
+}
+
+.done .mono-label,
+.done span {
+  color: var(--good);
+}
+
+/* ── the re-point control ────────────────────────────────────────────── */
+
+.repoint {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.repointHead {
+  color: var(--secondary);
+}
+
+.repointRow {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.repointInput {
+  flex: 1 1 280px;
+  min-width: 0;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font: 11px/1.4 var(--font-mono);
+  padding: 6px 8px;
+}
+
+.repointInput:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
+  border-color: var(--accent);
+}
+
+.repointGo,
+.repointReset {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  padding: 6px 11px;
+  cursor: pointer;
+}
+
+.repointGo:hover:not(:disabled),
+.repointReset:hover {
+  border-color: var(--border-strong);
+  background: var(--card-alt);
+}
+
+.repointGo:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.repointReset {
+  color: var(--muted);
+}
+
+/* The fold that reaches the re-point control on a HEALTHY target — steering
+   where an asset lands shouldn't require breaking the destination first. */
+.change {
+  margin-left: 9px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  letter-spacing: 0.1em;
+}
+
+/* ── the picker: one level of the drive, every row a handle ───────────── */
+
+.browser {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  padding: 7px 8px;
+}
+
+.browserHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.up {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  padding: 3px 7px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+}
+
+.up:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.up:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.browserPath {
+  flex: 1 1 200px;
+  min-width: 0;
+  font: 11px/1.4 var(--font-mono);
+  color: var(--text);
+  word-break: break-all;
+}
+
+.pick {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.pick:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--card-alt);
+}
+
+.pick:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.folderList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.folder {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--r-control);
+  padding: 4px 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: 11px/1.4 var(--font-mono);
+}
+
+.folder:hover {
+  background: var(--card-alt);
+}
+
+.folder:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
+}
+
+/* badge, never filter (law 12): an unfit folder stays in the list, dimmed,
+   with its reason beside the name */
+.folderUnfit .folderName {
+  color: var(--muted);
+}
+
+.folderWhy {
+  flex: 1 1 auto;
+  font: 10px/1.4 var(--font-ui);
+  color: var(--muted);
+}
+
+.folderStep {
+  margin-left: auto;
+  color: var(--muted);
+}

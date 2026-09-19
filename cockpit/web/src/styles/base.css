@@ -1,0 +1,61 @@
+/* base.css: global element rules + the type scale. These five utility
+   classes are the only sanctioned global classes; everything else is CSS
+   Modules. Loaded solely from src/app/App.tsx. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text);
+  font: 13px/1.6 var(--font-ui);
+}
+
+/* The keyboard floor: visible ring everywhere, overridable per surface. */
+:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
+}
+
+/* ── type scale ─────────────────────────────────────────────────────────── */
+
+.frame-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mono-micro {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.effect-line {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--secondary);
+}
+
+.hairline-rule {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  margin: 10px 0;
+}

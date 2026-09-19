@@ -1,0 +1,232 @@
+/* The verb row. `.chip*` lives here, per surface, never globally in
+   tokens.css. The header/dashed-group layout: ACTING ON chip · facts · hint,
+   then the chip row, then the NOT FOR THIS NODE line. */
+
+/* Shrinks and scrolls when the column is over-full, the same treatment
+   the composer gets, and for the same reason: with the promote plinth
+   open the row can outgrow the dock, and its hold and its re-point
+   control would sit under the app footer, unreachable. Nothing changes
+   while it fits. */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px 13px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel-alt);
+}
+
+/* ── header: what we're acting on ─────────────────────────────────────── */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+}
+
+.acting {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--accent);
+  background: var(--tint-accent);
+  border-radius: var(--r-inner);
+  padding: 5px 11px;
+}
+
+.actingHead {
+  color: var(--accent);
+}
+
+.actingName {
+  font: 12.5px/1.2 var(--font-ui);
+  color: var(--text);
+}
+
+.nothing {
+  color: var(--muted);
+}
+
+.facts,
+.hint {
+  color: var(--muted);
+  white-space: nowrap;
+  letter-spacing: 0.06em;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ── the chips ────────────────────────────────────────────────────────── */
+
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  flex: 1 1 132px;
+  min-width: 132px;
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  color: var(--text);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--border-strong);
+  background: var(--card-alt);
+}
+
+.chip:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-offset);
+}
+
+.chipLabel {
+  color: var(--text);
+}
+
+/* the keystroke, after the label — the grid's hover bar says "SET ASIDE ⌫"
+   the same way */
+.chipKey {
+  margin-left: 7px;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+.chipLine {
+  font: 10.5px/1.4 var(--font-ui);
+  color: var(--muted);
+}
+
+/* Right node, wrong moment: dashed and dimmed, reason in place of the effect
+   line, the same treatment an incapable engine gets (law 12). */
+.chipBlocked {
+  border-style: dashed;
+  opacity: 0.62;
+  cursor: default;
+}
+
+.chipBlocked:hover {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.chipBlocked .chipLabel {
+  color: var(--secondary);
+}
+
+/* ── wrong payload entirely ───────────────────────────────────────────── */
+
+.notFor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notForHead {
+  color: var(--faint);
+  white-space: nowrap;
+  letter-spacing: 0.1em;
+}
+
+.notForList {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+/* the group's shared reason sits with its header, ahead of the chips */
+.notFor > .notForWhy {
+  white-space: nowrap;
+}
+
+.notForChip {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-inner);
+  padding: 5px 10px;
+  opacity: 0.62;
+}
+
+.notForLabel {
+  color: var(--secondary);
+  letter-spacing: 0.09em;
+}
+
+.notForWhy {
+  font: 10.5px/1.4 var(--font-ui);
+  color: var(--muted);
+}
+
+.err {
+  margin: 0;
+  font: 11.5px/1.5 var(--font-ui);
+  color: var(--danger);
+}
+
+/* ── below the hairline: what can't be undone ──────────────────────────── */
+
+.irreversible {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.irreversibleHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.hairline {
+  flex: 1;
+  height: 1px;
+  background: var(--danger);
+  opacity: 0.4;
+}
+
+.irreversibleLabel {
+  color: var(--danger);
+  letter-spacing: 0.12em;
+}
+
+/* Not a different control — the same chip, wearing the danger token so the
+   boundary reads at a glance rather than only in the label. */
+.chipDanger {
+  border-color: var(--danger);
+  background: var(--tint-danger);
+}
+
+.chipDanger .chipLabel {
+  color: var(--danger);
+}
+
+.chipDanger:hover {
+  border-color: var(--danger);
+  background: rgba(219, 106, 87, 0.09);
+}
+
+/* The plinth is open beneath: the chip stays lit so the pair reads as one
+   control, and pressing it again closes. */
+.chipOpen {
+  background: rgba(219, 106, 87, 0.12);
+}

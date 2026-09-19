@@ -1,0 +1,825 @@
+/* Batch surfaces: the turn surface, the queue strip, the lightbox and the
+   mesh viewer. Tokens only: colors come from tokens.css. */
+
+/* ── the turn surface: overlays the canvas region ───────────────────────── */
+
+.surface {
+  position: absolute;
+  inset: 0;
+  z-index: 4; /* above React Flow panes, below menus */
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-canvas);
+  background-image: radial-gradient(#171b20 1px, transparent 1px);
+  background-size: 27px 27px;
+}
+
+.head {
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.headBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.headBtn:hover:enabled {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.headBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.headBtnRed {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.headBtnBlue {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* The turn's provenance record under the header: a strip of
+   the surface's chrome, present from the turn's first paint, so the cells
+   below never move for it (law 8) */
+.record {
+  flex: none;
+  padding: 9px 16px 10px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel-alt);
+}
+
+/* the surface's notices (law 1): per-slot backfill refusals, one-cause
+   folds, verb errors — one line each, as a FOOTER under the grid: a notice
+   appearing must never move a cell (law 8) */
+.notices {
+  flex: none;
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel-alt);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cancelWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.breath {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emptyLine {
+  margin: auto;
+  text-align: center;
+}
+
+.gridScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.grid {
+  display: grid;
+  grid-auto-rows: 170px;
+  gap: 14px;
+  justify-content: center;
+  align-content: start;
+}
+
+/* ── cells ──────────────────────────────────────────────────────────────── */
+
+.cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--card-alt);
+}
+
+.cellGhost {
+  border-style: dashed;
+  border-color: var(--hairline);
+  background: var(--bg-frame);
+}
+
+.cellRunning {
+  border-color: var(--money);
+  background: var(--panel-alt);
+}
+
+.cellHeld {
+  border-style: dashed;
+  border-color: var(--money);
+  background: var(--panel-alt);
+}
+
+.cellFailed {
+  border-color: var(--danger);
+  background: var(--panel-alt);
+}
+
+.ghostBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  text-align: center;
+}
+
+.ghostWord {
+  color: var(--faint);
+}
+
+.plate {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(100deg, #14181c, #1b2027, #14181c);
+}
+
+.plateBtn {
+  composes: plate;
+  border: 0;
+  padding: 0;
+  cursor: zoom-in;
+  font: inherit;
+  color: inherit;
+}
+
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.footer {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-top: 1px solid var(--hairline);
+  color: var(--muted);
+}
+
+.footerRight {
+  color: var(--secondary);
+}
+
+/* hover actions (revealed on the landed cell only) */
+.hoverBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 25px;
+  display: none;
+  background: rgba(11, 13, 16, 0.9);
+  border-top: 1px solid var(--border);
+}
+
+.cellLanded:hover .hoverBar,
+.cellLanded:focus-within .hoverBar {
+  display: flex;
+}
+
+.act {
+  flex: 1;
+  padding: 6px 0;
+  background: none;
+  border: 0;
+  border-right: 1px solid var(--border);
+  color: var(--secondary);
+  cursor: pointer;
+}
+
+.act:last-child {
+  border-right: 0;
+}
+
+.act:hover:enabled {
+  color: var(--text);
+}
+
+/* a paid reroll under LOCAL ONLY: still there, inert, the reason on its
+   face */
+.act:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.actBlue {
+  color: var(--accent);
+}
+
+.actFramed {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 5px 10px;
+}
+
+/* the cell's remedies (laws 4 + 6): free first, the paid one last,
+   the primary framed; a paid action is never framed */
+.remedies {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.remedies .act {
+  flex: none;
+  border-right: 0;
+  padding: 5px 8px;
+}
+
+.actPaid {
+  color: var(--money);
+}
+
+/* law 3's collapsed DETAILS: the raw engine text, a bar along the body's
+   bottom edge; opened, it covers the body (scrollable) and the summary
+   stays put to close it */
+.details {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 25px;
+  z-index: 1;
+  background: var(--panel-alt);
+  border-top: 1px solid var(--hairline);
+}
+
+.details[open] {
+  top: 0;
+  overflow-y: auto;
+}
+
+.detailsSummary {
+  cursor: pointer;
+  padding: 3px 8px;
+  color: var(--faint);
+  list-style: none;
+}
+
+.detailsSummary::-webkit-details-marker {
+  display: none;
+}
+
+.details[open] .detailsSummary {
+  color: var(--secondary);
+}
+
+.detailsText {
+  margin: 0;
+  padding: 4px 8px 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.plateLine {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  text-align: center;
+}
+
+.cost {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  color: var(--money);
+  border: 1px solid rgba(210, 162, 76, 0.4);
+  border-radius: 2px;
+  padding: 2px 5px;
+  background: var(--bg-frame);
+}
+
+.cellCancel {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.cellCancel:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.gold {
+  color: var(--money);
+}
+
+.red {
+  color: var(--danger);
+}
+
+.dim {
+  color: var(--muted);
+}
+
+.failCause {
+  color: var(--text);
+}
+
+/* ── queue strip (124px) ────────────────────────────────────────────────── */
+
+.strip {
+  height: 124px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel-alt);
+}
+
+.stripHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stripLanes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 28px;
+  overflow: hidden;
+}
+
+.lane {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.laneLabel {
+  color: var(--faint);
+}
+
+.laneRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cellCancelInline {
+  composes: cellCancel;
+  position: static;
+}
+
+/* ── lightbox ───────────────────────────────────────────────────────────── */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(8, 9, 11, 0.92);
+  cursor: zoom-out;
+}
+
+.lightboxImg {
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 240px);
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+}
+
+.lightboxHint {
+  color: var(--muted);
+}
+
+/* The image take's caption: the record BESIDE the pixels, never over
+   them (an overlay covers the picture it describes), so the picture and
+   its words are seen at once. Its own clicks stay its own. */
+.lightboxRecord {
+  width: min(960px, calc(100vw - 80px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  background: var(--panel);
+  cursor: default;
+}
+
+/* What the funnel measured about this mesh, above the hint. Brighter
+   than the hint: it is content, not chrome. */
+.lightboxFacts {
+  color: var(--text);
+}
+
+/* The promoted mark on a landed cell, the same chip the canvas card
+   wears: one mark, one meaning, learned once. Bottom-left, so the cost
+   badge keeps its corner. */
+.promoted {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  color: var(--good);
+  border: 1px solid rgba(95, 192, 140, 0.4);
+  background: rgba(11, 13, 16, 0.72);
+  border-radius: 2px;
+  padding: 2px 5px;
+}
+
+/* ── mesh viewer ────────────────────────────────────────────────────────
+   Every value is a token or an idiom that already exists: the chip is
+   regions' .tool/.toolOn, the scrim is .lightbox's, the micro-labels are
+   base.css. The mesh gets every pixel; the chrome floats in the corners
+   and the frame's edge is implied: the canvas draws on the scrim with no
+   border of its own. */
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(8, 9, 11, 0.92);
+  cursor: zoom-out; /* the backdrop closes */
+}
+
+/* the frame: inset so a strip of backdrop stays clickable on every side */
+.viewerStage {
+  position: absolute;
+  inset: 60px 26px 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab; /* the frame drags to orbit — it never closes */
+}
+
+.viewerStage:active {
+  cursor: grabbing;
+}
+
+.viewerCorner {
+  position: absolute;
+  top: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+}
+
+.viewerCornerLeft {
+  left: 26px;
+}
+
+.viewerCornerRight {
+  right: 26px;
+}
+
+.viewerTitle {
+  color: var(--text);
+}
+
+.viewerTake {
+  font-size: 13px;
+  color: var(--secondary);
+}
+
+.viewerClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.viewerClose:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* the bottom strip lets clicks through to the backdrop between its lines;
+   the lines themselves are content, not backdrop */
+.viewerBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 11px;
+  pointer-events: none;
+}
+
+.viewerBottom > * {
+  pointer-events: auto;
+  cursor: default;
+}
+
+/* the mode row: four groups — camera · surface · truth · overlay */
+.viewerModes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+/* the controls act on geometry that isn't there yet (the poster, an empty
+   file): dimmed, not hidden — the row is the same row the mesh will wake */
+.viewerModesOff {
+  opacity: 0.4;
+}
+
+.mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font: 12px var(--font-ui);
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.mode:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.modeOn {
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14);
+}
+
+/* the mode's keyboard letter */
+.modeKey {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+.modeOn .modeKey,
+.segOn .modeKey {
+  color: var(--muted);
+}
+
+.modeSeg {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  overflow: hidden;
+  background: var(--card);
+}
+
+.segItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  font: 12px var(--font-ui);
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.segItem:hover {
+  color: var(--text);
+}
+
+.segOn {
+  background: var(--input);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.modeDot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--faint-2);
+}
+
+/* the line under the facts: what this view shows, in plain words */
+.viewerTruth {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--secondary);
+  max-width: 62ch;
+  text-align: center;
+  margin: 0;
+}
+
+/* the waiting poster: the orbit, over the canvas, until the GLB lands */
+.viewerPoster {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.viewerPosterImg {
+  width: min(470px, 60vw);
+  max-height: 60vh;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  display: block;
+}
+
+.viewerLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.viewerLoadingLine {
+  color: var(--money); /* gold is waiting — it doesn't need you */
+}
+
+.viewerBar {
+  width: 260px;
+  height: 2px;
+  background: var(--input);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.viewerBarFill {
+  height: 100%;
+  background: var(--money);
+  transition: width 120ms linear;
+}
+
+/* the turntable, when it is the face: no viewer, or the artist asked */
+.viewerOrbit {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+}
+
+/* a failed load or an empty file: what happened · what it cost you · what
+   to do next, in the frame, over whatever the canvas has */
+.viewerState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 20px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.viewerState > * {
+  pointer-events: auto;
+  cursor: default;
+}
+
+.viewerStateDead {
+  color: var(--danger); /* red is dead — needs you */
+}
+
+.viewerStateInfo {
+  color: var(--secondary); /* grey-blue is informational */
+}
+
+.viewerLine {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--secondary);
+  max-width: 46ch;
+  margin: 0;
+}
+
+.viewerStateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.viewerBtn {
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--card);
+  color: var(--text);
+  font: 12px var(--font-ui);
+  padding: 6px 11px;
+  cursor: pointer;
+}
+
+.viewerBtn:hover {
+  border-color: var(--border-strong);
+}
+
+.viewerMicroBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.viewerMicroBtn:hover {
+  color: var(--secondary);
+}
+
+.viewerDetails {
+  font: 10px/1.4 var(--font-mono);
+  color: var(--muted);
+  max-width: 60ch;
+  white-space: pre-wrap;
+  text-align: left;
+  margin: 0;
+}

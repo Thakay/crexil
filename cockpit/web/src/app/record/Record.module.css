@@ -1,0 +1,108 @@
+/* The provenance record. Tokens only; the row anatomy: a micro name in the
+   left gutter, the words or the mono line beside it, a note under, the
+   recall to the right. The same rows on every mount — the scope attribute
+   only tunes the gutter. */
+
+.record {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  gap: 0 12px;
+  align-items: start;
+}
+
+.name {
+  color: var(--faint);
+  padding-top: 3px;
+  white-space: nowrap;
+}
+
+.body {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* the words — the UI face, the size the composer's prompt uses */
+.words {
+  font: 12.5px/1.5 var(--font-ui);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* the mono rows: a knob line may wrap — a negative prompt is long */
+.line {
+  color: var(--secondary);
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  color: var(--faint);
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0.06em;
+}
+
+/* nothing behind the row: dashed and muted, the blocked chip's register */
+.blank .line {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.blank .name {
+  border-left: 1px dashed var(--border);
+  margin-left: -8px;
+  padding-left: 7px;
+}
+
+.acts {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-top: 1px;
+}
+
+.act {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.act:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.actBlue {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.actBlue:hover {
+  color: var(--accent);
+  background: var(--tint-accent);
+}

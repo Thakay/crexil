@@ -1,0 +1,642 @@
+/* The region surface. Tokens only: colors are tokens.css's. Same overlay
+   geometry as the turn grid: absolute over the canvas region, never a
+   modal (law 2). */
+
+.surface {
+  position: absolute;
+  inset: 0;
+  z-index: 4; /* above React Flow panes, below menus — the grid's plane */
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-canvas);
+  background-image: radial-gradient(#171b20 1px, transparent 1px);
+  background-size: 27px 27px;
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+
+.head {
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+}
+
+.title {
+  color: var(--text);
+}
+
+.takeName {
+  font-size: 13px;
+  color: var(--secondary);
+}
+
+.takeFacts {
+  color: var(--faint);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.escHint {
+  color: var(--faint);
+}
+
+.headBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.headBtn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* ── the honest lines: capability + where drafts live ───────────────────── */
+
+.capRow {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel-alt);
+}
+
+.capLine {
+  color: var(--secondary);
+}
+
+.gapLine {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-control);
+  padding: 2px 8px;
+}
+
+/* ── body: stage left, region list right ────────────────────────────────── */
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.stageCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* In a short window (720p) the canvas region can be under 200px tall;
+     the column scrolls rather than crushing the stage to nothing. */
+  overflow-y: auto;
+}
+
+.tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+}
+
+.tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-size: 12px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.tool:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.toolOn {
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14);
+}
+
+.toolWord {
+  color: inherit;
+}
+
+.brush {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+.brush input {
+  width: 120px;
+  accent-color: var(--accent);
+}
+
+.inkingInto {
+  margin-left: auto;
+  color: var(--secondary);
+}
+
+.stageArea {
+  flex: 1;
+  min-height: 280px; /* the drawing plate keeps a workable height and the
+                        column scrolls to it (short-window rule above) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  overflow: hidden;
+}
+
+.stage {
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  overflow: hidden;
+  background: var(--bg-frame);
+}
+
+.loading {
+  color: var(--muted);
+}
+
+/* ── the region list ────────────────────────────────────────────────────── */
+
+.side {
+  flex: none;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--hairline);
+  background: var(--panel);
+  min-height: 0;
+}
+
+.sideHead {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px 6px;
+}
+
+.sideCount {
+  color: var(--faint);
+}
+
+.drawHint {
+  padding: 4px 12px;
+  color: var(--secondary);
+}
+
+.rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.row {
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  background: var(--card);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.rowActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14);
+}
+
+.rowHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.rowLabel {
+  color: var(--text);
+}
+
+.inkMark {
+  color: var(--faint);
+  margin-left: auto;
+}
+
+.rowBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  padding: 2px 5px;
+  cursor: pointer;
+}
+
+.rowBtn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.name {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 7px;
+}
+
+.action {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 4px 5px;
+}
+
+.prompt {
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 4px 7px;
+  resize: vertical;
+}
+
+.promptless {
+  color: var(--muted);
+}
+
+.add {
+  flex: none;
+  margin: 8px 12px 12px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  padding: 7px 0;
+  cursor: pointer;
+}
+
+.add:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ── the fan-out section: roster, prompt, run bar ───────────────────────── */
+
+.fan {
+  flex: none;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+
+.fanRows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.fanRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  row-gap: 2px;
+}
+
+.fanRow[data-capable="false"] .fanName {
+  color: var(--faint);
+}
+
+.fanName {
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+.fanState {
+  color: var(--money);
+}
+
+.fanReason {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+
+.fanExternals {
+  padding: 0 12px;
+  color: var(--faint);
+}
+
+.fan .prompt {
+  margin: 0 12px;
+}
+
+.fanBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.fanBarLine {
+  color: var(--secondary);
+  flex: 1;
+}
+
+.fanBtn {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-control);
+  color: #0b0d10;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.fanBtn:disabled {
+  background: none;
+  border-color: var(--border);
+  color: var(--faint);
+  cursor: default;
+}
+
+.fanWhy {
+  padding: 0 12px;
+  color: var(--muted);
+}
+
+.fanErr {
+  padding: 0 12px;
+  color: var(--danger);
+}
+
+/* ── the attempt panes: results side by side ────────────────────────────── */
+
+.attempts {
+  flex: none;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--hairline);
+  background: var(--panel);
+  min-height: 0;
+}
+
+.attemptsHint {
+  padding: 0 12px 4px;
+  color: var(--faint);
+}
+
+.viewChips {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 6px;
+}
+
+.viewChip {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.viewChip[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14);
+}
+
+.panes {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+
+.pane {
+  border: 1px solid var(--border);
+  border-radius: var(--r-inner);
+  background: var(--card);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pane[data-status="landed"] {
+  cursor: pointer;
+}
+
+.panePicked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14);
+}
+
+.paneHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.paneEngine {
+  color: var(--text);
+}
+
+.paneFacts {
+  margin-left: auto;
+  color: var(--secondary);
+  text-align: right;
+}
+
+.paneImg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-control);
+  background: var(--bg-frame);
+}
+
+.panePlate {
+  height: 120px;
+  border-radius: var(--r-control);
+  background: var(--bg-frame);
+  border: 1px dashed var(--border);
+}
+
+.paneFail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 2px;
+}
+
+.paneCause {
+  color: var(--secondary);
+}
+
+.paneBtn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.paneBtn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* ── the commit bar ─────────────────────────────────────────────────────── */
+
+.commit {
+  flex: none;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 12px 10px;
+}
+
+.commitLabel {
+  color: var(--secondary);
+}
+
+.commitBtns {
+  display: flex;
+  gap: 8px;
+}
+
+.commitKeep {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.commitKeep:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.commitGo {
+  flex: 1;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-control);
+  color: #0b0d10;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.commitGo:disabled {
+  background: none;
+  border-color: var(--border);
+  color: var(--faint);
+  cursor: default;
+}
+
+.commitLine {
+  color: var(--faint);
+}
+
+/* ── footer: the rule (the binding nd3-v1 order) ────────────────────────── */
+
+.foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+  row-gap: 3px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel);
+}
+
+.rule {
+  color: var(--secondary);
+}
+
+.ruleQuiet {
+  color: var(--faint);
+}
