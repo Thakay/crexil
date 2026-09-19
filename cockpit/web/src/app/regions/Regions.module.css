@@ -193,6 +193,9 @@
   border-left: 1px solid var(--hairline);
   background: var(--panel);
   min-height: 0;
+  /* Scrolls like .stageCol: in a short window the body is shorter than this
+     column, and content left to overflow would slide under the footer. */
+  overflow-y: auto;
 }
 
 .sideHead {
@@ -438,6 +441,9 @@
   border-left: 1px solid var(--hairline);
   background: var(--panel);
   min-height: 0;
+  /* Scrolls like .stageCol, so the commit bar (CONTINUE HERE) can always be
+     reached and never sits under the footer. */
+  overflow-y: auto;
 }
 
 .attemptsHint {
