@@ -1,0 +1,111 @@
+{
+  "id": "prop-sheet",
+  "display_name": "Prop Sheet",
+  "description": "3D-ready prop: neutral background, consistent framing. Starter preset on FLUX.2 klein-4B.",
+  "modality": "image",
+  "model_family": "flux2-klein-4b",
+  "workflows": {
+    "txt2img": "flux2-txt2img@v1",
+    "img2img": "sdxl-img2img@v1",
+    "inpaint_modify": "sdxl-inpaint@v1",
+    "inpaint_replace": "sdxl-replace@v1",
+    "remove": "lama-remove@v1",
+    "composite": "util-composite@v1"
+  },
+  "default_candidates": 4,
+  "defaults_note": "klein is a few-step distilled model: steps 4 and guidance 1.0 are the design point; raise steps to 8 for detail-heavy props. img2img/region turns run on the SDXL rails, where klein handles like steps/guidance don't apply.",
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "required": true,
+      "default": "",
+      "placeholder": "a wooden crate, game prop, white background",
+      "target": { "node_title": "prompt_positive", "field": "text" }
+    },
+    {
+      "key": "negative_prompt",
+      "label": "Negative prompt",
+      "type": "text",
+      "supported": false,
+      "reason": "FLUX.2 klein is guidance-distilled: it has no CFG/negative-prompt channel. (Shown disabled, never silently ignored.)"
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": { "mode": "random" },
+      "target": { "node_title": "noise_seed", "field": "noise_seed" }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 4,
+      "min": 1,
+      "max": 16,
+      "capabilities": ["txt2img"],
+      "target": { "node_title": "scheduler", "field": "steps" }
+    },
+    {
+      "key": "guidance",
+      "label": "Guidance",
+      "type": "float",
+      "default": 1.0,
+      "min": 1.0,
+      "max": 5.0,
+      "step": 0.1,
+      "capabilities": ["txt2img"],
+      "target": { "node_title": "guidance", "field": "guidance" }
+    },
+    {
+      "key": "sampler_name",
+      "label": "Sampler",
+      "type": "enum",
+      "default": "euler",
+      "choices": ["euler", "euler_ancestral", "dpmpp_2m", "lcm", "uni_pc"],
+      "capabilities": ["txt2img"],
+      "target": { "node_title": "sampler_select", "field": "sampler_name" }
+    },
+    {
+      "key": "denoise",
+      "label": "Denoise strength",
+      "type": "float",
+      "default": 0.5,
+      "min": 0.05,
+      "max": 1.0,
+      "step": 0.05,
+      "capabilities": ["img2img", "region"],
+      "target": { "node_title": "sampler", "field": "denoise" }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 1536,
+      "step": 64,
+      "capabilities": ["txt2img"],
+      "target": [
+        { "node_title": "latent_size", "field": "width" },
+        { "node_title": "scheduler", "field": "width" }
+      ]
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 1536,
+      "step": 64,
+      "capabilities": ["txt2img"],
+      "target": [
+        { "node_title": "latent_size", "field": "height" },
+        { "node_title": "scheduler", "field": "height" }
+      ]
+    }
+  ]
+}

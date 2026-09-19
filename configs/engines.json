@@ -1,0 +1,452 @@
+{
+  "$doc": {
+    "what": "Engine capability matrix: authored config; no dedicated verification runs.",
+    "contract": "PRD §2 Engine entity: id, name, lane, payload, price + capability flags mask / seed / imageRef / styleRef / maxResolution / tokenLimit. Every flag carries a verification state. A 3D engine also declares `verbs`: the steps it serves (law 16).",
+    "semantics": [
+      "value = what the product lets you do with this engine today (committed graphs and routes), not what the model could do in principle.",
+      "state=verified: the value was observed (seen working in real use or smoke). For value=false, verified means the absence is a structural fact (no committed graph or route), not a probed model limit.",
+      "state=unverified: authored belief from model docs or preset ceilings, not yet observed. Shown as unverified, never guessed better (law 12).",
+      "note: plain-words badge text (law 12), curated static copy, never generated.",
+      "Numeric flags may be null = unknown or not applicable (the note says which). Unknown beats a confident wrong number.",
+      "Flags flip as usage proves them: update value/state here with dated evidence when real use observes something new.",
+      "verbs: which 3D steps this engine serves (law 16). The surfaces read it to badge a verb an engine does not do rather than hide the engine (law 12). An image engine has no verbs list: the image lane's steps are presets, not engine-declared. The RUNNER is the authority (tools/3d/runner.py KINDS) and cockpit/server/app/mesh.py MESH_KINDS is its server-side mirror; this list is the published copy, and a test holds the three in agreement (test_mesh.py).",
+      "params: the handles a SURFACE may offer for a verb, keyed by verb then by the runner's own param name. It is a published OFFER, not the runner's whitelist: the runner accepts more than this (a knob it takes but the product does not offer is simply absent here), so the guard is `published ⊆ runner` and never equality. A key here that the runner would refuse by name is the drift the test catches. A mesh engine has one because its handles are engine-declared; an image engine's live in presets/*.json `inputs` instead, which is why no image row carries this key.",
+      "params[verb][key]: `label` is the artist's name for it, `effect` the permanently visible plain-effect line (never a tooltip), `type`/`choices`/`default` the control. `state` is the knob's own verification (law 12), read the same way a capability's is: verified = this range was run and measured, unverified = authored from the engine's docs and not yet exercised. `supported: false` publishes a handle this engine does NOT have, with `why`: the surface lists it and dashes it rather than leaving an artist to wonder whether the app forgot it (law 12: badge, never filter). Seed is NOT here: it is a run-level field, published as the `seed` capability above."
+    ],
+    "homes": {
+      "external prices and seed pins": "providers.json (pins/overrides) + the live OpenRouter catalogue; the authoritative cost is per-generation usage.cost",
+      "licences": "scripts/models-manifest.json — the licence ledger",
+      "graph bindings": "presets/*.json workflows maps"
+    }
+  },
+  "updated": "2026-08-30",
+  "engines": [
+    {
+      "id": "flux2-klein-4b",
+      "name": "FLUX.2 klein 4B",
+      "lane": "local",
+      "payload": "image",
+      "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
+      "capabilities": {
+        "mask": {
+          "value": true,
+          "state": "verified",
+          "note": "The fast edit tier: MODIFY/REPLACE run as instruction ref-edits on a crop of the region, composited back inside the mask; DELETE rides LaMa. Seconds, not minutes.",
+          "evidence": "e2e 2026-08-26: scripts/e2e_region_fanout.py: rc-modify/rc-delete/rc-keep/rc-combo/rc-combo-modify fanned beside the SDXL rails through the region route, KEEP byte-exact on every case; 12–27 s/take"
+        },
+        "seed": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-11: flux2-txt2img@v1 green with a patched noise_seed",
+          "note": "Seed lock honoured per take."
+        },
+        "imageRef": {
+          "value": true,
+          "state": "verified",
+          "note": "flux2-refedit@v1: instruction edit holding the source through reference conditioning. Describe the target state in the words; there is no strength lever.",
+          "evidence": "e2e 2026-08-26: v4 Refine landed on flux2-refedit@v1 (12–16 s/edit)"
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "No style-reference channel is wired for any local engine yet: anchor channels are planned, not built."
+        },
+        "maxResolution": {
+          "value": 2048,
+          "state": "unverified",
+          "note": "Preset ceiling (512–2048, default 1024). Observed good at 768 (smoke) and 1024 (defaults); the 2048 bound itself has not been exercised."
+        },
+        "tokenLimit": {
+          "value": null,
+          "state": "unverified",
+          "note": "Qwen3-4B text encoder; the practical prompt ceiling is not pinned and long prompts have not been probed."
+        }
+      }
+    },
+    {
+      "id": "z-image-turbo",
+      "name": "Z-Image Turbo",
+      "lane": "local",
+      "payload": "image",
+      "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
+      "note": "8-step distill for the ~2 s sketch loop; CFG/negative not supported (official card) — the sketch preset pins cfg 1.0.",
+      "capabilities": {
+        "mask": {
+          "value": false,
+          "state": "verified",
+          "note": "Region turns run on the local edit tiers (SDXL rails / klein / Qwen): no Z-Image region recipe; Z-Image-Edit had no released weights when last checked (watch for release)."
+        },
+        "seed": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-11: zimage-turbo-txt2img@v1 green with a patched seed",
+          "note": "Seed lock honoured per take."
+        },
+        "imageRef": {
+          "value": false,
+          "state": "verified",
+          "note": "Turbo is txt2img only in this product — Base carries img2img for the family."
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "No style-reference channel is wired for any local engine yet: anchor channels are planned, not built."
+        },
+        "maxResolution": {
+          "value": 2048,
+          "state": "unverified",
+          "note": "Preset ceiling (512–2048, default 1024). Observed good at 768 (smoke) and 1024 (defaults); the 2048 bound itself has not been exercised."
+        },
+        "tokenLimit": {
+          "value": null,
+          "state": "unverified",
+          "note": "Qwen3-4B text encoder (shared with the FLUX.2 set); ceiling not pinned."
+        }
+      }
+    },
+    {
+      "id": "z-image-base",
+      "name": "Z-Image Base",
+      "lane": "local",
+      "payload": "image",
+      "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
+      "note": "Undistilled base: steps 28–50, full CFG + negative; the family's LoRA-training target (LoRA consumption is not built yet).",
+      "capabilities": {
+        "mask": {
+          "value": false,
+          "state": "verified",
+          "note": "Region turns run on the local edit tiers (SDXL rails / klein / Qwen): no Z-Image region recipe; Z-Image-Edit had no released weights when last checked (watch for release)."
+        },
+        "seed": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-11: zimage-base-txt2img@v1 green with a patched seed",
+          "note": "Seed lock honoured per take."
+        },
+        "imageRef": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-11: zimage-base-img2img@v1 green (LoadImage source + live denoise handle)",
+          "note": "Single-pass iteration on a source image."
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "No style-reference channel is wired for any local engine yet: anchor channels are planned, not built."
+        },
+        "maxResolution": {
+          "value": 2048,
+          "state": "unverified",
+          "note": "Preset ceiling (512–2048, default 1024). Observed good at 768 (smoke) and 1024 (defaults); the 2048 bound itself has not been exercised."
+        },
+        "tokenLimit": {
+          "value": null,
+          "state": "unverified",
+          "note": "Qwen3-4B text encoder (shared with the FLUX.2 set); ceiling not pinned."
+        }
+      }
+    },
+    {
+      "id": "sdxl-juggernaut-xi",
+      "name": "SDXL Juggernaut XI",
+      "lane": "local",
+      "payload": "image",
+      "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
+      "note": "The region rails: cross-family presets route img2img and region turns here.",
+      "capabilities": {
+        "mask": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-11: sdxl-inpaint@v1 (MODIFY) + sdxl-replace@v1 (REPLACE) + lama-remove@v1 (DELETE) + util-composite@v1 (KEEP restore) green; fractional-denoise behaviour validated (workflows/README)",
+          "note": "Full region set on the SDXL rails — KEEP > DELETE > REPLACE > MODIFY (nd3-v1)."
+        },
+        "seed": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-11: sdxl-txt2img@v1 green with a patched seed",
+          "note": "Seed lock honoured per take."
+        },
+        "imageRef": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-11: sdxl-img2img@v1 green (LoadImage source + live denoise handle)",
+          "note": "Single-pass iteration on a source image."
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "IP-Adapter weights are staged in ~/models but no graph is committed: anchor channels are planned, not built."
+        },
+        "maxResolution": {
+          "value": 2048,
+          "state": "unverified",
+          "note": "Preset ceiling. SDXL native is 1024 — expect composition drift above it; the 2048 bound is offered but unexercised."
+        },
+        "tokenLimit": {
+          "value": 77,
+          "state": "unverified",
+          "note": "CLIP text window per chunk; ComfyUI chunks longer prompts, so later text carries less weight rather than failing. Never observed as a hard limit."
+        }
+      }
+    },
+    {
+      "id": "qwen-image-edit-2511",
+      "name": "Qwen Edit 2511",
+      "lane": "local",
+      "payload": "image",
+      "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
+      "note": "The max-retention edit tier: un-instructed content stays near-pixel-faithful. Deliberate: ~1–2 min per edit warm on fp8; edit-only, always needs a source image.",
+      "capabilities": {
+        "mask": {
+          "value": true,
+          "state": "verified",
+          "note": "The max-retention tier: MODIFY/REPLACE run as imperative instruction edits on a crop of the region, composited back inside the mask; DELETE rides LaMa. Minutes-adjacent, not interactive.",
+          "evidence": "e2e 2026-08-26: scripts/e2e_region_fanout.py: rc-modify/rc-delete/rc-keep/rc-combo/rc-combo-modify fanned beside the SDXL rails through the region route, KEEP byte-exact on every case; 90–185 s/take (multi-pass)"
+        },
+        "seed": {
+          "value": true,
+          "state": "verified",
+          "evidence": "smoke 2026-08-26: qwen-edit-2511@v1 green with a patched seed",
+          "note": "Seed lock honoured per take."
+        },
+        "imageRef": {
+          "value": true,
+          "state": "verified",
+          "note": "qwen-edit-2511@v1: the source conditions the edit. Retention is the recipe itself, no strength lever.",
+          "evidence": "e2e 2026-08-26: v4 Refine landed on qwen-edit-2511@v1 (~80–90 s/edit)"
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "No style-reference channel is wired for any local engine yet: anchor channels are planned, not built."
+        },
+        "maxResolution": {
+          "value": 1024,
+          "state": "unverified",
+          "note": "The encoder rescales references toward ~1024² total pixels internally (pinned ComfyUI node behaviour), so output detail tops out near 1MP regardless of the requested frame; the preset allows up to 2048 and the cockpit resizes region crops back to their box."
+        },
+        "tokenLimit": {
+          "value": null,
+          "state": "unverified",
+          "note": "Qwen2.5-VL-7B text encoder; the practical instruction ceiling is not pinned."
+        }
+      }
+    },
+    {
+      "id": "trellis2-4b",
+      "name": "TRELLIS.2 4B",
+      "lane": "local",
+      "payload": "3d",
+      "verbs": [
+        "generate",
+        "decimate"
+      ],
+      "params": {
+        "generate": {
+          "pipeline_type": {
+            "label": "RESOLUTION TIER",
+            "type": "enum",
+            "choices": ["512", "1024_cascade"],
+            "default": "1024_cascade",
+            "state": "verified",
+            "effect": "How fine the grid is before the mesh is built. The cascade keeps small features the coarse pass rounds off; 512 is one pass and comes back sooner. Measured on one RTX 4090: 64 s against 46 s, and it is the bake that costs, not the sampling. It barely changes the triangle count; that budget is the extraction's.",
+            "evidence": "bench 2026-08-30: 512 → 45.8 s, 928,007 tris, 616,775 verts; 1024_cascade → 63.9 s, 963,650 tris, 707,220 verts. The tier's effect lands in vertices, not faces."
+          },
+          "texture_size": {
+            "label": "TEXTURE SIZE",
+            "type": "enum",
+            "choices": [1024, 2048, 4096],
+            "default": 2048,
+            "state": "verified",
+            "effect": "The PBR set is baked at this size. 1024 and 2048 cost the same; 4096 adds about 18 s to the bake and a few megabytes to the file. Take 4096 for a hero prop the camera gets close to, 1024 when it is going into a crowd.",
+            "evidence": "bench 2026-08-30: extraction 43.9 / 38.2 / 56.3 s and 33.6 / 34.8 / 39.1 MB at 1024 / 2048 / 4096. The low two differ by less than the run-to-run spread. On an RTX 4090, going from 2048 to 4096 costs +47% in extraction time, not 2×."
+          }
+        }
+      },
+      "price": "free: local GPU time; cost reads in minutes, not seconds",
+      "note": "Serves DECIMATE by RE-EXTRACTION, not by simplifying: a take keeps its voxel field, and this re-runs the bake at another triangle count (a fresh remesh, unwrap and texture bake rather than a collapse of the finished GLB). It has no seam floor, so it is the only route below gltfpack's, and it re-bakes the texture at a size of your choosing. Only its OWN takes, and only those that kept a field set. Measured 2026-08-29 on a 931,981-triangle lantern: 30,000 asked landed 28,007 in 14 s, where gltfpack on the same mesh floored at 362,918. Keeping the field costs the take a sidecar of 21-92 MB (per prop, sized by occupied voxels); the tray states it and purge frees it.",
+      "capabilities": {
+        "mask": {
+          "value": false,
+          "state": "verified",
+          "note": "Not meaningful for mesh generation."
+        },
+        "seed": {
+          "value": true,
+          "state": "verified",
+          "evidence": "funnel.py sends a fixed seed (424242) on every run; end-to-end green twice",
+          "note": "Seed accepted per run; the funnel always sends the same one, so variety and reproducibility are unexercised."
+        },
+        "imageRef": {
+          "value": true,
+          "state": "verified",
+          "evidence": "image→mesh proven end-to-end twice via funnel.py",
+          "note": "The image is the input — image-conditioned mesh generation."
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "No style channel in the funnel path."
+        },
+        "maxResolution": {
+          "value": null,
+          "state": "verified",
+          "note": "Not applicable — output is a mesh (GLB); the pipeline conditions from a fixed input crop."
+        },
+        "tokenLimit": {
+          "value": null,
+          "state": "verified",
+          "note": "Not applicable — image-conditioned in the funnel path; no text channel wired."
+        }
+      }
+    },
+    {
+      "id": "hunyuan3d-21",
+      "name": "Hunyuan3D 2.1",
+      "lane": "local",
+      "payload": "3d",
+      "verbs": [
+        "generate",
+        "texture"
+      ],
+      "params": {
+        "generate": {
+          "octree_resolution": {
+            "label": "RESOLUTION TIER",
+            "type": "enum",
+            "choices": [256, 384, 512],
+            "default": 384,
+            "state": "verified",
+            "effect": "How finely the shape is sampled before it is turned into a surface. It does NOT give you more triangles — Paint rebuilds whatever it is given at 40,000, so every tier lands the same count and the same file size. What it changes is how true that surface is to the thin parts. It is the steepest handle here: measured, 512 costs about 39 s more than the default.",
+            "evidence": "bench 2026-08-30: shape generation 22.8 / 35.5 / 62.2 s at 256 / 384 / 512, and 40,000 triangles at 9.2 MB in all three. 512 also raises shape VRAM from 7.8 to 8.9 GB."
+          },
+          "texture_size": {
+            "label": "TEXTURE SIZE",
+            "supported": false,
+            "why": "Paint bakes its atlas at a size fixed inside the pipeline — there is no handle to turn. It also simplifies whatever it is given to 40,000 triangles and re-unwraps before painting, so the texture is sized to that, not to the mesh you asked for."
+          }
+        }
+      },
+      "price": "free: local GPU time; cost reads in minutes, not seconds",
+      "note": "Shape + paint stages: textured mesh output, with the full PBR set embedded (albedo + packed metallic/roughness). Serves TEXTURE on ANY mesh: Paint takes a mesh and a reference image and repaints it (shape locked, appearance branching). Honesty first: Paint simplifies its input to 40,000 faces and re-unwraps before painting (upstream's own hard default), so the textured child carries Paint's topology and UVs, never its parent's. The child's facts line prints its own count. Measured 2026-08-30 on a 970,535-triangle TRELLIS.2 mesh: the 40k path paints in 51 s (66 s stage wall, 13.7 GB peak); skipping the simplify at native density burned 45+ CPU-minutes without reaching the bake and is not offered. Deterministic: Paint hard-seeds its diffusion, so the same mesh and the same reference give the same child; one take, like decimate.",
+      "capabilities": {
+        "mask": {
+          "value": false,
+          "state": "verified",
+          "note": "Not meaningful for mesh generation."
+        },
+        "seed": {
+          "value": true,
+          "state": "verified",
+          "evidence": "funnel.py sends a fixed seed (424242) on every run; end-to-end green twice",
+          "note": "Seed accepted per run; the funnel always sends the same one, so variety and reproducibility are unexercised."
+        },
+        "imageRef": {
+          "value": true,
+          "state": "verified",
+          "evidence": "image→mesh proven end-to-end twice via funnel.py",
+          "note": "The image is the input — image-conditioned mesh generation."
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "No style channel in the funnel path."
+        },
+        "maxResolution": {
+          "value": null,
+          "state": "verified",
+          "note": "Not applicable — output is a mesh (GLB); the pipeline conditions from a fixed input crop."
+        },
+        "tokenLimit": {
+          "value": null,
+          "state": "verified",
+          "note": "Not applicable — image-conditioned in the funnel path; no text channel wired."
+        }
+      }
+    },
+    {
+      "id": "gltfpack",
+      "name": "gltfpack (meshopt)",
+      "lane": "local",
+      "payload": "3d",
+      "verbs": [
+        "decimate"
+      ],
+      "price": "free — local CPU; 0.8 s on a 970k-triangle mesh (measured 2026-08-29), not the minutes a generator costs",
+      "note": "A classic tool, not a model (law 16): meshoptimizer's simplifier over a GLB. It serves DECIMATE only (mesh in, smaller mesh out) and never generates. The triangle target is a request the mesh may refuse: a machine UV atlas locks the seams a simplifier would have to collapse, so a TRELLIS.2 mesh floors at ~8–10% of its source triangles. The child states the count it actually reached.",
+      "capabilities": {
+        "mask": {
+          "value": false,
+          "state": "verified",
+          "note": "Not meaningful — the input is a mesh, not a picture."
+        },
+        "seed": {
+          "value": false,
+          "state": "verified",
+          "evidence": "tools/3d/runner.py declares the decimate kind seedless and refuses a seed by name; the run route sends none",
+          "note": "Deterministic — the same mesh and the same triangle target give the same child every time, so no seed is recorded rather than one that did nothing."
+        },
+        "imageRef": {
+          "value": false,
+          "state": "verified",
+          "note": "The input is a mesh; there is no image channel."
+        },
+        "styleRef": {
+          "value": false,
+          "state": "verified",
+          "note": "No style channel — this tool changes topology, never appearance."
+        },
+        "maxResolution": {
+          "value": null,
+          "state": "verified",
+          "note": "Not applicable — the output is a mesh (GLB)."
+        },
+        "tokenLimit": {
+          "value": null,
+          "state": "verified",
+          "note": "Not applicable — no text channel."
+        }
+      }
+    }
+  ],
+  "externalLane": {
+    "lane": "external",
+    "payload": "image",
+    "price": "live catalogue estimates + providers.json pins; the authoritative cost is per-generation usage.cost",
+    "catalogue": "live OpenRouter /images/models (6 h TTL + persisted snapshot); pins reorder and annotate, never filter",
+    "why_no_per_model_rows": "The catalogue is live — authored per-model rows here would shadow it and rot. Lane defaults below carry the product-routing truths; only observed per-model truths land in overrides.",
+    "defaults": {
+      "mask": {
+        "value": false,
+        "state": "verified",
+        "note": "External turns take the txt2img brief only: region turns stay on the local rails."
+      },
+      "imageRef": {
+        "value": false,
+        "state": "verified",
+        "note": "External turns take the txt2img brief only: img2img stays on the local rails."
+      },
+      "styleRef": {
+        "value": false,
+        "state": "verified",
+        "note": "External turns take the txt2img brief only."
+      },
+      "seed": {
+        "value": false,
+        "state": "unverified",
+        "note": "Default false unless a model's route is verified to honour a seed. Per-model pins live in providers.json (supports_seed); the request records exactly what was sent."
+      },
+      "maxResolution": {
+        "value": null,
+        "state": "unverified",
+        "note": "Per-model and not reliably surfaced by the catalogue — unknown until observed."
+      },
+      "tokenLimit": {
+        "value": null,
+        "state": "unverified",
+        "note": "Per-model. Token-priced families (the Gemini image line) price by tokens — the picker shows $/M tok instead of a fake per-image number."
+      }
+    },
+    "overrides": {}
+  }
+}

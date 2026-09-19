@@ -1,0 +1,54 @@
+{
+  "10": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "source_image" },
+    "inputs": { "image": "cockpit-smoke-src.png" }
+  },
+  "12": {
+    "class_type": "LoadImageMask",
+    "_meta": { "title": "region_mask" },
+    "inputs": { "image": "cockpit-smoke-mask.png", "channel": "red" }
+  },
+  "13": {
+    "class_type": "GrowMaskWithBlur",
+    "_meta": { "title": "mask_soften" },
+    "inputs": {
+      "mask": ["12", 0],
+      "expand": 8,
+      "incremental_expandrate": 0.0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 2.0,
+      "lerp_alpha": 1.0,
+      "decay_factor": 1.0,
+      "fill_holes": false
+    }
+  },
+  "20": {
+    "class_type": "INPAINT_LoadInpaintModel",
+    "_meta": { "title": "removal_loader" },
+    "inputs": { "model_name": "big-lama.pt" }
+  },
+  "21": {
+    "class_type": "INPAINT_InpaintWithModel",
+    "_meta": { "title": "removal_apply" },
+    "inputs": { "inpaint_model": ["20", 0], "image": ["10", 0], "mask": ["13", 0], "seed": 42 }
+  },
+  "18": {
+    "class_type": "ImageCompositeMasked",
+    "_meta": { "title": "composite" },
+    "inputs": {
+      "destination": ["10", 0],
+      "source": ["21", 0],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": ["13", 0]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": { "title": "save" },
+    "inputs": { "filename_prefix": "lama-remove", "images": ["18", 0] }
+  }
+}

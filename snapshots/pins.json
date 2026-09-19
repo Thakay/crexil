@@ -1,0 +1,33 @@
+{
+  "recorded_at": "2026-07-08",
+  "note": "Authoritative version-pin record. Update on every runtime or node change; ComfyUI-Manager snapshots (kept outside this repository) are the secondary record.",
+  "comfyui": {
+    "repo": "https://github.com/comfyanonymous/ComfyUI",
+    "tag": "v0.27.1",
+    "path": "~/ComfyUI",
+    "frontend_package": "1.45.20",
+    "manager": "comfyui_manager 4.2.2 (pip package in the venv, integrated via --enable-manager; snapshot API at /api/v2/snapshot/*)",
+    "launch_flags": "--enable-manager --disable-pinned-memory"
+  },
+  "python": {
+    "version": "3.12.3",
+    "venv": "~/ComfyUI/.venv (created with uv 0.11.14)"
+  },
+  "torch": {
+    "torch": "2.12.1+cu130",
+    "torchvision": "0.27.1+cu130",
+    "torchaudio": "2.11.0+cu130",
+    "index_url": "https://download.pytorch.org/whl/cu130",
+    "driver_context": "Windows NVIDIA driver 595.61 / CUDA 13.2; no Linux driver in WSL"
+  },
+  "custom_nodes": {
+    "https://github.com/Fannovel16/comfyui_controlnet_aux": "e8b689a513c3e6b63edc44066560ca5919c0576e",
+    "https://github.com/cubiq/ComfyUI_IPAdapter_plus": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+    "https://github.com/Acly/comfyui-inpaint-nodes": "d4a318f00fffbd269418057f869e9bc912832229",
+    "https://github.com/Acly/comfyui-tooling-nodes": "5d3194f4d4158ab31df7a060e1e4c56fa03f320c",
+    "https://github.com/1038lab/ComfyUI-RMBG": "0ece43adad58fb579e71f81864972d647650889e",
+    "https://github.com/kijai/ComfyUI-KJNodes": "e27a505b3ba6ce42687fe00500deda103d9d6071",
+    "https://github.com/city96/ComfyUI-GGUF": "6ea2651e7df66d7585f6ffee804b20e92fb38b8a"
+  },
+  "custom_nodes_note": "Recorded 2026-07-09. Deps installed as an explicitly reviewed package list (torch/torchvision deliberately excluded to protect the pin; argostranslate skipped as optional). Verified after install: torch 2.12.1+cu130 intact, 6/6 required node classes registered (INPAINT_LoadFooocusInpaint, INPAINT_ShrinkMask, IPAdapterModelLoader, DepthAnythingV2Preprocessor, ETN_LoadImageCache, ColorMatch), no import errors. 2026-08-16: ComfyUI-GGUF added for the Q6_K quantization measurement, dep gguf==0.19.0 only (sentencepiece/protobuf skipped, tokenizer path unused: TE stays the native-safetensors CLIPLoader); torch 2.12.1+cu130 re-verified intact; UnetLoaderGGUF registered; smoke green same day."
+}

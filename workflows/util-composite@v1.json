@@ -1,0 +1,34 @@
+{
+  "10": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "base_image" },
+    "inputs": { "image": "cockpit-smoke-src.png" }
+  },
+  "22": {
+    "class_type": "LoadImage",
+    "_meta": { "title": "overlay_image" },
+    "inputs": { "image": "cockpit-smoke-alt.png" }
+  },
+  "12": {
+    "class_type": "LoadImageMask",
+    "_meta": { "title": "region_mask" },
+    "inputs": { "image": "cockpit-smoke-mask.png", "channel": "red" }
+  },
+  "18": {
+    "class_type": "ImageCompositeMasked",
+    "_meta": { "title": "composite" },
+    "inputs": {
+      "destination": ["10", 0],
+      "source": ["22", 0],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": ["12", 0]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": { "title": "save" },
+    "inputs": { "filename_prefix": "util-composite", "images": ["18", 0] }
+  }
+}

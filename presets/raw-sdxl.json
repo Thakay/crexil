@@ -1,0 +1,110 @@
+{
+  "id": "raw-sdxl",
+  "display_name": "Raw · SDXL Juggernaut",
+  "description": "No framing, all handles on Juggernaut XI — including a real negative prompt and CFG (the channels klein doesn't have).",
+  "modality": "image",
+  "model_family": "sdxl-juggernaut-xi",
+  "workflows": {
+    "txt2img": "sdxl-txt2img@v1",
+    "img2img": "sdxl-img2img@v1",
+    "inpaint_modify": "sdxl-inpaint@v1",
+    "inpaint_replace": "sdxl-replace@v1",
+    "remove": "lama-remove@v1",
+    "composite": "util-composite@v1"
+  },
+  "default_candidates": 1,
+  "defaults_note": "SDXL classic recipe: ~28 steps, cfg 4–7, dpmpp_2m + karras. Style language works in-prompt; EasyNegative-style embeddings and LoRA slots arrive with later graph versions. img2img/region denoise: ~0.5 respects the original, 1.0 replaces outright.",
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "required": true,
+      "default": "",
+      "placeholder": "anything — subject, composition, style language, lighting…",
+      "target": { "node_title": "prompt_positive", "field": "text" }
+    },
+    {
+      "key": "negative_prompt",
+      "label": "Negative prompt",
+      "type": "text",
+      "default": "blurry, low quality, watermark, text",
+      "target": { "node_title": "prompt_negative", "field": "text" }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": { "mode": "random" },
+      "target": { "node_title": "sampler", "field": "seed" }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 28,
+      "min": 1,
+      "max": 60,
+      "target": { "node_title": "sampler", "field": "steps" }
+    },
+    {
+      "key": "cfg",
+      "label": "CFG",
+      "type": "float",
+      "default": 5.0,
+      "min": 1.0,
+      "max": 15.0,
+      "step": 0.5,
+      "target": { "node_title": "sampler", "field": "cfg" }
+    },
+    {
+      "key": "sampler_name",
+      "label": "Sampler",
+      "type": "enum",
+      "default": "dpmpp_2m",
+      "choices": ["euler", "euler_ancestral", "heun", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "uni_pc", "ddim", "lcm"],
+      "target": { "node_title": "sampler", "field": "sampler_name" }
+    },
+    {
+      "key": "scheduler",
+      "label": "Scheduler",
+      "type": "enum",
+      "default": "karras",
+      "choices": ["normal", "karras", "exponential", "sgm_uniform", "simple", "beta"],
+      "target": { "node_title": "sampler", "field": "scheduler" }
+    },
+    {
+      "key": "denoise",
+      "label": "Denoise strength",
+      "type": "float",
+      "default": 0.5,
+      "min": 0.05,
+      "max": 1.0,
+      "step": 0.05,
+      "capabilities": ["img2img", "region"],
+      "target": { "node_title": "sampler", "field": "denoise" }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "capabilities": ["txt2img"],
+      "target": { "node_title": "latent_size", "field": "width" }
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "capabilities": ["txt2img"],
+      "target": { "node_title": "latent_size", "field": "height" }
+    }
+  ]
+}

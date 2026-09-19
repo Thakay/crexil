@@ -1,0 +1,107 @@
+{
+  "id": "raw-zimage",
+  "display_name": "Raw · Z-Image Base",
+  "description": "Undistilled 6B Z-Image: full CFG, real negative prompting, img2img — and the family's LoRA-training target. Apache-2.0, 512–2048 any aspect.",
+  "modality": "image",
+  "model_family": "z-image-base",
+  "workflows": {
+    "txt2img": "zimage-base-txt2img@v1",
+    "img2img": "zimage-base-img2img@v1"
+  },
+  "default_candidates": 1,
+  "defaults_note": "Official recipe: steps 28–50, guidance 3.0–5.0, full CFG + high-fidelity negative response. This is the LoRA-training target of the family (never train on Turbo — distills collapse under naive fine-tuning). Resolution 512–2048, any aspect ratio by total pixel area.",
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "required": true,
+      "default": "",
+      "placeholder": "anything — subject, composition, style language, lighting…",
+      "target": { "node_title": "prompt_positive", "field": "text" }
+    },
+    {
+      "key": "negative_prompt",
+      "label": "Negative prompt",
+      "type": "text",
+      "default": "blurry, low quality, watermark",
+      "placeholder": "what to suppress — Base responds with high fidelity",
+      "target": { "node_title": "prompt_negative", "field": "text" }
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": { "mode": "random" },
+      "target": { "node_title": "sampler", "field": "seed" }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 36,
+      "min": 8,
+      "max": 60,
+      "target": { "node_title": "sampler", "field": "steps" }
+    },
+    {
+      "key": "cfg",
+      "label": "CFG (guidance)",
+      "type": "float",
+      "default": 4.0,
+      "min": 1.0,
+      "max": 10.0,
+      "step": 0.5,
+      "target": { "node_title": "sampler", "field": "cfg" }
+    },
+    {
+      "key": "sampler_name",
+      "label": "Sampler",
+      "type": "enum",
+      "default": "euler",
+      "choices": ["euler", "euler_ancestral", "heun", "dpmpp_2m", "dpmpp_2m_sde", "res_multistep", "uni_pc", "ddim"],
+      "target": { "node_title": "sampler", "field": "sampler_name" }
+    },
+    {
+      "key": "scheduler",
+      "label": "Scheduler",
+      "type": "enum",
+      "default": "simple",
+      "choices": ["simple", "normal", "karras", "exponential", "sgm_uniform", "beta"],
+      "target": { "node_title": "sampler", "field": "scheduler" }
+    },
+    {
+      "key": "denoise",
+      "label": "Denoise (img2img)",
+      "type": "float",
+      "default": 0.55,
+      "min": 0.05,
+      "max": 1.0,
+      "step": 0.05,
+      "capabilities": ["img2img"],
+      "target": { "node_title": "sampler", "field": "denoise" }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "capabilities": ["txt2img"],
+      "target": { "node_title": "latent_size", "field": "width" }
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "capabilities": ["txt2img"],
+      "target": { "node_title": "latent_size", "field": "height" }
+    }
+  ]
+}

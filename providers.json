@@ -1,0 +1,44 @@
+{
+  "models": [
+    {
+      "id": "google/gemini-2.5-flash-image",
+      "provider": "google",
+      "label": "Nano Banana",
+      "price_usd_per_image": 0.039,
+      "supports_seed": false,
+      "enabled": true
+    },
+    {
+      "id": "openai/gpt-image-2",
+      "provider": "openai",
+      "label": "GPT Image 2",
+      "price_usd_per_image": 0.04,
+      "supports_seed": false,
+      "enabled": true
+    },
+    {
+      "id": "google/gemini-3.1-flash-image",
+      "provider": "google",
+      "label": "Nano Banana 2",
+      "price_usd_per_image": 0.05,
+      "supports_seed": false,
+      "enabled": false
+    },
+    {
+      "id": "google/gemini-3-pro-image",
+      "provider": "google",
+      "label": "Nano Banana Pro",
+      "price_usd_per_image": 0.134,
+      "supports_seed": false,
+      "enabled": false
+    },
+    {
+      "id": "openai/gpt-image-1-mini",
+      "provider": "openai",
+      "label": "GPT Image mini",
+      "price_usd_per_image": 0.005,
+      "supports_seed": false,
+      "enabled": false
+    }
+  ]
+}

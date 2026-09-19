@@ -1,0 +1,80 @@
+{
+  "id": "sketch-zimage",
+  "display_name": "Sketch · Z-Image Turbo",
+  "description": "The iteration engine: 6B distilled Z-Image Turbo, ~2 s per image, legible bilingual text. Fan 4 out, react, refine. Apache-2.0.",
+  "modality": "image",
+  "model_family": "z-image-turbo",
+  "workflows": { "txt2img": "zimage-turbo-txt2img@v1" },
+  "default_candidates": 4,
+  "defaults_note": "Sketch loop: 4 candidates at 9 steps, cfg pinned 1.0 — the distill design point (official card lists CFG and negative prompting as unsupported on Turbo). TRAP: LoRA training targets Z-Image BASE, never Turbo — distills collapse under naive fine-tuning. Need negative control or CFG? Use Raw · Z-Image Base.",
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "required": true,
+      "default": "",
+      "placeholder": "anything — subject, composition, style language, lighting…",
+      "target": { "node_title": "prompt_positive", "field": "text" }
+    },
+    {
+      "key": "negative_prompt",
+      "label": "Negative prompt",
+      "type": "text",
+      "supported": false,
+      "reason": "Turbo is distilled and runs cfg 1.0 — a negative prompt has no effect (official model card). Use Raw · Z-Image Base for negative control."
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": { "mode": "random" },
+      "target": { "node_title": "sampler", "field": "seed" }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 9,
+      "min": 4,
+      "max": 16,
+      "target": { "node_title": "sampler", "field": "steps" }
+    },
+    {
+      "key": "sampler_name",
+      "label": "Sampler",
+      "type": "enum",
+      "default": "euler",
+      "choices": ["euler", "euler_ancestral", "heun", "dpmpp_2m", "dpmpp_2m_sde", "res_multistep", "uni_pc", "ddim"],
+      "target": { "node_title": "sampler", "field": "sampler_name" }
+    },
+    {
+      "key": "scheduler",
+      "label": "Scheduler",
+      "type": "enum",
+      "default": "simple",
+      "choices": ["simple", "normal", "karras", "exponential", "sgm_uniform", "beta"],
+      "target": { "node_title": "sampler", "field": "scheduler" }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "target": { "node_title": "latent_size", "field": "width" }
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "target": { "node_title": "latent_size", "field": "height" }
+    }
+  ]
+}

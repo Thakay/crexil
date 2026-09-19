@@ -1,0 +1,18 @@
+# systemd USER unit for the ComfyUI runtime (an example: adjust the paths).
+# Install:  cp configs/comfyui.service ~/.config/systemd/user/
+#           systemctl --user daemon-reload && systemctl --user enable --now comfyui
+# %h is the home directory of the user running the unit. Point COMFY_DIR at
+# your ComfyUI checkout and ExecStart at this repository if they live elsewhere.
+[Unit]
+Description=ComfyUI runtime (pinned, for Crexil)
+After=network.target
+
+[Service]
+Type=simple
+Environment=COMFY_DIR=%h/ComfyUI
+ExecStart=%h/crexil/scripts/comfyui.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

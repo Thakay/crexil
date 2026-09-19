@@ -1,0 +1,422 @@
+{
+  "$doc": {
+    "what": "Six-dial normalization table: authored per-engine mapping, no measurement. Dial position → raw preset-input values + curated effect copy.",
+    "contract": "A dial position is an integer 0–100, default 50. Position 50 sends the engine's canonical-preset default exactly (untouched dials = the verified recipe), pinned by cockpit/server/tests/test_dials.py. Between anchors: linear interpolation, snapped to `step`. The composer (cockpit/web/src/app/composer/dials.ts) resolves positions → raw values per engine and posts them in the run request (schemas.py LocalBatch.inputs; a sweep adds one `take_overrides` entry per slot) → presets.patch_input; the server serves this file as-is at GET /api/dials and stays dial-ignorant.",
+    "semantics": [
+      "transmits=false is a badge, never a filter (law 12): the slot stays visible and selectable, follows its recipe, and the note is the plain-words reason shown at the control. Every local image engine + the external lane has a row in every dial: no engine is silently skipped.",
+      "label/effect/note are curated static copy, never generated. Effect lines are frozen copy and are permanently visible at the control, never a tooltip.",
+      "anchors are authored beliefs from preset recipes and model cards, not measurements. Update with dated evidence when real use re-tunes a band, the same ritual as engines.json flags.",
+      "dial bands are deliberately narrower than raw preset bounds: the dial is the safe handle, the Advanced fold owns the extremes. Raw bounds' home is presets/*.json: this file never restates a min/max.",
+      "consequence readouts (+seconds, spend, which slots ignore) are runtime-composed: durations observed never predicted, capability warnings worded from engines.json states (law 12). Nothing here fakes a number.",
+      "sense can invert: anchors encode direction (anchor-hold raws fall as the position rises). Consumers interpolate the anchors as given."
+    ],
+    "canonical_presets": {
+      "flux2-klein-4b": "raw-flux2",
+      "z-image-turbo": "sketch-zimage",
+      "z-image-base": "raw-zimage",
+      "sdxl-juggernaut-xi": "raw-sdxl",
+      "qwen-image-edit-2511": "raw-qwen-edit"
+    },
+    "homes": {
+      "capability truth (what an engine can do today)": "configs/engines.json",
+      "raw bounds + graph targets": "presets/*.json",
+      "external per-model pins (seed honour, prices)": "providers.json"
+    }
+  },
+  "updated": "2026-08-26",
+  "position": {
+    "min": 0,
+    "max": 100,
+    "default": 50
+  },
+  "dials": [
+    {
+      "id": "anchor-hold",
+      "label": "ANCHOR HOLD",
+      "effect": "How hard it holds your anchor. Higher stays closer to the reference; past 80 it mostly copies it.",
+      "applies": "Verbs with a source image (img2img routes). Inert on a root turn — the effect line still shows, the raw print reads —.",
+      "note": "Today this is the single source-image hold. Per-anchor strengths (style, pose) are planned channels, not built: do not read them into this dial.",
+      "engines": {
+        "flux2-klein-4b": {
+          "transmits": false,
+          "note": "klein's ref-edit (flux2-refedit@v1) holds the anchor through reference conditioning: there is no strength lever to send; the hold is the recipe and the words say what changes."
+        },
+        "z-image-turbo": {
+          "transmits": false,
+          "note": "Turbo is txt2img-only in this product — Base carries img2img for the family."
+        },
+        "z-image-base": {
+          "transmits": true,
+          "input": "denoise",
+          "anchors": [
+            [
+              0,
+              1.0
+            ],
+            [
+              50,
+              0.55
+            ],
+            [
+              100,
+              0.1
+            ]
+          ],
+          "step": 0.05,
+          "note": "Inverted: hold 0 = fresh roll from the words (denoise 1.0); 50 = the preset's 0.55 conversational iteration; 80 lands near 0.28 — mostly copies, as the effect line warns. Floor 0.1, not 0 — denoise 0 returns the source unchanged."
+        },
+        "sdxl-juggernaut-xi": {
+          "transmits": true,
+          "input": "denoise",
+          "anchors": [
+            [
+              0,
+              1.0
+            ],
+            [
+              50,
+              0.5
+            ],
+            [
+              100,
+              0.1
+            ]
+          ],
+          "step": 0.05,
+          "note": "Inverted, same shape as Z-Image Base. Also the cross-family rail: presets without native img2img (prop-sheet) resolve image-anchored turns here; fractional-denoise behaviour validated (workflows/README)."
+        },
+        "qwen-image-edit-2511": {
+          "transmits": false,
+          "note": "Qwen Edit regenerates from an empty frame while the source conditions every step — retention IS the recipe (near-pixel-faithful un-instructed content), with no strength lever to send. The words say what changes."
+        },
+        "external": {
+          "transmits": false,
+          "note": "External turns take the txt2img brief only: no image leaves the machine; the slot follows the words and says so."
+        }
+      }
+    },
+    {
+      "id": "prompt-grip",
+      "label": "PROMPT GRIP",
+      "effect": "How literally it obeys the words. Low wanders off; high goes stiff and over-contrasted.",
+      "engines": {
+        "flux2-klein-4b": {
+          "transmits": true,
+          "input": "guidance",
+          "anchors": [
+            [
+              0,
+              1.0
+            ],
+            [
+              50,
+              1.0
+            ],
+            [
+              100,
+              5.0
+            ]
+          ],
+          "step": 0.1,
+          "note": "klein is guidance-distilled and ships at its floor — below the mark the dial sends the recipe (1.0) unchanged; pushing up buys adherence at the cost of naturalness (preset note). Dial tops at 5.0; the raw 10.0 ceiling stays in the fold."
+        },
+        "z-image-turbo": {
+          "transmits": false,
+          "note": "Turbo runs cfg 1.0 pinned in the graph (official card: CFG unsupported on the distill) — the dial doesn't transmit; the slot follows the words at its design point."
+        },
+        "z-image-base": {
+          "transmits": true,
+          "input": "cfg",
+          "anchors": [
+            [
+              0,
+              2.0
+            ],
+            [
+              50,
+              4.0
+            ],
+            [
+              100,
+              7.0
+            ]
+          ],
+          "step": 0.1,
+          "note": "Official recipe band 3.0–5.0, centred on the preset's 4.0. The dial's ends overshoot the band on purpose — that is what 'wanders' and 'stiff' look like; raw 1–10 lives in the fold."
+        },
+        "sdxl-juggernaut-xi": {
+          "transmits": true,
+          "input": "cfg",
+          "anchors": [
+            [
+              0,
+              2.5
+            ],
+            [
+              50,
+              5.0
+            ],
+            [
+              100,
+              9.0
+            ]
+          ],
+          "step": 0.5,
+          "note": "Classic band 4–7 around the preset's 5.0; 9 is visibly stiff and over-contrasted — the effect line's warning made concrete. Raw ceiling 15 stays in the fold."
+        },
+        "qwen-image-edit-2511": {
+          "transmits": true,
+          "input": "cfg",
+          "anchors": [
+            [
+              0,
+              1.5
+            ],
+            [
+              50,
+              4.0
+            ],
+            [
+              100,
+              7.0
+            ]
+          ],
+          "step": 0.1,
+          "note": "Instruction-tuned edit model centred on the recipe's cfg 4. Low drifts from the instruction; high goes stiff and over-baked. Raw 1–10 lives in the fold."
+        },
+        "external": {
+          "transmits": false,
+          "note": "External turns take the txt2img brief only: no guidance channel is sent; the words carry everything."
+        }
+      }
+    },
+    {
+      "id": "cook-time",
+      "label": "COOK TIME",
+      "effect": "How long each take runs. More is slower, not better — past the mark it stops changing.",
+      "note": "The +seconds readout beside this dial is runtime-observed elapsed, never a prediction: nothing here supplies a number for it.",
+      "engines": {
+        "flux2-klein-4b": {
+          "transmits": true,
+          "input": "steps",
+          "anchors": [
+            [
+              0,
+              2
+            ],
+            [
+              50,
+              4
+            ],
+            [
+              100,
+              8
+            ]
+          ],
+          "step": 1,
+          "note": "Few-step distill: 4 is the design point, 8 is the documented detail-heavy setting (prop-sheet note) — past it a 4-step distill stops changing. Raw 32 stays in the fold."
+        },
+        "z-image-turbo": {
+          "transmits": true,
+          "input": "steps",
+          "anchors": [
+            [
+              0,
+              4
+            ],
+            [
+              50,
+              9
+            ],
+            [
+              100,
+              16
+            ]
+          ],
+          "step": 1,
+          "note": "The sketch preset's own band, exactly — 9 is the distill design point for the ~2 s loop."
+        },
+        "z-image-base": {
+          "transmits": true,
+          "input": "steps",
+          "anchors": [
+            [
+              0,
+              18
+            ],
+            [
+              50,
+              36
+            ],
+            [
+              100,
+              50
+            ]
+          ],
+          "step": 1,
+          "note": "Official recipe 28–50 centred on the preset's 36. The low end sits under the official floor on purpose — low cook means fast and rough; top = the official ceiling."
+        },
+        "sdxl-juggernaut-xi": {
+          "transmits": true,
+          "input": "steps",
+          "anchors": [
+            [
+              0,
+              12
+            ],
+            [
+              50,
+              28
+            ],
+            [
+              100,
+              48
+            ]
+          ],
+          "step": 1,
+          "note": "Classic ~28-step recipe at centre; 12 is a fast rough pass, 48 is diminishing returns. Raw 60 stays in the fold."
+        },
+        "qwen-image-edit-2511": {
+          "transmits": true,
+          "input": "steps",
+          "anchors": [
+            [
+              0,
+              8
+            ],
+            [
+              50,
+              20
+            ],
+            [
+              100,
+              32
+            ]
+          ],
+          "step": 1,
+          "note": "Recipe is 20 steps. 8 is a fast rough edit, 32 diminishing returns, and every step on this tier is expensive (~1–2 min per edit warm, measured). Raw 4–40 lives in the fold."
+        },
+        "external": {
+          "transmits": false,
+          "note": "External turns take the txt2img brief only: each provider cooks by its own recipe; you buy the result, not the oven settings."
+        }
+      }
+    },
+    {
+      "id": "frame",
+      "label": "FRAME",
+      "kind": "frame",
+      "effect": "Bigger costs GPU time, not money.",
+      "aspects": [
+        "1:1",
+        "3:4",
+        "4:3",
+        "16:9"
+      ],
+      "default": {
+        "width": 1024,
+        "height": 1024
+      },
+      "mapping": "Aspect applies by total pixel area, then width/height snap to the preset's 64-px grid inside the active preset's bounds. Bounds live in presets/*.json, never here.",
+      "warning_source": "Which engines a large frame may strain, and how confidently, is worded at run time from engines.json maxResolution values and states (law 12), never authored here.",
+      "engines": {
+        "flux2-klein-4b": {
+          "transmits": true,
+          "inputs": [
+            "width",
+            "height"
+          ],
+          "note": "1024² default; the 2048 preset ceiling is unverified — engines.json carries that state."
+        },
+        "z-image-turbo": {
+          "transmits": true,
+          "inputs": [
+            "width",
+            "height"
+          ],
+          "note": "1024² default; any aspect by total pixel area (family card); 2048 ceiling unverified — engines.json carries that state."
+        },
+        "z-image-base": {
+          "transmits": true,
+          "inputs": [
+            "width",
+            "height"
+          ],
+          "note": "1024² default; any aspect by total pixel area (family card); 2048 ceiling unverified — engines.json carries that state."
+        },
+        "sdxl-juggernaut-xi": {
+          "transmits": true,
+          "inputs": [
+            "width",
+            "height"
+          ],
+          "note": "SDXL native is 1024 — composition drifts above it (engines.json maxResolution note); the dial allows it, the warning says it."
+        },
+        "qwen-image-edit-2511": {
+          "transmits": true,
+          "inputs": [
+            "width",
+            "height"
+          ],
+          "note": "1024² default. The engine works near 1024² total pixels internally (engines.json maxResolution) — bigger frames mostly buy upscale, not detail."
+        },
+        "external": {
+          "transmits": false,
+          "note": "External turns take the txt2img brief only: per-model size support is unknown until observed (engines.json external defaults); the slot renders at the provider's default."
+        }
+      }
+    },
+    {
+      "id": "seed",
+      "label": "SEED",
+      "kind": "seed",
+      "effect": "Locked, so a dial change is the only thing that moves. Unlock and every take is a fresh roll.",
+      "lock_scope": "Locked broadcasts one value to every take in the batch, so engine and dial differences become the only variables. Unlocked rolls fresh per take. Reroll is always a new seed in the same slot.",
+      "engines": {
+        "flux2-klein-4b": {
+          "transmits": true,
+          "input": "seed",
+          "note": "Honoured per take — verified in smoke (engines.json seed evidence)."
+        },
+        "z-image-turbo": {
+          "transmits": true,
+          "input": "seed",
+          "note": "Honoured per take — verified in smoke (engines.json seed evidence)."
+        },
+        "z-image-base": {
+          "transmits": true,
+          "input": "seed",
+          "note": "Honoured per take — verified in smoke (engines.json seed evidence)."
+        },
+        "sdxl-juggernaut-xi": {
+          "transmits": true,
+          "input": "seed",
+          "note": "Honoured per take — verified in smoke (engines.json seed evidence)."
+        },
+        "qwen-image-edit-2511": {
+          "transmits": true,
+          "input": "seed",
+          "note": "Honoured per take — verified in smoke (engines.json seed evidence)."
+        },
+        "external": {
+          "transmits": false,
+          "note": "Not honoured unless the model's providers.json pin says supports_seed (engines.json external defaults, unverified) — the slot shows the badge and the request records exactly what was sent."
+        }
+      }
+    },
+    {
+      "id": "sweep-one-dial",
+      "label": "SWEEP ONE DIAL",
+      "kind": "meta",
+      "effect": "Spends four of your slots walking one value, everything else held. This is how you learn a dial.",
+      "sweep_slots": 4,
+      "targets": [
+        "anchor-hold",
+        "prompt-grip",
+        "cook-time"
+      ],
+      "note": "Resolves through the swept dial's own per-engine row: a slot whose engine doesn't transmit that dial shows the badge and follows its recipe (law 12). Frame and seed are not sweep targets: seed's sweep is just unlocking, frame's is a layout question. sweep_slots is the DEFAULT count: the composer's takes stepper sets it per run (2 up to the run cap); the spread around the current value is the composer's call (dials.ts sweepPositions).",
+      "engines": {}
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "id": "raw-flux2",
+  "display_name": "Raw · FLUX.2 klein",
+  "description": "No framing, all handles: freeform experiments on klein-4B. Put style language directly in the prompt (there is no style bank yet).",
+  "modality": "image",
+  "model_family": "flux2-klein-4b",
+  "workflows": {
+    "txt2img": "flux2-txt2img@v1",
+    "img2img": "flux2-refedit@v1",
+    "inpaint_modify": "flux2-refedit@v1",
+    "inpaint_replace": "flux2-refedit@v1",
+    "remove": "lama-remove@v1"
+  },
+  "default_candidates": 1,
+  "defaults_note": "Raw mode: 1 candidate for a fast loop; raise the slider to fan out. klein design point is steps 4 / guidance 1.0; higher steps buy detail, higher guidance buys prompt adherence at the cost of naturalness. Image-anchored turns run the ref-edit recipe: the source holds through reference conditioning. Describe the target state in the prompt; there is no strength to set.",
+  "inputs": [
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "type": "text",
+      "required": true,
+      "default": "",
+      "placeholder": "anything — subject, composition, style language, lighting…",
+      "target": { "node_title": "prompt_positive", "field": "text" }
+    },
+    {
+      "key": "negative_prompt",
+      "label": "Negative prompt",
+      "type": "text",
+      "supported": false,
+      "reason": "FLUX.2 klein is guidance-distilled: it has no CFG/negative-prompt channel. Use the SDXL raw preset when you need a negative."
+    },
+    {
+      "key": "seed",
+      "label": "Seed",
+      "type": "seed",
+      "default": { "mode": "random" },
+      "target": { "node_title": "noise_seed", "field": "noise_seed" }
+    },
+    {
+      "key": "steps",
+      "label": "Steps",
+      "type": "int",
+      "default": 4,
+      "min": 1,
+      "max": 32,
+      "target": { "node_title": "scheduler", "field": "steps" }
+    },
+    {
+      "key": "guidance",
+      "label": "Guidance",
+      "type": "float",
+      "default": 1.0,
+      "min": 1.0,
+      "max": 10.0,
+      "step": 0.1,
+      "target": { "node_title": "guidance", "field": "guidance" }
+    },
+    {
+      "key": "sampler_name",
+      "label": "Sampler",
+      "type": "enum",
+      "default": "euler",
+      "choices": ["euler", "euler_ancestral", "heun", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "uni_pc", "lcm", "ddim", "res_multistep"],
+      "target": { "node_title": "sampler_select", "field": "sampler_name" }
+    },
+    {
+      "key": "width",
+      "label": "Width",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "target": [
+        { "node_title": "latent_size", "field": "width" },
+        { "node_title": "scheduler", "field": "width" }
+      ]
+    },
+    {
+      "key": "height",
+      "label": "Height",
+      "type": "int",
+      "default": 1024,
+      "min": 512,
+      "max": 2048,
+      "step": 64,
+      "target": [
+        { "node_title": "latent_size", "field": "height" },
+        { "node_title": "scheduler", "field": "height" }
+      ]
+    }
+  ]
+}
