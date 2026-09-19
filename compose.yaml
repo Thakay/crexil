@@ -1,0 +1,61 @@
+# Crexil cockpit deployment (Docker; developed on Docker Desktop with the WSL2 backend).
+# NEITHER GPU service is in here, on purpose: ComfyUI :8188 and the 3D
+# engine runner :8189 both run as native services on the host with direct
+# GPU access (pinned runtimes). The container has no GPU and no engine
+# environments: it orchestrates, it never generates.
+#
+# host.docker.internal reaches the host loopback. Under WSL2 that path goes
+# through WSL's localhost relay, which can die after Windows sleep
+# (`wsl --shutdown` or networkingMode=mirrored brings it back).
+#
+# Machine values come from the repo .env (see .env.example), with these defaults:
+#   COCKPIT_PORT    host port for the UI and API                  (8000)
+#   MODELS_ROOT     host folder of model weights, mounted read-only (~/models)
+#   PROMOTE_DIR     the hand-off folder a promoted take lands in  (/mnt/d/PROMOTED)
+#   PROMOTE_ROOTS   the fence: where a re-point may go             (/mnt/d)
+#   PROMOTE_MOUNT   the drive or folder mounted for promotion      (/mnt/d)
+# Use `docker compose -p <name>` to run a second, separate instance: the
+# container and the data volume are named after the project.
+
+services:
+  cockpit:
+    build: .
+    ports:
+      - "127.0.0.1:${COCKPIT_PORT:-8000}:8000"   # localhost-only at the host boundary
+    environment:
+      COMFYUI_URL: http://host.docker.internal:8188
+      # The 3D engine runner: the second native GPU service, reached the same
+      # way and through the same relay (so the same caveat applies). A runner
+      # that is down benches its two ENGINES, never the local lane, so the
+      # image takes beside them keep running.
+      THREED_URL: http://host.docker.internal:8189
+      # compose interpolates ${...} from the repo .env (the file itself is
+      # never baked into the image)
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # tells the in-container app that the HOST publish above is loopback,
+      # so the localhost-only setup surface stays usable. If you ever change
+      # the publish away from 127.0.0.1, REMOVE this line (the setup surface
+      # will then refuse, correctly: remote exposure needs real auth).
+      COCKPIT_LOOPBACK_PUBLISH: "1"
+      # The promotion drive is mounted below at the SAME path inside and out.
+      # PROMOTE_ROOTS is the fence: a target outside it is refused in words,
+      # which is what keeps /tmp and /data (writable in here, erased by a
+      # rebuild or `down -v`) from ever taking a promotion.
+      PROMOTE_DIR: ${PROMOTE_DIR:-/mnt/d/PROMOTED}
+      PROMOTE_ROOTS: ${PROMOTE_ROOTS:-/mnt/d}
+    volumes:
+      - ./presets:/repo/presets:ro
+      - ./workflows:/repo/workflows:ro
+      - ./providers.json:/repo/providers.json:ro   # external engines: models and price estimates
+      - ./configs:/repo/configs:ro   # dials + engines tables, served as-is
+      - ${MODELS_ROOT:-~/models}:/models:ro          # read-only: manifest hashing
+      # The promotion boundary is the DRIVE (or parent folder), not the one
+      # folder, and it keeps its own path so what the artist names is what the
+      # cockpit sees and prints. Mounting the drive is what lets a re-point
+      # reach anything real; PROMOTE_ROOTS above is what keeps a typo on it.
+      - ${PROMOTE_MOUNT:-/mnt/d}:${PROMOTE_MOUNT:-/mnt/d}
+      - cockpit-data:/data           # sqlite + staging (named volume: sane locking)
+    restart: unless-stopped
+
+volumes:
+  cockpit-data:

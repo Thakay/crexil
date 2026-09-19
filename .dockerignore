@@ -1,0 +1,16 @@
+.git
+.env
+.staging
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+*.sqlite
+*.sqlite3
+**/secrets.json
+**/.secrets-*
+docs
+bench
+snapshots
+scripts
+tools
