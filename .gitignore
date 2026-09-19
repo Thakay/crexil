@@ -1,0 +1,42 @@
+# secrets and local settings
+.env
+secrets.json
+.secrets-*
+.claude/settings.local.json
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+
+# node
+node_modules/
+dist/
+.vite/
+cockpit/server/static/
+*.tsbuildinfo
+
+# test artifacts (playwright traces and reports)
+cockpit/web/test-results/
+cockpit/web/playwright-report/
+
+# state and outputs: working files and databases stay out of git
+staging/
+.staging/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.db
+
+# model weights never live in git
+*.safetensors
+*.ckpt
+*.pth
+*.gguf
+*.onnx
+*.bin
+*.pt
