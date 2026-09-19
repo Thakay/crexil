@@ -1,0 +1,274 @@
+{
+ "_doc": "Fixed test-input set: the bench's measuring instrument. Every model judgment runs these briefs with fixed seeds so comparisons are evidence. Coverage: props for the 3D lane, environment/mood, stylized character, realistic keyart, and UI/text (for engines that can render text). role=region_source briefs mint the source images for bench/region_cases.json (SDXL rails, since region turns run there). Add briefs, never mutate existing ids: rows are comparable across time only if the brief stays frozen.",
+ "default_negative": "blurry, low quality, watermark, text, signature, deformed",
+ "briefs": [
+  {
+   "id": "props-01-lantern",
+   "role": "bench",
+   "sub_axis": "props-3d",
+   "prompt": "weathered brass oil lantern with glass panes, single object, centered, full view, neutral light gray studio background, soft even lighting, product photography framing",
+   "negative": "blurry, low quality, watermark, text, cropped, shadow clutter, multiple objects",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "props-02-crate",
+   "role": "bench",
+   "sub_axis": "props-3d",
+   "prompt": "sci-fi supply crate with a glowing teal status strip, hard-surface design, single object, centered, full view, neutral light gray background, even studio lighting, product shot framing",
+   "negative": "blurry, low quality, watermark, text, cropped, multiple objects",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "props-03-sword",
+   "role": "bench",
+   "sub_axis": "props-3d",
+   "prompt": "fantasy longsword with an engraved bronze crossguard and leather-wrapped grip, blade upright, single object, centered, full view, neutral gray background, soft even lighting, product shot",
+   "negative": "blurry, low quality, watermark, text, cropped, hands, multiple objects",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "props-04-potion",
+   "role": "bench",
+   "sub_axis": "props-3d",
+   "prompt": "ceramic potion bottle with a wax-sealed cork and a rune-etched label, single object, centered, full view, neutral light gray background, soft even studio lighting, product photography framing",
+   "negative": "blurry, low quality, watermark, text, cropped, multiple objects",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "env-01-forest-ruin",
+   "role": "bench",
+   "sub_axis": "environment-mood",
+   "prompt": "moss-covered stone ruin in a misty pine forest, volumetric god rays through the canopy, adventure game environment concept, painterly realism, atmospheric depth",
+   "negative": "blurry, low quality, watermark, text, characters",
+   "params_hint": {
+    "width": 1344,
+    "height": 768
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "env-02-neon-harbor",
+   "role": "bench",
+   "sub_axis": "environment-mood",
+   "prompt": "rain-slicked harbor district at night, neon signage reflecting on wet docks, moored fishing boats, cyberpunk mood, environment concept art, cinematic wide shot",
+   "negative": "blurry, low quality, watermark, text, characters",
+   "params_hint": {
+    "width": 1344,
+    "height": 768
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "env-03-canyon-outpost",
+   "role": "bench",
+   "sub_axis": "environment-mood",
+   "prompt": "desert canyon trading outpost at golden hour, dwellings carved into sandstone walls, hanging cloth banners, environment keyframe, warm palette, game concept art",
+   "negative": "blurry, low quality, watermark, text, characters",
+   "params_hint": {
+    "width": 1344,
+    "height": 768
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "char-01-tinker",
+   "role": "bench",
+   "sub_axis": "stylized-character",
+   "prompt": "goblin tinker character concept, oversized backpack full of gadgets, goggles on forehead, full body, three-quarter view, clean silhouette, stylized hand-painted look, neutral background",
+   "negative": "blurry, low quality, watermark, text, photorealistic, cropped limbs",
+   "params_hint": {
+    "width": 832,
+    "height": 1216
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "char-02-ranger",
+   "role": "bench",
+   "sub_axis": "stylized-character",
+   "prompt": "armored ranger character concept, hooded moss-green cloak, recurve bow on back, full body standing pose, stylized painterly rendering, clean silhouette, neutral background",
+   "negative": "blurry, low quality, watermark, text, photorealistic, cropped limbs",
+   "params_hint": {
+    "width": 832,
+    "height": 1216
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "char-03-familiar",
+   "role": "bench",
+   "sub_axis": "stylized-character",
+   "prompt": "small clockwork owl familiar, brass and copper plating, glowing amber eyes, character concept, three-quarter view, stylized, neutral background",
+   "negative": "blurry, low quality, watermark, text, photorealistic",
+   "params_hint": {
+    "width": 832,
+    "height": 1216
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "keyart-01-monolith",
+   "role": "bench",
+   "sub_axis": "realistic-keyart",
+   "prompt": "lone astronaut standing before a towering black monolith on a red desert plain, cinematic key art, dramatic scale contrast, photorealistic lighting, dust haze",
+   "negative": "blurry, low quality, watermark, text, cartoon",
+   "params_hint": {
+    "width": 1344,
+    "height": 768
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "keyart-02-lighthouse",
+   "role": "bench",
+   "sub_axis": "realistic-keyart",
+   "prompt": "storm waves crashing against a cliffside lighthouse at dusk, small rescue boat approaching through swells, cinematic key art, realistic detail, dramatic sky",
+   "negative": "blurry, low quality, watermark, text, cartoon",
+   "params_hint": {
+    "width": 1344,
+    "height": 768
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "ui-01-title",
+   "role": "bench",
+   "sub_axis": "ui-text",
+   "prompt": "game title screen for \"EMBERWAKE\", ember-style typography logotype, dark forge background with drifting sparks, UI mockup, centered composition",
+   "negative": "blurry, low quality, watermark, misspelled text",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ],
+   "note": "needs a text-capable base engine (Z-Image is one)"
+  },
+  {
+   "id": "ui-02-icons",
+   "role": "bench",
+   "sub_axis": "ui-text",
+   "prompt": "grid of six fantasy potion inventory icons, consistent style and framing, flat dark background, game UI asset sheet",
+   "negative": "blurry, low quality, watermark, text labels",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ],
+   "note": "needs a text-capable base engine (Z-Image is one)"
+  },
+  {
+   "id": "rs-keep",
+   "role": "region_source",
+   "sub_axis": "region-source",
+   "prompt": "ornate brass astrolabe on a stone pedestal, centered, plain gray studio background, soft even light",
+   "negative": "blurry, low quality, watermark, text",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "rs-modify",
+   "role": "region_source",
+   "sub_axis": "region-source",
+   "prompt": "rustic iron lantern with clear glass panes standing on a wooden crate, warm side light, dark workshop background",
+   "negative": "blurry, low quality, watermark, text",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "rs-replace",
+   "role": "region_source",
+   "sub_axis": "region-source",
+   "prompt": "wooden kitchen table with a ceramic teapot beside a brass candlestick, soft window light, rustic still life",
+   "negative": "blurry, low quality, watermark, text",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "rs-delete",
+   "role": "region_source",
+   "sub_axis": "region-source",
+   "prompt": "empty stone courtyard with a single wooden barrel standing left of center, overcast diffuse light",
+   "negative": "blurry, low quality, watermark, text, people",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  },
+  {
+   "id": "rs-combo",
+   "role": "region_source",
+   "sub_axis": "region-source",
+   "prompt": "alchemist desk with a glowing green potion bottle, an open leather-bound book, and a brass balance scale, candlelit, warm shadows",
+   "negative": "blurry, low quality, watermark, text, people",
+   "params_hint": {
+    "width": 1024,
+    "height": 1024
+   },
+   "capabilities": [
+    "txt2img"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,545 @@
+{
+ "updated": "2026-07-29",
+ "models_root": "~/models",
+ "note": "Driven by scripts/download_models.py (idempotent). License is RECORDED, never a download gate. Group order matters: earlier groups are higher priority.",
+ "groups": {
+  "flux-core": "Starter: FLUX.2 klein-4B full set (Apache-2.0, ungated). Wired into workflows/flux2-txt2img@v1.json.",
+  "sdxl-rails": "SDXL rails layer: region-control recipe + attribute-carry, and the SDXL models the Krita AI Diffusion plugin expects. Not the starter family.",
+  "krita-sd15": "SD1.5 models the Krita AI Diffusion plugin checks for (its SD1.5 workflows + shared upscalers). Not used by Crexil's presets.",
+  "deferred": "Listed for completeness; not downloaded by default.",
+  "zimage": "Z-Image family: Turbo sketch engine + LoRA-capable Base. Apache-2.0 (Tongyi-MAI upstream; Comfy-Org single-file repack). Text encoder reuses flux-core's qwen_3_4b.safetensors; VAE is the FLUX.1 autoencoder (ae.safetensors).",
+  "qwen-edit": "Edit backend: Qwen-Image-Edit 2511 (20B instruction-edit, fp8mixed fits 24 GB). Apache-2.0 upstream (Qwen/Qwen-Image-Edit-2511, verified 2026-07-26); Comfy-Org repacks. Z-Image-Edit recorded UNAVAILABLE when this group was added (no released weights; WATCH for release).",
+  "3d-mesh": "3D lane engines (scripts-first under tools/3d/): TRELLIS.2-4B + Hunyuan3D 2.1 + conditioners. NOT driven by this downloader: weights live in the HF cache (~/models/hf), revisions pinned in tools/3d/pins.json; entries here are the license ledger (managed_by marks them; download_models.py skips them)."
+ },
+ "entries": [
+  {
+   "name": "flux2-klein-4b-dit",
+   "group": "flux-core",
+   "dest": "diffusion_models/flux-2-klein-4b.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/vae-text-encorder-for-flux-klein-4b",
+    "file": "split_files/diffusion_models/flux-2-klein-4b.safetensors"
+   },
+   "approx_gb": 7.8,
+   "license": "Apache-2.0",
+   "commercial_note": "Open weights, commercial use OK (BFL model card, license text verified 2026-07-09)."
+  },
+  {
+   "name": "flux2-klein-4b-text-encoder",
+   "group": "flux-core",
+   "dest": "text_encoders/qwen_3_4b.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/vae-text-encorder-for-flux-klein-4b",
+    "file": "split_files/text_encoders/qwen_3_4b.safetensors"
+   },
+   "approx_gb": 8.0,
+   "license": "Apache-2.0 (Qwen3-4B)",
+   "commercial_note": "Qwen3 weights are Apache-2.0."
+  },
+  {
+   "name": "flux2-vae",
+   "group": "flux-core",
+   "dest": "vae/flux2-vae.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/vae-text-encorder-for-flux-klein-4b",
+    "file": "split_files/vae/flux2-vae.safetensors"
+   },
+   "approx_gb": 0.3,
+   "license": "Apache-2.0 (shipped with klein-4B)",
+   "commercial_note": "Shared by all FLUX.2 variants."
+  },
+  {
+   "name": "juggernaut-xi-v11",
+   "group": "sdxl-rails",
+   "dest": "checkpoints/Juggernaut-XI-byRunDiffusion.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "RunDiffusion/Juggernaut-XI-v11",
+    "file": "Juggernaut-XI-byRunDiffusion.safetensors"
+   },
+   "approx_gb": 7.1,
+   "license": "CreativeML OpenRAIL++ + RunDiffusion terms",
+   "commercial_note": "RunDiffusion restricts use in paid generation APIs/services; check its terms against your use. Its model card said CC BY-NC-ND 4.0 when checked on 2026-09-18: treat it as non-commercial. Newest release at download time (XI-v11 supersedes XL-v9)."
+  },
+  {
+   "name": "fooocus-inpaint-head",
+   "group": "sdxl-rails",
+   "dest": "inpaint/fooocus_inpaint_head.pth",
+   "source": {
+    "type": "hf",
+    "repo": "lllyasviel/fooocus_inpaint",
+    "file": "fooocus_inpaint_head.pth"
+   },
+   "approx_gb": 5e-05,
+   "license": "not stated (Fooocus project: GPL-3.0)",
+   "commercial_note": "Weights-only artifact consumed at runtime; verify licensing at pin time. The model card said openrail when checked on 2026-09-18."
+  },
+  {
+   "name": "fooocus-inpaint-patch-v26",
+   "group": "sdxl-rails",
+   "dest": "inpaint/inpaint_v26.fooocus.patch",
+   "source": {
+    "type": "hf",
+    "repo": "lllyasviel/fooocus_inpaint",
+    "file": "inpaint_v26.fooocus.patch"
+   },
+   "approx_gb": 1.3,
+   "license": "not stated (Fooocus project: GPL-3.0)",
+   "commercial_note": "Core of the MODIFY/REPLACE recipe. The model card said openrail when checked on 2026-09-18; verify licensing at pin time."
+  },
+  {
+   "name": "big-lama",
+   "group": "sdxl-rails",
+   "dest": "inpaint/big-lama.pt",
+   "source": {
+    "type": "url",
+    "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt"
+   },
+   "approx_gb": 0.2,
+   "license": "Apache-2.0 (LaMa)",
+   "commercial_note": "DELETE recipe."
+  },
+  {
+   "name": "mat-places512-fp16",
+   "group": "sdxl-rails",
+   "dest": "inpaint/MAT_Places512_G_fp16.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Acly/MAT",
+    "file": "MAT_Places512_G_fp16.safetensors"
+   },
+   "approx_gb": 0.125,
+   "license": "treat as NC",
+   "commercial_note": "Alternate DELETE filler; NC recorded, revisit at pin time."
+  },
+  {
+   "name": "ip-adapter-plus-sdxl-vith",
+   "group": "sdxl-rails",
+   "dest": "ipadapter/ip-adapter-plus_sdxl_vit-h.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "h94/IP-Adapter",
+    "file": "sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors"
+   },
+   "approx_gb": 0.85,
+   "license": "Apache-2.0",
+   "commercial_note": "Style-reference channel."
+  },
+  {
+   "name": "ip-adapter-sdxl-vith",
+   "group": "sdxl-rails",
+   "dest": "ipadapter/ip-adapter_sdxl_vit-h.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "h94/IP-Adapter",
+    "file": "sdxl_models/ip-adapter_sdxl_vit-h.safetensors"
+   },
+   "approx_gb": 0.7,
+   "license": "Apache-2.0",
+   "commercial_note": ""
+  },
+  {
+   "name": "ip-adapter-sd15",
+   "group": "sdxl-rails",
+   "dest": "ipadapter/ip-adapter_sd15.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "h94/IP-Adapter",
+    "file": "models/ip-adapter_sd15.safetensors"
+   },
+   "approx_gb": 0.04,
+   "license": "Apache-2.0",
+   "commercial_note": "Krita SD15 flows."
+  },
+  {
+   "name": "clip-vision-vith",
+   "group": "sdxl-rails",
+   "dest": "clip_vision/clip-vision_vit-h.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "h94/IP-Adapter",
+    "file": "models/image_encoder/model.safetensors"
+   },
+   "approx_gb": 2.5,
+   "license": "Apache-2.0 (CLIP-ViT-H-14-laion2B)",
+   "commercial_note": "Renamed to the filename the Krita plugin and IPAdapter-plus pack expect. Used by BOTH sd15 and sdxl vit-h adapters."
+  },
+  {
+   "name": "controlnet-union-sdxl-promax",
+   "group": "sdxl-rails",
+   "dest": "controlnet/controlnet-union-sdxl-promax.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "xinsir/controlnet-union-sdxl-1.0",
+    "file": "diffusion_pytorch_model_promax.safetensors"
+   },
+   "approx_gb": 2.5,
+   "license": "Apache-2.0",
+   "commercial_note": "Composition/structure carry; renamed from the upstream filename."
+  },
+  {
+   "name": "realesrgan-x4plus",
+   "group": "sdxl-rails",
+   "dest": "upscale_models/RealESRGAN_x4plus.pth",
+   "source": {
+    "type": "url",
+    "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
+   },
+   "approx_gb": 0.067,
+   "license": "BSD-3-Clause",
+   "commercial_note": ""
+  },
+  {
+   "name": "ultrasharp-4x",
+   "group": "sdxl-rails",
+   "dest": "upscale_models/4x-UltraSharp.pth",
+   "source": {
+    "type": "hf",
+    "repo": "Kim2091/UltraSharp",
+    "file": "4x-UltraSharp.pth"
+   },
+   "approx_gb": 0.067,
+   "license": "CC BY-NC-SA 4.0",
+   "commercial_note": "NC recorded — swap for a permissive upscaler at pin time if it matters."
+  },
+  {
+   "name": "hyper-sdxl-8steps-cfg-lora",
+   "group": "sdxl-rails",
+   "dest": "loras/Hyper-SDXL-8steps-CFG-lora.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "ByteDance/Hyper-SD",
+    "file": "Hyper-SDXL-8steps-CFG-lora.safetensors"
+   },
+   "approx_gb": 0.79,
+   "license": "OpenRAIL++ (repo card; verify at pin)",
+   "commercial_note": "Fast-iteration accelerator for SDXL turns."
+  },
+  {
+   "name": "sam2.1-hiera-base-plus",
+   "group": "sdxl-rails",
+   "dest": "sam2/sam2.1_hiera_base_plus.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Kijai/sam2-safetensors",
+    "file": "sam2.1_hiera_base_plus.safetensors"
+   },
+   "approx_gb": 0.32,
+   "license": "Apache-2.0",
+   "commercial_note": "Auto-segment suggestions (optional)."
+  },
+  {
+   "name": "controlnet-sd15-inpaint-fp16",
+   "group": "krita-sd15",
+   "dest": "controlnet/control_v11p_sd15_inpaint_fp16.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "comfyanonymous/ControlNet-v1-1_fp16_safetensors",
+    "file": "control_v11p_sd15_inpaint_fp16.safetensors"
+   },
+   "approx_gb": 0.7,
+   "license": "Apache-2.0 (ControlNet 1.1)",
+   "commercial_note": "Krita SD15 inpaint flow."
+  },
+  {
+   "name": "controlnet-sd15-tile-lora-fp16",
+   "group": "krita-sd15",
+   "dest": "controlnet/control_lora_rank128_v11f1e_sd15_tile_fp16.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "comfyanonymous/ControlNet-v1-1_fp16_safetensors",
+    "file": "control_lora_rank128_v11f1e_sd15_tile_fp16.safetensors"
+   },
+   "approx_gb": 0.14,
+   "license": "Apache-2.0 (ControlNet 1.1)",
+   "commercial_note": "Krita SD15 tile/upscale flow."
+  },
+  {
+   "name": "hyper-sd15-8steps-cfg-lora",
+   "group": "krita-sd15",
+   "dest": "loras/Hyper-SD15-8steps-CFG-lora.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "ByteDance/Hyper-SD",
+    "file": "Hyper-SD15-8steps-CFG-lora.safetensors"
+   },
+   "approx_gb": 0.27,
+   "license": "OpenRAIL++ (repo card; verify at pin)",
+   "commercial_note": ""
+  },
+  {
+   "name": "easynegative",
+   "group": "krita-sd15",
+   "dest": "embeddings/EasyNegative.safetensors",
+   "source": {
+    "type": "url",
+    "url": "https://huggingface.co/datasets/gsdf/EasyNegative/resolve/main/EasyNegative.safetensors"
+   },
+   "approx_gb": 2e-05,
+   "license": "CreativeML OpenRAIL-M (verify at pin)",
+   "commercial_note": "Krita default negative embedding."
+  },
+  {
+   "name": "nmkd-superscale-4x",
+   "group": "krita-sd15",
+   "dest": "upscale_models/4x_NMKD-Superscale-SP_178000_G.pth",
+   "source": {
+    "type": "hf",
+    "repo": "gemasai/4x_NMKD-Superscale-SP_178000_G",
+    "file": "4x_NMKD-Superscale-SP_178000_G.pth"
+   },
+   "approx_gb": 0.067,
+   "license": "not stated (NMKD community model)",
+   "commercial_note": "Krita default upscaler; verify license at pin time."
+  },
+  {
+   "name": "omnisr-x2",
+   "group": "krita-sd15",
+   "dest": "upscale_models/OmniSR_X2_DIV2K.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Acly/Omni-SR",
+    "file": "OmniSR_X2_DIV2K.safetensors"
+   },
+   "approx_gb": 0.0016,
+   "license": "Apache-2.0 (OmniSR)",
+   "commercial_note": ""
+  },
+  {
+   "name": "omnisr-x3",
+   "group": "krita-sd15",
+   "dest": "upscale_models/OmniSR_X3_DIV2K.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Acly/Omni-SR",
+    "file": "OmniSR_X3_DIV2K.safetensors"
+   },
+   "approx_gb": 0.0016,
+   "license": "Apache-2.0 (OmniSR)",
+   "commercial_note": ""
+  },
+  {
+   "name": "omnisr-x4",
+   "group": "krita-sd15",
+   "dest": "upscale_models/OmniSR_X4_DIV2K.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Acly/Omni-SR",
+    "file": "OmniSR_X4_DIV2K.safetensors"
+   },
+   "approx_gb": 0.0016,
+   "license": "Apache-2.0 (OmniSR)",
+   "commercial_note": ""
+  },
+  {
+   "name": "sdxl-base-1.0",
+   "group": "deferred",
+   "dest": "checkpoints/sd_xl_base_1.0.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "stabilityai/stable-diffusion-xl-base-1.0",
+    "file": "sd_xl_base_1.0.safetensors"
+   },
+   "approx_gb": 6.9,
+   "license": "CreativeML OpenRAIL++",
+   "commercial_note": "Canonical SDXL reference; pull only if fine-tune debugging needs a neutral baseline."
+  },
+  {
+   "name": "realvisxl-v5",
+   "group": "deferred",
+   "dest": "checkpoints/RealVisXL_V5.0_fp16.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "SG161222/RealVisXL_V5.0",
+    "file": "RealVisXL_V5.0_fp16.safetensors"
+   },
+   "approx_gb": 6.9,
+   "license": "CreativeML OpenRAIL++",
+   "commercial_note": "Photoreal SDXL alternative; pull on demand."
+  },
+  {
+   "name": "zimage-turbo-dit",
+   "group": "zimage",
+   "dest": "diffusion_models/z_image_turbo_bf16.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/z_image_turbo",
+    "file": "split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+   },
+   "approx_gb": 12.3,
+   "license": "Apache-2.0",
+   "license_verified": "2026-07-26 (HF card metadata license: apache-2.0 on upstream Tongyi-MAI/Z-Image-Turbo; ungated; no separate LICENSE file in repo)",
+   "commercial_note": "Apache-2.0 upstream (Tongyi-MAI); Comfy-Org repack for ComfyUI single-file layout. Official card: 8-step distill, CFG/negative not supported; LoRA training targets Base, never Turbo."
+  },
+  {
+   "name": "zimage-base-dit",
+   "group": "zimage",
+   "dest": "diffusion_models/z_image_bf16.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/z_image",
+    "file": "split_files/diffusion_models/z_image_bf16.safetensors"
+   },
+   "approx_gb": 12.3,
+   "license": "Apache-2.0",
+   "license_verified": "2026-07-26 (HF card metadata license: apache-2.0 on upstream Tongyi-MAI/Z-Image; ungated)",
+   "commercial_note": "Apache-2.0 upstream. Official card: undistilled base, steps 28-50, guidance 3.0-5.0, full CFG + negative; the LoRA-training target of the family."
+  },
+  {
+   "name": "flux1-ae-vae",
+   "group": "zimage",
+   "dest": "vae/ae.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/z_image_turbo",
+    "file": "split_files/vae/ae.safetensors"
+   },
+   "approx_gb": 0.34,
+   "license": "Apache-2.0 (FLUX.1 autoencoder, BFL schnell lineage)",
+   "commercial_note": "Shared VAE for the Z-Image family; shipped in the Comfy-Org repack."
+  },
+  {
+   "name": "qwen-image-edit-2511-dit",
+   "group": "qwen-edit",
+   "dest": "diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+    "file": "split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors"
+   },
+   "approx_gb": 20.5,
+   "license": "Apache-2.0",
+   "license_verified": "2026-07-26 (HF card metadata apache-2.0 on upstream Qwen/Qwen-Image-Edit-2511; ungated)",
+   "commercial_note": "The open-editing benchmark line: identity+texture retention, multi-image refs, camera moves (2511). Recipe: TextEncodeQwenImageEditPlus, AuraFlow shift 3.1, steps 20, cfg 4."
+  },
+  {
+   "name": "qwen-image-edit-2511-dit-q6k",
+   "group": "qwen-edit",
+   "dest": "diffusion_models/qwen-image-edit-2511-Q6_K.gguf",
+   "source": {
+    "type": "hf",
+    "repo": "unsloth/Qwen-Image-Edit-2511-GGUF",
+    "file": "qwen-image-edit-2511-Q6_K.gguf"
+   },
+   "approx_gb": 16.9,
+   "license": "Apache-2.0",
+   "license_verified": "2026-08-16 (HF API license:apache-2.0, ungated, base_model Qwen/Qwen-Image-Edit-2511)",
+   "commercial_note": "Quantization measurement: Q6_K GGUF of the same DiT. It fits fully resident in 24 GB where fp8mixed (20.5 GB) forces lowvram streaming. Loads via ComfyUI-GGUF UnetLoaderGGUF; TE/VAE stay the fp8/native files. Repo also carries Q8_0 (21.8 GB, would not fix the fit) and Q5_K_M (15.0 GB, fallback tier)."
+  },
+  {
+   "name": "qwen25-vl-7b-text-encoder",
+   "group": "qwen-edit",
+   "dest": "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+    "file": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+   },
+   "approx_gb": 9.0,
+   "license": "Apache-2.0 (Qwen2.5-VL-7B)",
+   "commercial_note": "Shared TE for the whole Qwen-Image family (gen + edit)."
+  },
+  {
+   "name": "qwen-image-vae",
+   "group": "qwen-edit",
+   "dest": "vae/qwen_image_vae.safetensors",
+   "source": {
+    "type": "hf",
+    "repo": "Comfy-Org/Qwen-Image_ComfyUI",
+    "file": "split_files/vae/qwen_image_vae.safetensors"
+   },
+   "approx_gb": 0.25,
+   "license": "Apache-2.0",
+   "commercial_note": "Qwen-Image family VAE."
+  },
+  {
+   "name": "trellis2-4b",
+   "group": "3d-mesh",
+   "managed_by": "tools/3d (HF cache ~/models/hf; revision pinned in tools/3d/pins.json)",
+   "source": { "type": "hf-snapshot", "repo": "microsoft/TRELLIS.2-4B" },
+   "approx_gb": 16.2,
+   "license": "MIT (engine code + weights)",
+   "license_verified": "2026-07-27 (GitHub LICENSE = MIT (c) Microsoft; HF card frontmatter license: mit — sources AGREE; the old TRELLIS-license conflict lives in the render deps, see quote)",
+   "license_text_quote": [
+    "MIT License — Copyright (c) Microsoft Corporation. Permission is hereby granted, free of charge, to any person obtaining a copy [...]",
+    "DEP CAVEAT — nvdiffrast v0.4.0 + nvdiffrec (renderutils fork), required for the GLB-extraction path, carry the NVIDIA Source Code License, §3.3 verbatim: \"Use Limitation. The Work and any derivative works thereof only may be used or intended for use non-commercially. The Work or derivative works thereof may be used or intended for use by Nvidia or its affiliates commercially or non-commercially. As used herein, 'non-commercially' means for research or evaluation purposes only and not for any direct or indirect monetary gain.\" (upstream TRELLIS.2 issue #22 asking exactly this is open/unanswered as of 2026-07-27)"
+   ],
+   "commercial_note": "Engine MIT, but GLB extraction rides NSCL non-commercial deps: commercial pinning needs a dep swap or upstream clarification; decide at pin time as always."
+  },
+  {
+   "name": "trellis-v1-ss-dec",
+   "group": "3d-mesh",
+   "managed_by": "tools/3d",
+   "source": { "type": "hf-snapshot", "repo": "microsoft/TRELLIS-image-large", "files": "ckpts/ss_dec_conv3d_16l8_fp16*" },
+   "approx_gb": 0.15,
+   "license": "MIT",
+   "license_verified": "2026-07-27 (HF card license: mit; ungated; cross-repo dep named in TRELLIS.2 pipeline.json)",
+   "commercial_note": "Sparse-structure decoder reused from TRELLIS v1."
+  },
+  {
+   "name": "hunyuan3d-21",
+   "group": "3d-mesh",
+   "managed_by": "tools/3d",
+   "source": { "type": "hf-snapshot", "repo": "tencent/Hunyuan3D-2.1" },
+   "approx_gb": 14.9,
+   "license": "Tencent Hunyuan 3D 2.1 Community License",
+   "license_verified": "2026-07-27 (repo-root LICENSE at Tencent-Hunyuan/Hunyuan3D-2.1@82920d6; HF card license_name tencent-hunyuan-community links the same file. NOTE: some source-file headers still say NON-COMMERCIAL LICENSE — stale; the repo LICENSE is authoritative)",
+   "license_text_quote": [
+    "THIS LICENSE AGREEMENT DOES NOT APPLY IN THE EUROPEAN UNION, UNITED KINGDOM AND SOUTH KOREA AND IS EXPRESSLY LIMITED TO THE TERRITORY, AS DEFINED BELOW.",
+    "\"Territory\" shall mean the worldwide territory, excluding the territory of the European Union, United Kingdom and South Korea.",
+    "You must not use, reproduce, modify, distribute, or display the Tencent Hunyuan 3D 2.1 Works, Output or results of the Tencent Hunyuan 3D 2.1 Works outside the Territory. Any such use outside the Territory is unlicensed and unauthorized under this Agreement.",
+    "If, on the Tencent Hunyuan 3D 2.1 version release date, the monthly active users of all products or services made available by or for Licensee is greater than 1 million monthly active users in the preceding calendar month, You must request a license from Tencent [...]"
+   ],
+   "commercial_note": "Commercial use allowed inside the Territory (worldwide minus EU/UK/South Korea); the restriction extends to OUTPUTS. Check the MAU clause and your jurisdiction at pin time."
+  },
+  {
+   "name": "dinov2-giant",
+   "group": "3d-mesh",
+   "managed_by": "tools/3d",
+   "source": { "type": "hf-snapshot", "repo": "facebook/dinov2-giant", "files": "safetensors + configs" },
+   "approx_gb": 4.3,
+   "license": "Apache-2.0",
+   "license_verified": "2026-07-27 (HF card license: apache-2.0; ungated)",
+   "commercial_note": "Hunyuan3D paint-stage image conditioner."
+  },
+  {
+   "name": "dinov3-vitl16",
+   "group": "3d-mesh",
+   "managed_by": "tools/3d",
+   "source": { "type": "hf-snapshot", "repo": "facebook/dinov3-vitl16-pretrain-lvd1689m" },
+   "approx_gb": 1.2,
+   "requires_hf_gate": true,
+   "license": "DINOv3 License (Meta; custom, dated 2025-08-19)",
+   "license_verified": "2026-07-27 (gate accepted; LICENSE.md read in the snapshot at revision ea8dc286)",
+   "license_text_quote": [
+    "Grant of Rights. You are granted a non-exclusive, worldwide, non-transferable and royalty-free limited license under Meta's intellectual property or other rights owned by Meta embodied in the DINO Materials to use, reproduce, distribute, copy, create derivative works of, and make modifications to the DINO Materials.",
+    "If you distribute or make the DINO Materials, or any derivative works thereof, available to a third party, you may only do so under the terms of this Agreement and you shall provide a copy of this Agreement with any such DINO Materials."
+   ],
+   "commercial_note": "TRELLIS.2 image conditioner. The grant carries no non-commercial restriction; distribution must carry the Agreement; litigation-termination and Sanctions clauses apply. Check at pin time as always."
+  },
+  {
+   "name": "birefnet-general",
+   "group": "3d-mesh",
+   "managed_by": "tools/3d",
+   "source": { "type": "hf-snapshot", "repo": "ZhengPeng7/BiRefNet" },
+   "approx_gb": 0.4,
+   "license": "MIT",
+   "license_verified": "2026-07-27 (GitHub ZhengPeng7/BiRefNet LICENSE = MIT (c) 2024 ZhengPeng)",
+   "commercial_note": "Substitutes the auto-gated briaai/RMBG-2.0 (BRIA non-commercial terms + trust_remote_code) as the TRELLIS.2 rembg via tools/3d/trellis2-pipeline/pipeline.json, so BRIA terms are out of the stack entirely. Also the funnel's interim cutout model (rembg birefnet-general)."
+  },
+  {
+   "name": "realesrgan-x4plus",
+   "group": "3d-mesh",
+   "managed_by": "tools/3d",
+   "source": { "type": "url", "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth" },
+   "approx_gb": 0.064,
+   "license": "BSD 3-Clause",
+   "license_verified": "2026-07-27 (xinntao/Real-ESRGAN LICENSE = BSD 3-Clause (c) 2021 Xintao Wang)",
+   "commercial_note": "Hunyuan3D paint-stage upscaler; lives at tools/3d/vendor/Hunyuan3D-2.1/hy3dpaint/ckpt/."
+  }
+ ],
+ "auto_downloaded_note": "BiRefNet-general (MIT) + RMBG-2.0 (CC BY-NC, BRIA agreement needed for commercial) are fetched automatically by the ComfyUI-RMBG pack on first use — recorded here so the license table is complete."
+}

@@ -1,0 +1,18 @@
+# systemd USER unit for the 3D engine runner (an example: adjust the path).
+# Install:  cp scripts/3d-runner.service ~/.config/systemd/user/
+#           systemctl --user daemon-reload && systemctl --user enable --now 3d-runner
+# Logs:     journalctl --user -u 3d-runner -f
+# %h is the home directory of the user running the unit. Point ExecStart at
+# your checkout if it does not live in ~/crexil.
+[Unit]
+Description=Crexil 3D engine runner
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/crexil/scripts/3d-runner.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
