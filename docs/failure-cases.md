@@ -224,7 +224,7 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 **Status: implemented.**
 - **Artist sees:** a line saying the provider would not run this prompt, that it is their filter, and that it is not a fault at the artist's end. Then "nothing was charged". Buttons: RUN LOCALLY · FREE (the default), then the paid REROLL.
 - **System does:** HTTP 403 becomes `moderation`. No retry, no bench, and it does not count toward A9. The adapter treats billing as all or nothing, so a refused take carries no charge.
-- **Lives in:** `openrouter.py`, `scheduler.py`, `batch/grid.ts`. Tests: `test_moderation_fails_the_slot_without_benching` in `test_scheduler.py`, `test_a9_counts_engine_level_kinds_only_and_never_across_turns` in `test_hardware_cases.py`, the paid-failure test in `e2e/batch-laws.spec.ts` (which currently fails a layout check at Playwright's default 1280x720 window; see docs/development.md).
+- **Lives in:** `openrouter.py`, `scheduler.py`, `batch/grid.ts`. Tests: `test_moderation_fails_the_slot_without_benching` in `test_scheduler.py`, `test_a9_counts_engine_level_kinds_only_and_never_across_turns` in `test_hardware_cases.py`, the paid-failure test in `e2e/batch-laws.spec.ts`.
 
 ### B6 · Provider changed pricing mid-session
 **Status: partly implemented.**

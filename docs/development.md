@@ -62,9 +62,7 @@ no key, no cost). Ruff's rules live in `cockpit/server/pyproject.toml`.
 **End-to-end tests.** They need a fresh `npm run build`, `uv` on the `PATH`, Playwright's Chromium
 (`npx playwright install chromium`) and a free port 8123. They need no engine: Playwright boots the
 server itself with scripted executors, a store and a promote folder under `.staging/`, and
-`COMFYUI_URL` pointed at a closed port. Two specs are known to fail: `batch-laws.spec.ts:279`
-and `:363` fail a 7 px layout check at Playwright's default 1280x720 window (both pass at
-1600x1000).
+`COMFYUI_URL` pointed at a closed port.
 
 **Type generation.** `scripts/gen-api-types.sh` regenerates `cockpit/openapi.json` from the server's
 routes and models, then `cockpit/web/src/generated/openapi.d.ts` from that file. Commit both:

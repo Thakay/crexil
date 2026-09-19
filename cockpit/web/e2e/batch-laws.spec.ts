@@ -81,9 +81,20 @@ async function expectStatus(
 async function cellBoxes(page: Page, n: number): Promise<Box[]> {
   const boxes: Box[] = [];
   for (let pos = 0; pos < n; pos++) {
-    const b = await cell(page, pos).boundingBox();
-    expect(b, `cell ${pos} must be visible`).not.toBeNull();
-    boxes.push(b!);
+    // The panes' own scroll is added back: on a short window a click into a
+    // cell scrolls the grid pane, and scrolling is not movement.
+    const b = await cell(page, pos).evaluate((el) => {
+      let x = 0;
+      let y = 0;
+      for (let s = el.parentElement; s; s = s.parentElement) {
+        x += s.scrollLeft;
+        y += s.scrollTop;
+      }
+      const r = el.getBoundingClientRect();
+      return { x: r.x + x, y: r.y + y, width: r.width, height: r.height };
+    });
+    expect(b.width > 0 && b.height > 0, `cell ${pos} must be visible`).toBe(true);
+    boxes.push(b);
   }
   return boxes;
 }
