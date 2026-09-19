@@ -1,0 +1,101 @@
+{
+ "updated": "2026-07-27",
+ "purpose": "The isolated 3D stack. Separate from ComfyUI/.venv and the cockpit env; nothing here may alter snapshots/pins.json or the pinned runtime.",
+ "policy": {
+  "cuda": "pip wheels only: nvidia-cuda-{nvcc,runtime,cccl}-cu12 provide nvcc for the source-built extensions; no Linux GPU driver, no system CUDA toolkit",
+  "hf_home": "~/models/hf: 3D weights live in the HF cache inside the shared ~/models tree (ext4)",
+  "isolation": "one venv per engine + a torch-free funnel venv; a shared env is impossible on the books: torch 2.6.0 vs 2.5.1, transformers >=4.56,<5.0 (DINOv3ViTModel) vs ==4.46.0 (Hunyuan hard pin)"
+ },
+ "toolchain": {
+  "uv": "0.11.14",
+  "python": {
+   "trellis2": "3.10.20 (uv-managed)",
+   "hunyuan": "3.10.20 (uv-managed)",
+   "funnel": "3.12.3"
+  },
+  "cuda_pip_wheels": {
+   "nvidia-cuda-nvcc-cu12": "12.4.131 — ships ptxas + nvvm/libdevice + crt headers ONLY; no cu12 wheel version ships the nvcc driver binary (verified 12.4.131, 12.6.85, 12.8.93, 12.9.86)",
+   "nvidia-cuda-runtime-cu12": "12.4.127 (runtime headers + libcudart)",
+   "nvidia-cuda-cccl-cu12": "12.4.127 (cub/thrust)"
+  },
+  "conda_toolchain": {
+   "why": "A deviation from the pip-wheels-only rule: pip wheels cannot supply the nvcc binary; conda-forge compiler-only packages fill the gap (no driver, nothing system-wide)",
+   "micromamba": "2.8.1 (static binary, tools/3d/mamba/bin)",
+   "root": "tools/3d/mamba, env `cuda`",
+   "cuda-nvcc": "12.4.131 (sm_89 smoke compile+link+run proven 2026-07-27)",
+   "cuda-cudart-dev": "12.4.127",
+   "cuda-libraries-dev": "12.4 (cusparse/cublas/... dev headers — torch's CUDAContext.h includes cusparse.h at extension-build time; both engines' first builds tripped on this)",
+   "cuda-nvrtc-dev": "12.4",
+   "layout_note": "conda CUDA headers live under targets/x86_64-linux/include — symlinked up into env include/ (and lib64 -> lib) so torch cpp_extension's CUDA_HOME assumptions hold"
+  },
+  "gltfpack": {
+   "why": "the decimate kind's operator (law 16): meshoptimizer's simplifier over a GLB; a classic tool, no model, no GPU, 0.8 s on a 970k-triangle mesh",
+   "version": "1.2 (zeux/meshoptimizer, MIT)",
+   "asset": "gltfpack-ubuntu.zip from https://github.com/zeux/meshoptimizer/releases/download/v1.2/gltfpack-ubuntu.zip",
+   "zip_sha256": "ebc236f5f6c08c7e5c5750476a187d24805d44d8c680449c4b7369c333f817b1",
+   "binary_sha256": "7e0dc08489835df804a83ca111c2cac6f8431f5a7b0e5453d94d6749a988b32f",
+   "path": "tools/3d/bin/gltfpack (gitignored, like the venvs; outside envs/ so a venv rebuild does not take it)",
+   "flags": "-si <ratio> -noq: unquantized so the child is plain glTF for a DCC. NOT -sa: forcing the exact count shatters the surface (952,326 -> 13,309 measured), and the mesh's own floor is ~8-10% of source, set by its UV atlas, not by the error budget. funnel.py decimate() carries the measurements; -sa is an opt-in override (funnel.py --decimate-force)"
+  },
+  "host_compiler": "g++ 13.3.0 via apt build-essential; the conda env also carries x86_64-conda-linux-gnu-gcc for nvcc's internal host compile",
+  "cuda_home": "tools/3d/cuda124 -> directory symlink to tools/3d/mamba/envs/cuda (a dir-level symlink keeps nvcc's relative self-location intact; per-file bin symlinks broke cicc resolution)"
+ },
+ "envs": {
+  "trellis2": {
+   "torch": "2.6.0+cu124",
+   "torchvision": "0.21.0+cu124",
+   "flash_attn": "2.7.3 (prebuilt release wheel cu12torch2.6cxx11abiFALSE-cp310; never built from source)",
+   "transformers": "4.57.6 (>=4.56,<5.0 for DINOv3ViTModel)",
+   "source_built": {
+    "nvdiffrast": "v0.4.0 @ 253ac4fcea7de5f396371124af597e6cc957bfae — BUILT 2026-07-27 (NVIDIA Source Code License, non-commercial; see manifest)",
+    "nvdiffrec": "renderutils branch @ b296927cc7fd01c2ac1087c8065c4d7248f72da4 — BUILT (same NSCL; links -lcuda: LIBRARY_PATH=/usr/lib/wsl/lib at build)",
+    "CuMesh": "@ 12289e1062f0603f2f0d0771b02e1395d247f26f — BUILT (NVCC_APPEND_FLAGS=--extended-lambda)",
+    "FlexGEMM": "@ 6dd94a859c26ee8246888502eada3dd8ad85532e — BUILT (import name flex_gemm)",
+    "o-voxel": "in-repo @ vendor sha — BUILT",
+    "verify": "torch-first import of flash_attn, nvdiffrast.torch, cumesh, flex_gemm, o_voxel, nvdiffrec_render.renderutils, xformers — ALL GREEN 2026-07-27; build flags: TORCH_CUDA_ARCH_LIST=8.9, CUDA_HOME=tools/3d/cuda124"
+   },
+   "deviations": "plain pillow substitutes pillow-simd (sdist needs libjpeg-dev); gradio/tensorboard/pandas/lpips skipped (training/demo extras, scripts-only lane)"
+  },
+  "hunyuan": {
+   "torch": "2.5.1+cu124",
+   "torchvision": "0.20.1+cu124",
+   "torchaudio": "2.5.1+cu124",
+   "requirements": "vendor/Hunyuan3D-2.1/requirements.txt verbatim MINUS the two CN mirror index lines and bpy==4.0 (unused on the inference path per code audit — xatlas+trimesh do UV/GLB; reinstated only if an import demands it); PLUS setuptools<81 (pkg_resources needed by pytorch-lightning 1.9.5 at runtime; removed in setuptools>=81)",
+   "source_built": {
+    "custom_rasterizer": "BUILT 2026-07-27 (CUDAExtension; needed cuda-libraries-dev headers; import requires torch loaded first)",
+    "DifferentiableRenderer": "BUILT (pybind11 mesh_inpaint_processor via system g++; ext suffix from sysconfig)"
+   },
+   "bpy": "NOT installable on py3.10 (PyPI bpy 4.2+ = cp311 only; README combo rotted); vendored mesh_utils.py carries the guarded-import CREXIL PATCH instead; .glb outputs never need bpy",
+   "extra_ckpt": "hy3dpaint/ckpt/RealESRGAN_x4plus.pth (wget from Real-ESRGAN v0.1.0 release)"
+  },
+  "funnel": {
+   "python": "3.12.3",
+   "trimesh": "4.12.2",
+   "pyrender": "0.1.45 (headless: PYOPENGL_PLATFORM=egl via Mesa — verified on textured GLBs)",
+   "PyOpenGL": "3.1.10 + PyOpenGL-accelerate 3.1.10 — REQUIRED: pyrender's ~=3.1.0 floor resolves to 3.1.0, which hits the py3.12 ctypes bug on glGenTextures (textured meshes only; untextured smoke passed)",
+   "rembg": "birefnet-general @ ~/models/rembg/birefnet-general.onnx (973 MB, U2NET_HOME; interim cutout, replaced by util-cutout@v1 via the ComfyUI API when that graph lands)",
+   "torch": "none (by design — validation/rendering never rides an engine stack)"
+  }
+ },
+ "vendor": {
+  "TRELLIS.2": {
+   "url": "https://github.com/microsoft/TRELLIS.2",
+   "sha": "75fbf0183001ed9876c8dbb35de6b68552ee08bd",
+   "submodules": { "o-voxel/third_party/eigen": "21e4582d1739107337a03460c81412981130373e" }
+  },
+  "Hunyuan3D-2.1": {
+   "url": "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1",
+   "sha": "82920d643c0dc2f7bfd7255f45f62d386edfe60c",
+   "local_patch": "hy3dpaint/DifferentiableRenderer/mesh_utils.py: guarded `import bpy` (CREXIL PATCH comment). Why: PyPI carries no bpy wheel for cp310 anymore (4.2+ = cp311+; the README's py3.10 + bpy==4.0 combo rotted), and with .glb output paths the bpy converter is a functional no-op (save_mesh writes the GLB via pygltflib; convert_obj_to_glb's OBJ import would fail and return False). Re-apply after any re-clone."
+  }
+ },
+ "weights": {
+  "microsoft/TRELLIS.2-4B": { "revision": "af44b45f2e35a493886929c6d786e563ec68364d", "gb": 16.2 },
+  "microsoft/TRELLIS-image-large": { "revision": "25e0d31ffbebe4b5a97464dd851910efc3002d96", "gb": 0.15, "files": "ckpts/ss_dec_conv3d_16l8_fp16* only (cross-repo dep of TRELLIS.2 pipeline.json)" },
+  "tencent/Hunyuan3D-2.1": { "revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327", "gb": 14.9 },
+  "facebook/dinov2-giant": { "revision": "611a9d42f2335e0f921f1e313ad3c1b7178d206d", "gb": 4.3, "files": "safetensors+configs (Hunyuan paint conditioner)" },
+  "ZhengPeng7/BiRefNet": { "revision": "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4", "gb": 0.4, "note": "substitutes the auto-gated briaai/RMBG-2.0 in tools/3d/trellis2-pipeline/pipeline.json (BRIA terms removed from the stack)" },
+  "facebook/dinov3-vitl16-pretrain-lvd1689m": { "revision": "ea8dc2863c51be0a264bab82070e3e8836b02d51", "gb": 1.2, "note": "gate accepted 2026-07-27; TRELLIS.2 image conditioner" }
+ },
+ "licenses": "quoted verbatim in scripts/models-manifest.json (group 3d-mesh)"
+}

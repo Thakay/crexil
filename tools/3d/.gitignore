@@ -1,0 +1,8 @@
+envs/
+vendor/
+trellis2-pipeline/ckpts
+cuda124
+runs/
+build/
+mamba/
+bin/
