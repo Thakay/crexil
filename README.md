@@ -78,6 +78,8 @@ Read before changing behavior:
   code cites as `law N`.
 - [docs/failure-cases.md](docs/failure-cases.md): the failure cases the code and tests cite by
   code, such as `A1` or `C2`.
+- [docs/agents.md](docs/agents.md): how a studio or an agent integrates with Crexil through the
+  HTTP API, the command-line client and the MCP server.
 - [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md): conventions, for people and
   for coding agents.
 

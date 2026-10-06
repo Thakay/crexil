@@ -54,6 +54,7 @@ npm --prefix cockpit/web run dev             # hot reload on :5173, proxied to t
 scripts/gen-api-types.sh                     # after any route or wire-model change
 scripts/preview.sh [port]                    # isolated preview on 127.0.0.1:8010 (or port); cannot generate or spend
 scripts/crexil.py --help                     # the artist and agent client of the shared HTTP actions
+uv run --script tools/agent-door/crexil_mcp.py --help   # the MCP agent door; see docs/agents.md
 scripts/deploy.sh                            # optional local Docker build and start
 ```
 
