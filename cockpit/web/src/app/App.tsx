@@ -13,7 +13,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HotkeysProvider } from "react-hotkeys-hook";
 import { $api } from "../api/client";
-import { href, useHashRoute } from "./routes";
+import { frontDoor, href, onProjectSurface, useHashRoute } from "./routes";
 import { Shell } from "./shell/Shell";
 import styles from "./App.module.css";
 import { Crexil } from "./crexil/Filmstrip";
@@ -40,26 +40,32 @@ export default function App() {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   );
+  // One parser decides the surface in every build (routes.ts); the
+  // project surface reads its own sub-route and query state.
   const route = useHashRoute();
+  const door = frontDoor();
   return (
     <QueryClientProvider client={queryClient}>
       <HotkeysProvider>
-        {location.hash.startsWith('#/projects') || location.hash.startsWith('#/operations') || import.meta.env.VITE_CREXIL_PREVIEW === '1' ? <Crexil /> :
-        <div className={styles.page}>
-          {route.view === "unknown" ? (
-            <div className={styles.pad}>
-              <p className="effect-line">
-                Nothing at this address.{" "}
-                <a href={href.workspaces}>Back to workspaces</a>
-              </p>
-            </div>
-          ) : (
-            <Shell
-              workspaceId={route.view === "workspace" ? route.id : null}
-            />
-          )}
-          <DriftFooter />
-        </div>}
+        {onProjectSurface(route) ? (
+          <Crexil />
+        ) : (
+          <div className={styles.page}>
+            {route.view === "unknown" ? (
+              <div className={styles.pad}>
+                <p className="effect-line">
+                  Nothing at this address.{" "}
+                  <a href={href[door]}>Back to {door}</a>
+                </p>
+              </div>
+            ) : (
+              <Shell
+                workspaceId={route.view === "workspace" ? route.id : null}
+              />
+            )}
+            <DriftFooter />
+          </div>
+        )}
       </HotkeysProvider>
     </QueryClientProvider>
   );

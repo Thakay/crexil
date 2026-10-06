@@ -46,8 +46,8 @@ scripts/check.sh ruff --fix                  # ruff only; arguments after "ruff"
 (cd cockpit/web && npx tsc -b)
 
 (cd cockpit/server && uv run uvicorn app.main:app --reload)   # server on 127.0.0.1:8000
-COCKPIT_DEV_API=http://127.0.0.1:8000 \
-  npm --prefix cockpit/web run dev           # hot reload on :5173; without the variable it proxies to the preview on :8010
+npm --prefix cockpit/web run dev             # hot reload on :5173, proxied to the source server on :8000;
+                                             # COCKPIT_DEV_API=http://127.0.0.1:8010 targets the preview instead
 (cd cockpit/web && npm run build)            # tsc -b, then vite build into cockpit/web/dist
 (cd cockpit/web && npm run e2e)              # Playwright; needs the build above
 
@@ -119,8 +119,9 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
   looked up once, at start, so build first.
 - The port is uvicorn's `--port`; no variable sets it for a run from source. Docker publishes
   `127.0.0.1:8000` (or `COCKPIT_PORT`), Playwright uses 8123, and `scripts/bench.py` and
-  `scripts/e2e_region_fanout.py` expect 8001. The Vite proxy targets the preview on port 8010
-  unless `COCKPIT_DEV_API` names another server, and `scripts/preview.sh` defaults to 8010.
+  `scripts/e2e_region_fanout.py` expect 8001. The Vite proxy targets the source server on port
+  8000 unless `COCKPIT_DEV_API` names another server, such as the preview, and
+  `scripts/preview.sh` defaults to 8010.
 - `COMFYUI_URL` and `THREED_URL` choose the engines. Two instances that share one ComfyUI share one
   GPU queue. Point both at a closed port to keep an instance away from real engines.
 - `.env` at the checkout root is read by every instance started from that checkout. A process
@@ -179,6 +180,11 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 Launchers and tools read a few of their own (`COMFY_*`, `THREED_*`, `BENCH_ROOT`, `COCKPIT_URL`,
 `SMOKE_KEEP_RES`, `HF_TOKEN`); each script names them. `compose.yaml` reads `COCKPIT_PORT`,
 `MODELS_ROOT`, `PROMOTE_DIR`, `PROMOTE_ROOTS`, `PROMOTE_MOUNT` and `OPENROUTER_API_KEY` from `.env`.
+
+The client reads two build-time variables. `VITE_CREXIL_PREVIEW=1`, which `scripts/preview.sh`
+sets, builds the preview client. `VITE_CREXIL_FRONT_DOOR` (`projects` or `workspaces`) names what
+the bare URL opens; unset, a preview build opens the project surface and every other build the
+legacy Home.
 
 ## 6. External engines
 
