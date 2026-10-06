@@ -16,7 +16,6 @@ the exact available material and preparation when a decision is supplied.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import shutil
 from contextlib import suppress
@@ -74,6 +73,9 @@ async def _step_state(db, sequence, step, state, reason=''):
 
 
 async def material_fact(db, nid):
+    """The identity a sequence binds: the node, its output and its bytes'
+    SHA-256. Hashes come through the store's size-and-mtime cache, hashed off
+    the event loop, so a sequence polling its sources never rereads them."""
     node = await db.get_node(nid)
     if not node or node['purged_at'] or not Path(node['output_path']).is_file():
         return None
@@ -82,17 +84,14 @@ async def material_fact(db, nid):
     fact = {'node_id': nid, 'slot_id': node['slot_id'], 'attempt': node['take'],
             'output_id': output['id'] if output else None, 'role': output['role'] if output else None,
             'origin_kind': json.loads(info['origin_json']).get('kind') if info else 'execution' if node['slot_id'] else 'external',
-            'payload': node['payload'], 'sha256': hashlib.sha256(Path(node['output_path']).read_bytes()).hexdigest()}
+            'payload': node['payload'], 'sha256': await db.file_sha256(node['output_path'])}
     if node['payload'] == '3d':
         from .mesh import FIELDS_SUFFIX, fields_sidecar
         path = fields_sidecar(node['output_path'])
         identity = 'companion:' + FIELDS_SUFFIX
         companion = await db._one('SELECT id FROM execution_outputs WHERE group_id=? AND identity=?',
                                   (output['group_id'], identity)) if output else None
-        try:
-            field_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-        except FileNotFoundError:
-            field_hash = None
+        field_hash = await db.file_sha256(path)
         fact['mesh_fields'] = {'identity': identity, 'output_id': companion['id'] if companion else None,
                                'path': str(path), 'sha256': field_hash}
     return fact

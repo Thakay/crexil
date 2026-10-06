@@ -9,6 +9,8 @@ Retained runtime inputs can gain one immutable upload/graph binding before
 dispatch; recording that binding never replaces the previously retained bytes.
 An audio take is measured before its transaction and lands with its facts and
 its provider's recorded terms; audio that cannot be measured stays a file.
+Bytes reach their file before the receipt transaction: no write, fsync or
+whole-payload hash runs on the event loop or while the store's lock is held.
 """
 from __future__ import annotations
 
@@ -48,6 +50,89 @@ def matches_receipt(path: Path, digest: str) -> bool:
             return hashlib.file_digest(source, 'sha256').hexdigest() == digest
     except OSError:
         return False
+
+
+def sha256_bytes(data: bytes) -> str:
+    """SHA-256 of a payload in memory. Blocking for large meshes: call it off the loop."""
+    return hashlib.sha256(data).hexdigest()
+
+
+async def _measured(output: CollectedOutput, data: bytes) -> tuple[CollectedOutput, dict | None]:
+    """Audio facts measured off the loop; audio that cannot be measured stays a file."""
+    try:
+        return output, await asyncio.to_thread(audio.inspect, data)
+    except ValueError as exc:
+        return replace(output, payload=None, error=f'{output.filename} was declared as audio but could not be measured. {exc}'), None
+
+
+async def _adopted(output: CollectedOutput, path: Path) -> tuple[CollectedOutput, str, dict | None] | None:
+    """A server-owned atomic file can outlive its receipt transaction. Its
+    bytes are adopted before the runtime is asked for these same bytes again."""
+    try:
+        cached = await asyncio.to_thread(path.read_bytes)
+    except OSError:
+        return None
+    output = replace(output, data=cached, error=None)
+    facts = None
+    if output.payload == audio.PAYLOAD:
+        output, facts = await _measured(output, cached)
+    return output, await asyncio.to_thread(sha256_bytes, cached), facts
+
+
+def default_path(staging: Path, slot: dict, identity: str, filename: str) -> Path:
+    """Where a new output's bytes live: one file per slot, attempt and identity
+    under the turn's staging folder, with the runtime's suffix when it is sane."""
+    suffix = Path(filename).suffix.lower()
+    if not suffix or len(suffix) > 12 or not suffix[1:].isalnum():
+        suffix = '.bin'
+    return staging / slot['turn_id'] / f"{slot['id']}-take{slot['attempt']}-{hashlib.sha256(identity.encode()).hexdigest()[:16]}{suffix}"
+
+
+async def _ensure_bytes(path: Path, data: bytes, placed: set[Path]) -> None:
+    """Write `data` to `path` unless placement already put it there."""
+    if path not in placed:
+        await asyncio.to_thread(atomic_bytes, path, data)
+        placed.add(path)
+
+
+async def _place(db: Database, staging: Path, slot: dict, output: CollectedOutput,
+                 digest: str | None, facts: dict | None, path: Path | None
+                 ) -> tuple[CollectedOutput, str | None, dict | None, set[Path]]:
+    """Put an output's bytes in their file before the receipt transaction.
+
+    Reads the current receipt without the transaction, then writes, verifies
+    or adopts the file off the loop. Returns the output (with adopted bytes),
+    its digest and facts, and the paths now holding its bytes. The transaction
+    repeats every decision against fresh rows; a path not placed here (a
+    concurrent collector changed the receipt) is written there instead."""
+    placed: set[Path] = set()
+    row = await db._one('SELECT id FROM execution_groups WHERE slot_id=? AND take=?', (slot['id'], slot['attempt']))
+    identity = output.identity
+
+    async def receipt(name):
+        return await db._one('SELECT * FROM execution_outputs WHERE group_id=? AND identity=?',
+                             (row['id'], name)) if row else None
+    previous = await receipt(identity)
+    if previous and not previous['sha256'] and output.data is None and previous['output_path'] and not await purged_at(db, previous):
+        adopted = await _adopted(output, Path(previous['output_path']))
+        if adopted:
+            output, digest, facts = adopted
+            placed.add(Path(previous['output_path']))
+    if previous and previous['sha256'] and digest and previous['sha256'] != digest:
+        identity += '/changed:' + digest
+        previous = await receipt(identity)
+        path = None
+    if output.data is None:
+        return output, digest, facts, placed
+    if previous and previous['sha256']:
+        target = Path(previous['output_path'])
+        if not await purged_at(db, previous):
+            if not await asyncio.to_thread(matches_receipt, target, previous['sha256']):
+                await asyncio.to_thread(atomic_bytes, target, output.data)
+            placed.add(target)
+        return output, digest, facts, placed
+    await _ensure_bytes(path or default_path(staging, slot, identity, output.filename), output.data, placed)
+    return output, digest, facts, placed
 
 
 async def group(db: Database, slot: dict) -> dict:
@@ -106,41 +191,29 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
                   output: CollectedOutput, *, path: Path | None = None) -> dict:
     output = replace(output, descriptor={**output.descriptor, 'receipt': {
         'submitted_graph': output.submitted_graph, 'external': output.external, 'payload': output.payload}})
-    digest = hashlib.sha256(output.data).hexdigest() if output.data is not None else None
+    digest = await asyncio.to_thread(sha256_bytes, output.data) if output.data is not None else None
     facts = None
     if output.data is not None and output.payload == audio.PAYLOAD:
-        try:
-            facts = await asyncio.to_thread(audio.inspect, output.data)
-        except ValueError as exc:
-            output = replace(output, payload=None, error=f'{output.filename} was declared as audio but could not be measured. {exc}')
+        output, facts = await _measured(output, output.data)
+    output, digest, facts, placed = await _place(db, staging, slot, output, digest, facts, path)
     async with db._tx():
         item = await group(db, slot)
         identity = output.identity
         previous = await db._one('SELECT * FROM execution_outputs WHERE group_id=? AND identity=?', (item['id'], identity))
         if previous and not previous['sha256'] and output.data is None and previous['output_path'] and not await purged_at(db, previous):
-            try:
-                cached = await asyncio.to_thread(Path(previous['output_path']).read_bytes)
-            except OSError:
-                pass
-            else:
-                # A server-owned atomic file can outlive the receipt transaction.
-                # Adopt it before asking the runtime for these same bytes again.
-                output = replace(output, data=cached, error=None)
-                digest = hashlib.sha256(cached).hexdigest()
-                if output.payload == audio.PAYLOAD:
-                    try:
-                        facts = audio.inspect(cached)
-                    except ValueError as exc:
-                        output = replace(output, payload=None,
-                                         error=f'{output.filename} was declared as audio but could not be measured. {exc}')
+            adopted = await _adopted(output, Path(previous['output_path']))
+            if adopted:
+                output, digest, facts = adopted
+                placed.add(Path(previous['output_path']))
         if previous and previous['sha256'] and digest and previous['sha256'] != digest:
             identity += '/changed:' + digest
             previous = await db._one('SELECT * FROM execution_outputs WHERE group_id=? AND identity=?', (item['id'], identity))
             path = None
         if previous and previous['sha256']:
             path = Path(previous['output_path'])
-            if output.data is not None and not await purged_at(db, previous) and not await asyncio.to_thread(matches_receipt, path, previous['sha256']):
-                atomic_bytes(path, output.data)
+            if (output.data is not None and path not in placed and not await purged_at(db, previous)
+                    and not await asyncio.to_thread(matches_receipt, path, previous['sha256'])):
+                await asyncio.to_thread(atomic_bytes, path, output.data)
             earlier = json.loads(previous['descriptor_json'])
             binding = previous['role'] == output.role == 'runtime input' and output.submitted_graph is not None
             if binding and earlier.get('receipt', {}).get('submitted_graph'):
@@ -165,16 +238,13 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
             oid = new_id()
             maximum = await db._one('SELECT MAX(ordinal) AS last FROM execution_outputs WHERE group_id=?', (item['id'],))
             ordinal = (maximum['last'] if maximum['last'] is not None else -1) + 1
-        suffix = Path(output.filename).suffix.lower()
-        if not suffix or len(suffix) > 12 or not suffix[1:].isalnum():
-            suffix = '.bin'
         if path is None:
-            path = staging / slot['turn_id'] / f"{slot['id']}-take{slot['attempt']}-{hashlib.sha256(identity.encode()).hexdigest()[:16]}{suffix}"
+            path = default_path(staging, slot, identity, output.filename)
         media = mimetypes.guess_type(output.filename)[0] or 'application/octet-stream'
         node = None
         width, height = None, None
         if output.data is not None:
-            atomic_bytes(path, output.data)
+            await _ensure_bytes(path, output.data, placed)
             if output.payload == 'image':
                 try:
                     with Image.open(io.BytesIO(output.data)) as image:
