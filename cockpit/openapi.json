@@ -1380,6 +1380,60 @@
         "title": "DeliveryItem",
         "type": "object"
       },
+      "DeliveryPackage": {
+        "description": "The package folder a delivery writes, and its own files (`records.csv`,\n`decisions.json`, `package.json`), which land once every take is in place.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "prepared",
+              "incomplete",
+              "complete"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "state",
+          "files"
+        ],
+        "title": "DeliveryPackage",
+        "type": "object"
+      },
       "DeliveryReview": {
         "properties": {
           "destination": {
@@ -1399,6 +1453,16 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "package": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryPackage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "ready": {
             "title": "Ready",
@@ -1473,6 +1537,16 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "package": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryPackage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "workspace_id": {
             "title": "Workspace Id",

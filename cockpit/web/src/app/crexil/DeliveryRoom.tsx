@@ -69,7 +69,7 @@ export function DeliveryRoom({data,initial,close,refresh}:{data:Snapshot;initial
       {browse&&target.data&&<DestinationBrowser target={target.data} busy={busy||Boolean(pending.current)} onPick={path=>{changeDestination(path);setBrowse(false);}}/>}
       {review&&<section className={s.sequenceReview} aria-label="Delivery review"><h2>{review.items.length} outputs · {review.items.reduce((count,item)=>count+item.files.length,0)} files</h2>
         <p>{review.destination}</p><p>{String(review.target.where??'')}</p>
-        {review.items.map(item=><div key={item.node_id}><strong>{item.filename}</strong><p>{item.requires_review?'This item cannot transfer yet. Its refusal will remain in the delivery record.':`${item.files.length} files including its manifest. Final asset names are assigned when this delivery is saved.`}</p>
+        {review.items.map(item=><div key={item.node_id}><strong>{item.filename}</strong><p>{item.requires_review?'This item cannot transfer yet. Its refusal will remain in the delivery record.':`${item.files.length} files including its manifest.`}</p>
           {(item.missing??[]).map(note=><p key={note}>{note}</p>)}<details><summary>Files and hashes</summary>{item.files.map(file=><p key={file.path} className={s.deliveryPath}>{file.path}<br/>{file.sha256}</p>)}</details></div>)}
         {review.errors.map(text=><p key={text} className={s.error}>{text}</p>)}
         <button className={s.primary} disabled={busy||!review.ready||Boolean(pending.current)} onClick={()=>void deliver()}>{review.items.some(item=>item.requires_review)?'Deliver ready originals':'Deliver originals'}</button>

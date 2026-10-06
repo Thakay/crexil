@@ -2314,6 +2314,26 @@ export interface components {
              */
             state: "prepared" | "incomplete" | "complete";
         };
+        /**
+         * DeliveryPackage
+         * @description The package folder a delivery writes, and its own files (`records.csv`,
+         *     `decisions.json`, `package.json`), which land once every take is in place.
+         */
+        DeliveryPackage: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Files */
+            files: string[];
+            /** Path */
+            path: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "prepared" | "incomplete" | "complete";
+        };
         /** DeliveryReview */
         DeliveryReview: {
             /** Destination */
@@ -2322,6 +2342,7 @@ export interface components {
             errors: string[];
             /** Items */
             items: components["schemas"]["DeliveryItem"][];
+            package?: components["schemas"]["DeliveryPackage"] | null;
             /** Ready */
             ready: boolean;
             /** Target */
@@ -2352,6 +2373,7 @@ export interface components {
             id: string;
             /** Items */
             items: components["schemas"]["DeliveryItem"][];
+            package?: components["schemas"]["DeliveryPackage"] | null;
             /** Workspace Id */
             workspace_id: string;
         };

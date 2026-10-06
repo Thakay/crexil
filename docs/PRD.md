@@ -79,6 +79,14 @@ Three additive manifest extensions exist, each with its own version:
   Portable file names replace live ownership paths; a nested source record is history and
   never grants access to old paths or runtimes.
 
+An audio take's manifest carries `audio`: its measured container, codec, sample rate, channels,
+length, integrated loudness and peak, the words it speaks, the voice the provider reported and the
+provider's terms on its use; every other manifest's `audio` is null. Its `transport` and
+`provider` name the local voice runner (`local`, `voice-runner`) or ElevenLabs (`elevenlabs`); a
+local voice take's replay tier is `close:`, like a mesh's. A delivery writes its takes as one
+character package whose `package.json` lists every file with its role, path and SHA-256 (see
+[agents.md](agents.md#delivery-and-its-files)).
+
 Imported material has unknown creation provenance: its transport, provider, capability,
 local-only claim and observed prompt are null, and its replay tier is record only. A local mesh
 claims no ComfyUI provider or job identity.

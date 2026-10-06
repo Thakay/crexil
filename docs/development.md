@@ -174,7 +174,7 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 | `COCKPIT_CONFIGS_DIR` | `<root>/configs` | Folder of `dials.json` and `engines.json`, served as they are |
 | `COCKPIT_STAGING_DIR` | `<root>/.staging/cockpit` | Working files of the instance |
 | `COCKPIT_DB` | `<root>/cockpit/server/cockpit-v4.sqlite` | The SQLite store |
-| `PROMOTE_DIR` | `/mnt/d/PROMOTED` (a WSL drive path; set your own) | Hand-off folder that Promote copies into. Made absolute at start |
+| `PROMOTE_DIR` | `/mnt/d/PROMOTED` (a WSL drive path; set your own) | Hand-off folder that Promote copies into, and where a delivery writes its character package folders. Made absolute at start |
 | `PROMOTE_ROOTS` | empty, which means `PROMOTE_DIR` itself | Colon-separated folders a promote target may sit in. A target outside them is refused |
 | `COCKPIT_STATIC_DIR` | `cockpit/server/static` | Built web client served at `/` |
 | `MODELS_ROOT` | `~/models` | Model tree. Read only: file hashes for manifests, and the health check |

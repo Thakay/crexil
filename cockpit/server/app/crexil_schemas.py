@@ -337,6 +337,16 @@ class DeliveryItem(BaseModel):
     completed_at: str | None = None
 
 
+class DeliveryPackage(BaseModel):
+    """The package folder a delivery writes, and its own files (`records.csv`,
+    `decisions.json`, `package.json`), which land once every take is in place."""
+    path: str
+    state: Literal['prepared', 'incomplete', 'complete']
+    error: str | None = None
+    completed_at: str | None = None
+    files: list[str]
+
+
 class DeliveryReview(BaseModel):
     token: str
     destination: str
@@ -344,6 +354,7 @@ class DeliveryReview(BaseModel):
     ready: bool
     errors: list[str]
     items: list[DeliveryItem]
+    package: DeliveryPackage | None = None
 
 
 class DeliveryView(BaseModel):
@@ -353,6 +364,7 @@ class DeliveryView(BaseModel):
     actor: Actor
     created_at: str
     items: list[DeliveryItem]
+    package: DeliveryPackage | None = None
 
 
 class ProjectView(BaseModel):

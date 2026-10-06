@@ -150,15 +150,53 @@ source, whose role is `voice`.
 
 ## Delivery and its files
 
-Delivery copies each chosen take into the installation's hand-off folder, `PROMOTE_DIR` in
-`.env`. It writes `<asset_id>.<ext>` beside its manifest `<asset_id>.json`, under
-`<project-slug>/`, with meshes under `_3d/<project-slug>/`. Each item succeeds or fails on its
-own, and a retry reconciles the same assets rather than copying them twice.
+Delivery copies the chosen takes into the installation's hand-off folder, `PROMOTE_DIR` in
+`.env`, as one character package: a folder named after the project and the delivery, such as
+`dwarf-blacksmith_3f9a0c1d2e4b/`. Each take lands in its medium's folder: `Art/` for images,
+`Models/` for meshes as GLB, `Audio/Voice/` for spoken lines, `Audio/Voice/Previews/` for voice
+design previews and `Audio/SFX/` for sound effects. A take is named by its grid label and its own
+words, such as `Audio/Voice/3A_bring-me-the-ore.wav`, and its manifest sits beside it under the
+same name, `3A_bring-me-the-ore.json`. The words are the line it speaks, else its prompt, else its
+source's prompt. Material from no run, such as an import, is named `import-`, the start of its id
+and its file name. Names hold only letters, digits, hyphens and one underscore, so Unity, Unreal
+Engine and Godot import them as they are, and a take keeps its name in every delivery.
+
+Original bytes are copied exactly. Where an engine cannot import an image's format, a PNG of its
+pixels lands beside the original: Unity and Unreal Engine import no WebP, and Godot imports no
+TIFF. Nothing else is converted: PNG, JPEG, 16-bit PCM WAV and GLB import in all three, Unity
+reading GLB through Unity's glTFast package. A source or another take of the same attempt that
+the package also delivers is referenced at its package path, never copied twice. Another take of
+that attempt that the package leaves out keeps its record in the manifest, without its bytes.
+Sources outside the package are copied into `<name>_inputs/`, and a take's other output files
+into `<name>_outputs/`.
+
+Once every take is in place, three files land at the package's root, `package.json` last, so a
+package with `package.json` is whole:
+
+- `records.csv`, the record summary: one row per take with its asset id, label, role, path,
+  take, engine, prompt, parent takes, SHA-256, delivery time and delivery id.
+- `decisions.json`, the decision record for these takes, in the `decisions` export's shape. It
+  holds no audio and no file paths.
+- `package.json`, every other file with its role, path, SHA-256 and size. A take's own file also
+  names its label, asset id, payload, verb, media type and manifest; a conversion names its
+  original and the engines that need it; `not_delivered` lists the takes the review refused,
+  with the reason.
+
+Each take succeeds or fails on its own. A retry reconciles the same names and never copies a
+file twice, and a file already in place with other bytes is left untouched. A take of a blind run
+is refused until the run is revealed. Godot reads every `.csv` as a translation table, so in
+Godot set `records.csv` to Keep File, or leave it out of the project.
 
 The manifest is version 4, a frozen public format. Changes to it are additive and versioned:
 see the manifest paragraphs in [the product model](PRD.md#2-the-product-model). It names the
 take, its lineage, the engine, the seed, the prompt as typed and as submitted, model files by
-hash, and the cost.
+hash, and the cost. An audio take's manifest adds `audio`: its container, codec, sample rate,
+channels, length in seconds (`duration_s`), measured loudness (`loudness_lufs`, ITU-R BS.1770
+integrated) and peak (`peak_dbfs`), the words it speaks (`text`), the voice as the provider
+reported it (`voice`), and the provider's terms on its use (`terms`), such as ElevenLabs' rule
+that its audio is never input to another AI model. Its `verb` says which audio verb made it, and
+`transport` and `provider` name the voice runner (`local`, `voice-runner`) or ElevenLabs
+(`elevenlabs`).
 
 Two exports summarize a project:
 
@@ -171,9 +209,10 @@ Two exports summarize a project:
 
 ## Pipelines
 
-- **Engine import.** Point a Unity or Unreal importer at the hand-off folder. Every asset
-  arrives with its manifest, so the importer can stamp source, engine and seed into its asset
-  metadata.
+- **Engine import.** Copy a package folder, or its `Art/`, `Models/` and `Audio/` folders, into a
+  Unity, Unreal Engine or Godot project. Every take arrives with its manifest under the same
+  name, so an importer can stamp source, engine and seed into its asset metadata, and
+  `package.json` lists every file with its hash.
 - **Asset tracking.** Read manifests into your asset system to keep lineage and model hashes with
   each asset. The decision record and `deliveries.csv` explain why each asset exists.
 - **Reviews.** Agents can draft and propose while the artist keeps the decisions. Every proposal
