@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from app import config, crexil_delivery, execution_outputs, promote
+from app import config, crexil_delivery, execution_outputs
 from app.db import Database
 from app.executors import CollectedOutput, DispatchRequest
 from test_api_v4 import booted, store
@@ -76,16 +76,20 @@ async def test_delivery_independent_failure_and_resume_same_paths(tmp_path, monk
         target = config.PROMOTE_DIR
         target.mkdir(parents=True, exist_ok=True)
         delivery, _ = await prepared(client, p['id'], [n['id'] for n in nodes], target)
-        original = promote.promote_candidate
-        def interrupted(source, *args, **kwargs):
+        original = crexil_delivery._chunks
+        def interrupted(source):
             if str(source) == nodes[0]['output_path']:
                 raise OSError('Drive disconnected')
-            return original(source, *args, **kwargs)
-        monkeypatch.setattr(promote, 'promote_candidate', interrupted)
+            return original(source)
+        monkeypatch.setattr(crexil_delivery, '_chunks', interrupted)
         path = f"/api/crexil/deliveries/{delivery['id']}/transfer"
         result = (await client.post(path, json=command())).json()
         assert [i['state'] for i in result['items']] == ['incomplete', 'complete']
-        monkeypatch.setattr(promote, 'promote_candidate', original)
+        assert 'Drive disconnected' in result['items'][0]['error']
+        # The failed item leaves none of its files behind; the healthy one is whole.
+        assert not any(Path(f['path']).exists() for f in result['items'][0]['files'])
+        assert all(Path(f['path']).is_file() for f in result['items'][1]['files'])
+        monkeypatch.setattr(crexil_delivery, '_chunks', original)
         resumed = (await client.post(path, json=command())).json()
         assert all(i['state'] == 'complete' for i in resumed['items'])
         assert [i['files'] for i in resumed['items']] == [i['files'] for i in delivery['items']]
@@ -107,7 +111,8 @@ async def test_delivery_crash_after_copy_reconciles_without_recopied_files(tmp_p
     try:
         def never_copy(*args, **kwargs):
             raise AssertionError('Already delivered bytes must not be copied again')
-        monkeypatch.setattr(promote, 'promote_candidate', never_copy)
+        monkeypatch.setattr(crexil_delivery, '_chunks', never_copy)
+        monkeypatch.setattr(crexil_delivery, '_conversion', never_copy)
         result = await crexil_delivery.transfer(db, delivery['id'])
         assert result['items'][0]['state'] == 'complete'
         assert before == {path: Path(path).stat().st_mtime_ns for path in before}
