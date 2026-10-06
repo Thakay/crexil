@@ -27,6 +27,15 @@ to `<state>/jobs/<id>.json`, which makes the cockpit's recovery after a
 restart a lookup. A job this process did not finish is recorded as failed
 when the runner starts again.
 
+**Only this machine's cockpit is served.** The runner has no accounts, so it
+answers only requests addressed to this machine (a Host allow-list: the
+loopback names, and `host.docker.internal`, the name the cockpit's container
+uses for the host), never a web page (any Origin is refused: the cockpit's
+server is the only client and sends none), and a job body only as
+`application/json`, a type no web page can send without asking first. It
+listens on loopback; listening beyond needs `--allow-remote`, and `--allow-host`
+names any further host clients use.
+
 **The body is a boundary.** Fields are checked by name and type; an unknown
 field is refused by name. Seeds are honored and recorded: a job without one
 gets a drawn seed, so every take can be reproduced on this installation.
@@ -51,6 +60,7 @@ import argparse
 import base64
 import binascii
 import io
+import ipaddress
 import json
 import logging
 import os
@@ -65,6 +75,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 VERSION = "1"
 ENGINE = "qwen3-tts"
@@ -87,7 +98,69 @@ MODELS = {
     "speak": ("Qwen/Qwen3-TTS-12Hz-1.7B-Base", "fd4b254389122332181a7c3db7f27e918eec64e3"),
 }
 
+# The hosts a request may be addressed to: this machine's loopback names, and
+# the name the cockpit's container uses for the host (compose.yaml).
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
+JOB_TYPE = "application/json"
+# A refused body up to this size is read and dropped before the answer, so
+# closing the connection never resets it before the refusal arrives.
+DRAIN_LIMIT = 1024 * 1024
+
 log = logging.getLogger("voice.runner")
+
+
+# --- who may knock ---
+
+def host_named(header: str | None) -> str | None:
+    """The host a Host header names, lowercased, without its port or IPv6
+    brackets; None when the header is missing or unreadable."""
+    if not header:
+        return None
+    try:
+        parts = urlsplit("//" + header.strip())
+        _ = parts.port                                 # a malformed port raises
+    except ValueError:
+        return None
+    return parts.hostname or None
+
+
+def refusal(headers, allowed_hosts: frozenset[str]) -> tuple[int, str] | None:
+    """Why a request is not served, or None. A Host outside the allow-list is
+    DNS rebinding or a misaddressed client; an Origin is a web page."""
+    host = host_named(headers.get("Host"))
+    if host not in allowed_hosts:
+        return 403, (f"Refused: this runner answers requests addressed to {', '.join(sorted(allowed_hosts))}; "
+                     f"this one is addressed to {host or 'no host'}.")
+    if headers.get("Origin") is not None:
+        return 403, "Refused: this runner serves the cockpit's server, never a web page."
+    return None
+
+
+def wrong_type(headers, expected: str) -> tuple[int, str] | None:
+    """A body that changes state must name its type. A web page can send plain
+    text or a form without asking first, never this type, so the check closes
+    that door."""
+    given = (headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+    return None if given == expected else (415, f"Refused: send the body as {expected}.")
+
+
+def loopback(host: str) -> bool:
+    name = host.strip().lower()
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+def check_bind(host: str, allow_remote: bool) -> None:
+    """Refuse to listen beyond this machine unless asked by name: the runner
+    has no accounts."""
+    if not allow_remote and not loopback(host):
+        raise ValueError(f"Refusing to listen on {host}: the runner has no accounts, so it serves this "
+                         "machine only. To serve the network anyway, pass --allow-remote and name the "
+                         "hosts clients use with --allow-host.")
 
 
 class Refused(ValueError):
@@ -469,18 +542,38 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args) -> None:       # the runner's own log, not stderr noise
         log.debug("%s %s", self.address_string(), fmt % args)
 
-    def _json(self, status: int, body: dict) -> None:
+    def _json(self, status: int, body: dict, *, close: bool = False) -> None:
         data = json.dumps(body).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
+        if close:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(data)
 
     def _parts(self) -> list[str]:
         return [part for part in self.path.split("?", 1)[0].split("/") if part]
 
+    def _refuse(self, why: tuple[int, str] | None) -> bool:
+        """Answer a refusal and close the connection, saying so in the answer so
+        no client reuses it. A body up to DRAIN_LIMIT is read and dropped first,
+        so the close neither resets the answer in flight nor leaves the body to
+        be read as the next request."""
+        if why is None:
+            return False
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if 0 < length <= DRAIN_LIMIT:
+            self.rfile.read(length)
+        self._json(why[0], {"detail": why[1]}, close=True)
+        return True
+
     def do_GET(self) -> None:
+        if self._refuse(refusal(self.headers, self.server.allowed_hosts)):
+            return None
         parts = self._parts()
         if parts == ["health"]:
             return self._json(200, self.runner.health())
@@ -501,8 +594,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"detail": "No such route."})
 
     def do_POST(self) -> None:
+        if self._refuse(refusal(self.headers, self.server.allowed_hosts)):
+            return None
         if self._parts() != ["jobs"]:
             return self._json(404, {"detail": "No such route."})
+        if self._refuse(wrong_type(self.headers, JOB_TYPE)):
+            return None
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -521,6 +618,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(202, {"job_id": self.runner.submit(spec)["id"]})
 
     def do_DELETE(self) -> None:
+        if self._refuse(refusal(self.headers, self.server.allowed_hosts)):
+            return None
         parts = self._parts()
         if len(parts) != 2 or parts[0] != "jobs":
             return self._json(404, {"detail": "No such route."})
@@ -528,11 +627,16 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(status, body)
 
 
-def serve(runner: Runner, host: str, port: int) -> ThreadingHTTPServer:
-    """A bound server for this runner (port 0 picks a free one); call serve_forever."""
+def serve(runner: Runner, host: str, port: int, *, allow_remote: bool = False,
+          allowed_hosts=()) -> ThreadingHTTPServer:
+    """A bound server for this runner (port 0 picks a free one); call serve_forever.
+    It listens beyond loopback only with allow_remote, and answers the local
+    hosts plus allowed_hosts."""
+    check_bind(host, allow_remote)
     server = ThreadingHTTPServer((host, port), Handler)
     server.daemon_threads = True
     server.runner = runner
+    server.allowed_hosts = LOCAL_HOSTS | {h.strip().strip("[]").lower() for h in allowed_hosts if h.strip()}
     return server
 
 
@@ -558,14 +662,24 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--design-model", default=os.environ.get("VOICE_RUNNER_DESIGN_MODEL"))
     parser.add_argument("--speak-model", default=os.environ.get("VOICE_RUNNER_SPEAK_MODEL"))
     parser.add_argument("--device", default=os.environ.get("VOICE_RUNNER_DEVICE", "cuda:0"))
+    parser.add_argument("--allow-remote", action="store_true",
+                        default=os.environ.get("VOICE_RUNNER_ALLOW_REMOTE") == "1",
+                        help="listen beyond this machine; the runner has no accounts")
+    parser.add_argument("--allow-host", action="append",
+                        default=[h for h in os.environ.get("VOICE_RUNNER_ALLOWED_HOSTS", "").split(",") if h.strip()],
+                        help="also answer requests addressed to this host name (repeatable)")
     args = parser.parse_args(argv)
+    try:
+        check_bind(args.host, args.allow_remote)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     # The runner never reaches the network: models load from the local cache.
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     paths = {"voice-design": resolve("voice-design", args.design_model),
              "speak": resolve("speak", args.speak_model)}
     runner = Runner(QwenBackend(paths, args.device), Path(args.state))
-    server = serve(runner, args.host, args.port)
+    server = serve(runner, args.host, args.port, allow_remote=args.allow_remote, allowed_hosts=args.allow_host)
     log.info("voice runner %s serving %s on %s:%d", VERSION, ENGINE, args.host, server.server_address[1])
     try:
         server.serve_forever()
