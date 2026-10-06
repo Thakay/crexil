@@ -1,6 +1,7 @@
 // The door on the project surface opens the panel, whose code loads only when asked.
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { createViewStore, ViewContext } from '../crexil/view';
 import { fakeDoor } from './fakes';
 import { VoiceDirectorPanel } from './VoiceDirectorPanel';
 
@@ -21,5 +22,15 @@ test('the door opens the panel beside the work, and the panel closes back to the
   expect(screen.getByRole('complementary', {name: 'Voice director'})).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(screen.getByRole('button', {name: 'Close'}));
+  expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
+});
+
+test('the closed door makes way while a room head fills its band, and returns with the Filmstrip', () => {
+  const store = createViewStore();
+  render(<ViewContext.Provider value={store}><VoiceDirectorPanel projectId="p1" door={fakeDoor()}/></ViewContext.Provider>);
+  expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
+  act(() => store.getState().inspect('n1'));
+  expect(screen.queryByRole('button', {name: 'Voice director ›'})).toBeNull();
+  act(() => { store.getState().closeTop(); });
   expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
 });
