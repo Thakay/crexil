@@ -236,7 +236,10 @@ forbid commercial use.** See [third-party.md](third-party.md). `scripts/models-m
 records a licence note per entry; nothing enforces it.
 
 Audio engines are rows of `configs/engines.json` with payload `audio`, each naming its provider.
-They ship disabled; set `enabled` when an installation can reach them.
+They ship disabled; set `enabled` when an installation can reach them. A row states per verb how many
+interleaved channels a raw PCM answer carries, `pcm_channels` (1 unless stated). It sits beside `fixed`, never in
+it, because `fixed` fields are sent to the provider. ElevenLabs Sound Effects answers `pcm_48000` in stereo, so its
+row says 2; speech and Voice Design answer in mono.
 
 The local voice engine (Qwen3-TTS) runs in its own environment behind `tools/tts/runner.py`;
 `tools/tts/README.md` covers install and start. Set `VOICE_RUNNER_URL` if it serves elsewhere than

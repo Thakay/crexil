@@ -77,8 +77,10 @@ or a sequence's limits.
 
 Agent-facing reads carry facts, ids, labels and reasons. They never carry a take's bytes or an
 address to fetch them. `GET directions/{id}/run` is the compact read of one run, made for agents.
-It names takes as the grid does: the run's number, the cell's letters, and a later output's
-number from 2, such as `3B` or `3B.2`; cells past `Z` continue as `3AA`, `3AB` and on.
+It names takes as the grid does: the run's number, the cell's letters, and for an attempt's later
+takes their number from 2, such as `3B` or `3B.2`. A take is counted among its attempt's takes only,
+never its receipt or companion files, so a hosted engine's first take reads `3B` as a local one's
+does. Cells past `Z` continue as `3AA`, `3AB` and on.
 It holds no file addresses or waveform data, and a blind run names no engine until the artist
 reveals it. ElevenLabs' terms forbid using its audio as input to any machine learning, and the
 model behind an agent is one, so no agent tool hands audio to a model. While any attempt of a blind run is
