@@ -392,8 +392,8 @@ TURNTABLE_MISSING = ("this mesh has no turntable render, so there is no "
                      "plate — the mesh file itself still downloads")
 
 RUNNER_SILENT = ("the turntable lives on the host and the 3D engine runner "
-                 "isn't answering — start it with `systemctl --user start "
-                 "3d-runner`, then reload")
+                 "isn't answering — start this checkout's runner "
+                 "(scripts/3d-runner.sh), then reload")
 
 
 async def _fetch_turntable(job: str) -> bytes:

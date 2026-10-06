@@ -200,7 +200,7 @@ def plain_cause(kind: str, *, lane: str, engine: str,
     if mesh:
         if kind == "unreachable":
             return ("the 3D engine runner can't be reached — is it running? "
-                    "(systemctl --user start 3d-runner)")
+                    "(scripts/3d-runner.sh starts this checkout's runner)")
         if kind == "error":
             return (f"{engine} failed partway through building the mesh — "
                     "the engine, not your image")
