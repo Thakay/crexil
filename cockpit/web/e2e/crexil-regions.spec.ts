@@ -125,7 +125,10 @@ test('import replaces pixels only after reading, saving and decoding, and contai
  await first.focus();await page.keyboard.press('Shift+Tab');
  await expect(editor.getByLabel('Reuse a saved mask',{exact:true})).toBeFocused();
  await page.keyboard.press('Tab');await expect(first).toBeFocused();
- await centerStroke(page);await expect(editor.getByRole('status')).toHaveText('Saved masks');
+ // the status already reads "Saved masks" from the first mask, so wait for the second to exist
+ await centerStroke(page);
+ await expect.poll(async()=>(await(await request.get(`/api/crexil/projects/${project.id}/masks`)).json()).length).toBe(2);
+ await expect(editor.getByRole('status')).toHaveText('Saved masks');
  masks=await(await request.get(`/api/crexil/projects/${project.id}/masks`)).json();
  expect(masks).toHaveLength(2);expect(await maskPixels(page,masks[1].id)).toEqual({center:255,edge:255});
  expect(masks[1].previous_mask_id).toBe(masks[0].id);
