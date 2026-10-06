@@ -50,6 +50,8 @@ An executor reports every failure to the scheduler as one `EngineFailure` with a
 | `interrupted` | the take was stopped by our own cancel | C6 |
 | `restart` | an external call was in flight when the server restarted | C1 |
 | `internal` | the cockpit's own code failed on the take | none |
+| `collection` | files were reported but could not be collected, or an audio take could not be measured; the bytes are kept | none |
+| `preflight` | the request was stopped before it reached the provider; nothing was sent | none |
 
 Every failed slot keeps three fields. `cause` is one plain line per kind, from `plain_cause` in `scheduler.py`. It never carries a status code or a stack trace (law 3). `detail` is the engine's raw text, cut to 1600 characters, shown only behind the cell's DETAILS fold. `kind` picks the buttons. The same facts go into a permanent `slot.failed` event with the attempt, engine, frame and cost.
 

@@ -122,7 +122,8 @@ author (law 23). The project surface (`#/projects`) prepares hosted continuation
 multi-source requests, states run and project limits before dispatch, and records the
 participant behind each preparation, selection, assessment and execution control; an assessment
 carries its reason. View state (canvas positions, viewport and dials) is stored
-without events, and engine definitions carry no `provider` field yet (§2). The downloader shows
+without events, and image and 3D engine definitions carry no `provider` field yet (§2); audio
+engine definitions declare theirs. The downloader shows
 no licence class, its default groups include non-commercial and unconfirmed weights, and the
 SDXL reference graphs load a checkpoint whose card now says non-commercial (§2, what ships; see
 [third-party.md](third-party.md)).

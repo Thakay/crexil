@@ -157,7 +157,10 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 | `MODELS_ROOT` | `~/models` | Model tree. Read only: file hashes for manifests, and the health check |
 | `COCKPIT_PROVIDERS_FILE` | `<root>/providers.json` | Pins and overrides for hosted models |
 | `OPENROUTER_URL` | `https://openrouter.ai/api/v1` | OpenRouter base URL. Override it to use a mock |
-| `OPENROUTER_API_KEY` | empty | The one secret. Empty turns the hosted lane off, unless a key is saved through the setup route |
+| `OPENROUTER_API_KEY` | empty | Secret. Empty turns the hosted image lane off, unless a key is saved through the setup route |
+| `ELEVENLABS_API_KEY` | empty | Secret, read from the environment only and never stored. Empty turns the ElevenLabs audio engines off |
+| `ELEVENLABS_URL` | `https://api.elevenlabs.io` | ElevenLabs API base URL. Override it to use a mock |
+| `VOICE_RUNNER_URL` | `http://127.0.0.1:8190` | Local voice runner base URL |
 | `COCKPIT_BUILD_ID` | `dev` | Build id shown by `/api/health` and the UI footer |
 | `COCKPIT_BUILD_TIME` | empty | Build time shown with the id |
 | `COCKPIT_EXTERNAL_CONCURRENCY` | `4` | Hosted takes in flight at once |
@@ -193,6 +196,9 @@ down is benched with its reason, and the server still boots. **Engines, node pac
 and hosted models are not part of this repository. Each carries its own licence and terms, and some
 forbid commercial use.** See [third-party.md](third-party.md). `scripts/models-manifest.json`
 records a licence note per entry; nothing enforces it.
+
+Audio engines are rows of `configs/engines.json` with payload `audio`, each naming its provider.
+They ship disabled; set `enabled` when an installation can reach them.
 
 ### Local ComfyUI lane
 
