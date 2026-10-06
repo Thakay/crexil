@@ -1,13 +1,14 @@
 // The grid room's keys and working line against a stubbed server: S selects the focused take
-// through the shared selection action and keeps an optional reason as an assessment; a blind
-// run's reveal is asked for in line with an optional reason. Fetch is stubbed; the client
+// through the shared selection action and keeps an optional reason as that choice's own
+// reason; a blind run's reveal is asked for in line with an optional reason, once the
+// choice's reason is settled, and is announced in the line's one status. Fetch is stubbed; the client
 // resolves globalThis.fetch lazily (api/client.ts).
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { player } from '../audio/player';
 import type { Material, Snapshot } from './api';
 import { RoomLine, useFastPick, useRoomAudition } from './GridRoom';
-import { useEscapeKey } from './keys';
+import { useEscapeBase, useEscapeKey } from './keys';
 import { createViewStore, ViewContext } from './view';
 
 const take = (id: string, slot_pos: number, output_index = 0) => ({id, payload: 'audio', available: true, turn_id: 't1',
@@ -29,7 +30,7 @@ beforeEach(() => {
   answers = {};
   vi.stubGlobal('fetch', vi.fn(async (input: Request) => {
     const path = new URL(input.url).pathname;
-    sent.push({method: input.method, path, body: await input.json()});
+    sent.push({method: input.method, path, body: input.method === 'GET' ? {} : await input.json()});
     return answers[`${input.method} ${path}`]?.() ?? Response.json({});
   }));
 });
@@ -65,7 +66,8 @@ describe('S selects the focused take (the row is the choice)', () => {
     fireEvent.change(reason, {target: {value: 'Warmest of the six.'}});
     fireEvent.submit(reason.closest('form')!);
     await screen.findByText('Reason kept with 0A.2.');
-    expect(sent[1]).toMatchObject({method: 'POST', path: '/api/crexil/projects/p1/assessments',
+    // with no choice named by the answer or the record, the reason is kept as an assessment of the take
+    expect(sent.find(item => item.method === 'POST')).toMatchObject({path: '/api/crexil/projects/p1/assessments',
       body: {reason: 'Warmest of the six.', node_ids: ['a2'], direction_id: 'd1', turn_id: 't1'}});
     await waitFor(() => expect(screen.getByRole('button', {name: 'Act on a2'})).toHaveFocus());
   });
@@ -78,7 +80,57 @@ describe('S selects the focused take (the row is the choice)', () => {
     expect(screen.getByText('Removed 0A')).toBeInTheDocument();
     fireEvent.keyDown(reason, {key: 'Escape', code: 'Escape'});
     await waitFor(() => expect(screen.queryByRole('textbox', {name: 'Why 0A? Optional'})).toBeNull());
-    expect(sent).toHaveLength(1);
+    expect(sent.filter(item => item.method !== 'GET')).toHaveLength(1);
+  });
+  it("keeps the reason with the choice itself, as a revision of the choice the answer names, and refreshes (law 23)", async () => {
+    answers['PUT /api/crexil/directions/d1/selection'] = () => Response.json({id: 'd1', latest_decision: {event_id: 'event-9'}});
+    const refresh = vi.fn();
+    mount(snapshot(), refresh);
+    screen.getByRole('button', {name: 'Act on b1'}).focus();
+    press('s');
+    const reason = await screen.findByRole('textbox', {name: 'Why 0B? Optional'});
+    fireEvent.change(reason, {target: {value: 'Brightest of the three.'}});
+    fireEvent.submit(reason.closest('form')!);
+    await screen.findByText('Reason kept with 0B.');
+    expect(sent[1]).toMatchObject({method: 'POST', path: '/api/crexil/projects/p1/assessments',
+      body: {reason: 'Brightest of the three.', previous_id: 'event-9', actor: {kind: 'human', name: 'Artist'}}});
+    expect(sent[1].body).not.toHaveProperty('node_ids');
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+  it('finds the choice in the record when the selection answer does not name it', async () => {
+    // the record lists the direction's decisions newest first
+    answers['GET /api/crexil/projects/p1/record'] = () => Response.json({decisions: [
+      {event_id: 'assessed', kind: 'assessment', node_ids: ['a1'], revised_by: null},
+      {event_id: 'mine', kind: 'selection', node_ids: ['b1', 'a1'], revised_by: null},
+      {event_id: 'older', kind: 'selection', node_ids: ['b1'], revised_by: null}]});
+    mount(snapshot(['b1']));
+    screen.getByRole('button', {name: 'Act on a1'}).focus();
+    press('s');
+    const reason = await screen.findByRole('textbox', {name: 'Why 0A? Optional'});
+    expect(sent[1]).toMatchObject({method: 'GET', path: '/api/crexil/projects/p1/record'});
+    fireEvent.change(reason, {target: {value: 'Brightest.'}});
+    fireEvent.submit(reason.closest('form')!);
+    await screen.findByText('Reason kept with 0A.');
+    expect(sent.find(item => item.method === 'POST')?.body).toMatchObject({reason: 'Brightest.', previous_id: 'mine'});
+  });
+  it('holds Escape while the choice is on its way, so the room stays open for its reason', async () => {
+    let answer!: () => void;
+    answers['PUT /api/crexil/directions/d1/selection'] = () => Response.json({});
+    const room = createViewStore({room: 0});
+    vi.stubGlobal('fetch', vi.fn(async (input: Request) => {
+      sent.push({method: input.method, path: new URL(input.url).pathname, body: await input.json()});
+      await new Promise<void>(done => {answer = done;});
+      return Response.json({});
+    }));
+    function Base() {useEscapeBase(() => {room.getState().closeTop();}); return null;}
+    render(<ViewContext.Provider value={room}><Base/><Room data={snapshot()}/></ViewContext.Provider>);
+    screen.getByRole('button', {name: 'Act on a1'}).focus();
+    press('s');
+    await waitFor(() => expect(sent).toHaveLength(1));
+    fireEvent.keyDown(document.body, {key: 'Escape', code: 'Escape'});
+    expect(room.getState().room).toBe(0);
+    act(() => answer());
+    expect(await screen.findByRole('textbox', {name: 'Why 0A? Optional'})).toBeInTheDocument();
   });
   it('acts on nothing when no take of the room is focused or acted on', () => {
     mount(snapshot());
@@ -113,6 +165,25 @@ describe('the reveal follows the choice (law 23, never a dialog)', () => {
     fireEvent.click(screen.getByRole('button', {name: 'Reveal engines'}));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(sent[0]).toMatchObject({path: '/api/crexil/turns/t1/reveal', body: {reason: 'Chosen blind.', actor: {kind: 'human'}}});
+  });
+  it("announces the reveal in the line's one status and moves focus there", async () => {
+    answers['POST /api/crexil/turns/t1/reveal'] = () => Response.json({turn_id: 't1', revealed: true, revealed_by: {kind: 'human', name: 'Kay'}});
+    mount(snapshot(['b1']));
+    fireEvent.click(screen.getByRole('button', {name: 'Reveal engines'}));
+    const status = screen.getByRole('status');
+    await waitFor(() => expect(status).toHaveTextContent('Run 0 revealed by Kay. Every take now names its engine and price.'));
+    await waitFor(() => expect(status).toHaveFocus());
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+  it("offers the reveal only after the choice's own reason is settled: one Why at a time", async () => {
+    mount(snapshot(['b1']));
+    screen.getByRole('button', {name: 'Act on a1'}).focus();
+    press('s');
+    await screen.findByRole('textbox', {name: 'Why 0A? Optional'});
+    expect(screen.queryByRole('textbox', {name: /revealing/})).toBeNull();
+    expect(screen.getByRole('group', {name: 'Blind run 0'})).toHaveTextContent('Blind · Run 0');
+    fireEvent.keyDown(screen.getByRole('textbox', {name: 'Why 0A? Optional'}), {key: 'Escape', code: 'Escape'});
+    expect(await screen.findByRole('textbox', {name: 'Reason for revealing run 0, optional'})).toBeInTheDocument();
   });
   it('keeps the same request for a retry after an unconfirmed reveal', async () => {
     let fail = true;

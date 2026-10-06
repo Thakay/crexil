@@ -10,7 +10,7 @@ vi.mock('../../api/client', () => ({
     refetch: vi.fn(), isLoading: false, error: null})},
   fetchClient: {},
 }));
-const { RecordRoom } = await import('./RecordRoom');
+const { DecisionCard, RecordRoom, latestVersions } = await import('./RecordRoom');
 
 const node = (id: string, turn_id: string, extra: Record<string, unknown> = {}) => ({id, turn_id, payload: 'audio', engine: 'qwen3-tts',
   identity_hidden: null, available: true, set_aside: false, turn_idx: 0, slot_pos: 0, output_index: 0, material: null,
@@ -57,5 +57,37 @@ describe('the record room', () => {
     expect(name).toHaveValue('Artist');
     fireEvent.change(name, {target: {value: 'Kay'}});
     expect(artist()).toEqual({kind: 'human', name: 'Kay'});
+  });
+});
+
+describe('a revised decision shows once, as its latest reason (law 23)', () => {
+  afterEach(cleanup);
+  const decision = (event_id: string, reason: string, extra: Record<string, unknown> = {}) => ({id: 'root', event_id, seq: 1,
+    created_at: '2026-10-06T10:00:00Z', kind: 'selection', actor: {kind: 'human', name: 'Artist'}, reason, node_ids: [],
+    direction_id: null, turn_id: null, sequence_id: null, previous_id: null, revised_by: null, historical: false, ...extra}) as never;
+  const chosen = decision('e1', '', {revised_by: 'e2'});
+  const reasoned = decision('e2', 'Warmest of the six.', {previous_id: 'e1'});
+  const ids = (items: unknown[]) => items.map(item => (item as {event_id: string}).event_id);
+  it("lists a choice and the reason its participant gave it next as one decision", () => {
+    expect(ids(latestVersions([reasoned, decision('e3', 'Other.'), chosen]))).toEqual(['e2', 'e3']);
+    expect(ids(latestVersions([chosen]))).toEqual(['e1']);
+  });
+  it("keeps every other version's card, its author and its text (law 23)", () => {
+    const scouts = decision('s1', 'Strong silhouette.', {revised_by: 's2', actor: {kind: 'agent', name: 'Scout'}});
+    expect(ids(latestVersions([decision('s2', 'Keep the silhouette.', {previous_id: 's1'}), scouts]))).toEqual(['s2', 's1']);
+    const others = decision('o1', '', {revised_by: 'o2', actor: {kind: 'agent', name: 'Scout'}});
+    expect(ids(latestVersions([decision('o2', 'Chosen for its edge.', {previous_id: 'o1'}), others]))).toEqual(['o2', 'o1']);
+  });
+  it('says a reason given with the choice, or a reason revised later', () => {
+    render(<DecisionCard item={reasoned} previous={chosen} data={data} inspect={() => {}}/>);
+    expect(screen.getByText('Display choice')).toBeInTheDocument();
+    expect(screen.getByText('Reason given with the choice.')).toBeInTheDocument();
+    cleanup();
+    render(<DecisionCard item={reasoned} previous={decision('e1', 'An earlier reason.', {revised_by: 'e2'})} data={data} inspect={() => {}}/>);
+    expect(screen.getByText('Reason revised; the earlier version is retained.')).toBeInTheDocument();
+  });
+  it('names the participant with the one author line', () => {
+    render(<DecisionCard item={decision('e4', 'Picked.', {actor: {kind: 'agent', name: 'voice-director'}})} data={data} inspect={() => {}}/>);
+    expect(screen.getByText('Agent · voice-director')).toBeInTheDocument();
   });
 });

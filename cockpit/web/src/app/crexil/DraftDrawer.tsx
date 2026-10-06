@@ -9,6 +9,9 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // totals before Run is asked for again; any other conflict means the request changed.
 // Empty words can start from the words of a section in this preparation's family, its
 // row or its sources' rows: they are copied here to edit, and that section keeps its own.
+// A new direction's untouched name follows its action. Focus stays where the next move
+// is: on Review while it works, then on Run, or on the review's points to resolve; on the
+// words after they are carried. Closing says whether the run was sent (onClose).
 import { useEffect, useRef, useState } from 'react';
 import type { components } from '../../generated/openapi';
 import { fetchClient } from '../../api/client';
@@ -17,7 +20,7 @@ import { ActionError, blankPreparation, command, isDefiniteRefusal, isSpendingCo
   result, money, type Direction, type Material, type Operation, type Preparation } from './api';
 import { useEscapeLayer } from './keys';
 import { operationStanding } from './capability';
-import { dataLine, priceLine, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
+import { dataLine, priceLine, priceTag, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
 import { runFace } from './runFace';
 import { sourceRoles as rolesOf } from './media';
 import s from './Filmstrip.module.css';
@@ -35,7 +38,8 @@ export const hasPendingSubmission=(id:string)=>Boolean(savedSubmission(id));
 
 export function DraftDrawer({ direction, directions, nodes, operations, onSaved, onClose, onCopied }: {
   direction: Direction; directions: readonly Direction[]; nodes: Material[]; operations: Operation[];
-  onSaved: () => void; onClose: () => void; onCopied:(id:string)=>void;
+  /** `ran` is true when the drawer closed because its run was sent. */
+  onSaved: () => void; onClose: (ran: boolean) => void; onCopied:(id:string)=>void;
 }) {
   const [maskPending,setMaskPending] = useState(false);
   const draft=usePreparationDraft(direction,onSaved,maskPending);
@@ -51,8 +55,11 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
   const closeRequested = useRef(false);
   const pendingNavigation = useRef<string | null>(null);
   const currentDraft=useRef(draft);currentDraft.current=draft;
-  const finishClose = () => {
-    onClose();
+  const runButton = useRef<HTMLButtonElement>(null);
+  const reviewPoints = useRef<HTMLElement>(null);
+  const words = useRef<HTMLTextAreaElement>(null);
+  const finishClose = (ran = false) => {
+    onClose(ran);
     if (pendingNavigation.current) location.hash = pendingNavigation.current;
   };
   const close = () => {
@@ -127,6 +134,8 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
       if(next.revision!==revision){draft.requireComparison();return;}
       if(currentDraft.current.revision!==revision||currentDraft.current.unresolved||pendingMasks.current)return;
       setReview(next);
+      // The next move: Run when the review is ready, else the points to resolve.
+      requestAnimationFrame(()=>(next.ready&&!preparingImage?runButton.current:reviewPoints.current??runButton.current)?.focus());
     }
     catch (err) {setRunError(message(err));} finally {setRunning(false);}
   };
@@ -142,7 +151,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
       if(accepted.image) await result(fetchClient.POST('/api/crexil/directions/{did}/prepare-image', {params:{path:{did:direction.id}}, body:accepted.body}));
       else await result(fetchClient.POST('/api/crexil/directions/{did}/submit', {params:{path:{did:direction.id}}, body:accepted.body}));
       sessionStorage.removeItem(submissionKey(direction.id));pendingSubmission.current=null;setSubmission(null);
-      onSaved(); finishClose();
+      onSaved(); finishClose(true);
     } catch (err) {
       if(isDefiniteRefusal(err)){
         sessionStorage.removeItem(submissionKey(direction.id));pendingSubmission.current=null;setSubmission(null);setReview(null);
@@ -156,7 +165,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
   };
   return <section className={s.drawer} aria-label="Preparation">
     <div className={s.drawerHead} inert={regionEditing}>
-      <span className={s.mono}>{setup.action} · preparation</span>
+      <span className={s.mono}>{actionView(setup.action)?.label ?? setup.action} · preparation</span>
       <span role="status" className={s.saved}>{draft.status}</span>
       <button onClick={close}>Close · Esc</button>
     </div>
@@ -173,7 +182,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
       <div className={s.actions}>
         <button disabled={draft.reading||saving} onClick={()=>void draft.readSaved()}>{draft.reading?'Reading…':'Compare saved version'}</button>
         <button disabled={maskPending||saving||draft.pending} onClick={()=>void copy()}>{draft.copyPending?'Confirm same copy':'Save my version separately'}</button>
-        <button disabled={maskPending||saving||draft.pending||draft.copyPending||Boolean(draft.storageError)} onClick={finishClose}>Keep in this tab and close</button>
+        <button disabled={maskPending||saving||draft.pending||draft.copyPending||Boolean(draft.storageError)} onClick={()=>finishClose()}>Keep in this tab and close</button>
       </div>
       {draft.comparison&&<>
         <div className={s.preparationComparison}>
@@ -220,15 +229,22 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
         <label>Action<select aria-label="Action" value={setup.action} onChange={e => {
           const initial=initialImagePreparation(refs.map(r=>nodes.find(n=>n.id===r.node_id)).filter((n):n is Material=>Boolean(n)));
           const recipe=setup.image_preparation??initial;
-          update({action:e.target.value as Preparation['action'], ...(e.target.value==='prepare'?{image_preparation:{...recipe,items:refs.map(ref=>recipe.items?.find(item=>item.node_id===ref.node_id)??initial.items?.find(item=>item.node_id===ref.node_id)??{node_id:ref.node_id})}}:{})});
+          const action=e.target.value as Preparation['action'];
+          // A name nobody has changed yet is the action's own, so it follows the action.
+          if(title===actionView(setup.action)?.title&&actionView(action))updateTitle(actionView(action)!.title);
+          update({action, ...(action==='prepare'?{image_preparation:{...recipe,items:refs.map(ref=>recipe.items?.find(item=>item.node_id===ref.node_id)??initial.items?.find(item=>item.node_id===ref.node_id)??{node_id:ref.node_id})}}:{})});
         }}>
           {Object.entries(ACTIONS).filter(([,action])=>action?.listed).map(([id,action])=><option key={id} value={id}>{action!.label}</option>)}
         </select></label>
-        <label>{wordsName}<textarea aria-label={wordsName} placeholder={meshAction?'Describe this direction for the record…':spoken?`Write the ${spoken.toLowerCase()}…`:'Describe the next result…'} value={setup.prompt} onChange={e => update({prompt:e.target.value})}/></label>
+        <label>{wordsName}<textarea ref={words} aria-label={wordsName} placeholder={meshAction?'Describe this direction for the record…':spoken?`Write the ${spoken.toLowerCase()}…`:'Describe the next result…'} value={setup.prompt} onChange={e => update({prompt:e.target.value})}/></label>
         {carry.length > 0 && <div className={s.carryWords} role="group" aria-labelledby={`carry-head-${direction.id}`}>
           <span className={s.mono} id={`carry-head-${direction.id}`}>Start from the words of</span>
           <div>{carry.map(item => <button key={item.direction} type="button" aria-label={`Start from the words of ${item.title}`}
-            aria-describedby={`carry-words-${item.direction}`} onClick={() => update({prompt: item.words})}>
+            aria-describedby={`carry-words-${item.direction}`} onClick={() => {
+              update({prompt: item.words});
+              // The words are here to edit: the caret waits at their end.
+              requestAnimationFrame(() => {words.current?.focus(); words.current?.setSelectionRange(item.words.length, item.words.length);});
+            }}>
             <strong>{item.title}</strong><span id={`carry-words-${item.direction}`}>{item.words}</span></button>)}</div>
           <p className={s.hint}>Copies the words here to edit. The section they come from keeps its own.</p>
         </div>}
@@ -268,7 +284,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
           });
           const standing = operationStanding(operation, setup.action??'generate', refs.map(ref => nodes.find(n => n.id === ref.node_id)).filter((n): n is Material => Boolean(n)));
           return <div className={`${s.operation} ${standing.tier!=='ready'?s.operationUnavailable:''}`} data-standing={standing.tier} key={operation.id}>
-            <div><span>{operation.label}</span><span className={s.micro}>{standing.tier==='notForThis'?'Not for this action':`${operation.evidence} · ${operation.availability}`}</span>
+            <div><span className={s.operationName}><span>{operation.label}</span>{priceTag(operation)&&<span className={s.priceTag}>{priceTag(operation)}</span>}</span><span className={s.micro}>{standing.tier==='notForThis'?'Not for this action':`${operation.evidence} · ${operation.availability}`}</span>
               <span className={s.dataLine}>{dataLine(operation, standing.tier==='notForThis' ? operation.actions[0] : setup.action)}</span></div>
             <label className={s.count}>Attempts<input type="number" min={0} max={operation.attempt_max??16} value={choice?.count ?? 0} aria-label={`${operation.label} attempts`}
               onChange={e => update({operations:[...choices.filter(c => c.operation_id !== operation.id), ...(Number(e.target.value) > 0 ? [{operation_id:operation.id, revision:operation.revision, count:Number(e.target.value), controls: choice?.controls ?? {}}] : [])]})}/></label>
@@ -301,7 +317,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
       <img className={s.preparedPreview} src={String(review.snapshot.preview_data_url)} alt="Exact prepared result"/>
       <p>The new image keeps its preparation settings and source hashes. The original material remains available.</p>
     </section>}
-    {review && !preparingImage && <section className={`${s.runReview} ${review.snapshot.region?s.regionReview:''}`} aria-label="Run review" tabIndex={0}>
+    {review && !preparingImage && <section ref={reviewPoints} className={`${s.runReview} ${review.snapshot.region?s.regionReview:''}`} aria-label="Run review" tabIndex={0}>
       <strong>{review.ready ? 'Ready to submit' : 'Resolve these points before running'}</strong>
       <p>{review.ready_attempts} ready · {review.blocked_attempts} blocked · {review.maximum_usd === null ? setup.spending_policy==='published_tariff'?`Published-tariff reservation ${money(review.reserved_usd??0)}; no hard ceiling`:'Maximum cannot be established' : `Maximum for ready requests ${money(review.maximum_usd)}`} · Limit {money(setup.spending_limit_usd ?? 0)}</p>
       {review.ready && review.blocked_attempts > 0 && <p>Run submits the ready requests. Blocked requests stay in this preparation for you to revise.</p>}
@@ -314,11 +330,14 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
     </section>}
     {runError && <p className={s.error} role="alert">{runError}</p>}
     <div className={s.drawerFoot} inert={regionEditing}><span>{preparingImage ? `${refs.length} sources · New derived image` : `${count} planned attempts · ${refs.length > 1 ? 'sources together' : 'one direction'}`}</span>
-      {direction.sequence_template ? <span>This is a sequence preparation. Close to review and authorize its remaining work in Sequences.</span> : <span className={s.actions}><button disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || running || Boolean(submission) || direction.state!=='draft'} onClick={() => void reviewRun()}>{running ? 'Working…' : preparingImage ? 'Review image' : 'Review run'}</button>
+      {direction.sequence_template ? <span>This is a sequence preparation. Close to review and authorize its remaining work in Sequences.</span> : <span className={s.actions}><button
+        disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || Boolean(submission) || direction.state!=='draft'}
+        aria-disabled={running || undefined} onClick={() => {if (!running) void reviewRun();}}>{running ? 'Working…' : preparingImage ? 'Review image' : 'Review run'}</button>
         {!submission&&review?.ready && (() => {
           // The reviewed price sits on the button that spends it; a costed Run is never the default (law 6).
           const face = preparingImage ? {label: 'Save derived image', paid: false} : runFace(review, setup.spending_policy);
-          return <button className={face.paid ? s.paidRun : s.primary} disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || running || direction.state!=='draft'} onClick={() => void submit()}>{face.label}</button>;
+          return <button ref={runButton} className={face.paid ? s.paidRun : s.primary} disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || direction.state!=='draft'}
+            aria-disabled={running || undefined} onClick={() => void submit()}>{face.label}</button>;
         })()}</span>}
     </div>
   </section>;

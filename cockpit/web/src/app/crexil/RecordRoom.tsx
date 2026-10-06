@@ -1,5 +1,7 @@
 // The record room finds work without changing its display selection. Reasons are
-// separate attributed events; revising one retains the earlier author and text.
+// separate attributed events; revising one retains the earlier author and text, and the
+// record shows a revised decision once, as its latest reason, saying whether that reason
+// was given with the choice or revised later.
 // Uncertain saves replay the same body, including after returning to this room.
 // Material shows its measured facts (law 17); a blind run's takes join the record
 // once the run settles, and each run says whether it was blind and who revealed it.
@@ -8,8 +10,9 @@
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
-import {ActionError,artist,command,engineLabel,isDefiniteRefusal,label,message,result,setArtistName,type Snapshot} from './api';
+import {ActionError,actorLine,artist,command,engineLabel,isDefiniteRefusal,label,message,result,setArtistName,type Snapshot} from './api';
 import {isWithheld,settled,withheldRuns} from './blind';
+import {byGridPosition} from './cells';
 import {MaterialThumbnail} from './MaterialThumbnail';
 import {runLine} from './faces';
 import {mediumOf} from './media';
@@ -18,6 +21,15 @@ import s from './Filmstrip.module.css';
 export type Decision=components['schemas']['DecisionView'];
 type Assessment=components['schemas']['RecordAssessment'];
 export type RecordScope={node_id?:string;direction_id?:string;turn_id?:string};
+
+/** The decisions to list. A choice made without a reason and given its reason next by the
+ *  same participant (a fast pick and its reason) reads as one decision, its revision; every
+ *  other version keeps its own card, author and text. Nothing leaves the record or its export. */
+export const latestVersions=(records:readonly Decision[])=>records.filter(item=>{
+  if(!item.revised_by||item.reason?.trim())return true;
+  const next=records.find(other=>other.event_id===item.revised_by);
+  return !next||next.actor?.kind!==item.actor?.kind||next.actor?.name!==item.actor?.name;
+});
 const kindName={selection:'Display choice',sequence_choice:'Sequence choice',assessment:'Assessment'};
 const storageKey=(wid:string)=>`crexil-assessment:${wid}`;
 type SavedAssessment={body:Assessment|null;reason:string;previous?:Decision;nodeIds:string[];directionId?:string;turnId?:string;independent?:boolean};
@@ -50,7 +62,7 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
   const record=query.data;
   const records=record?.decisions??[];
   const withheld=withheldRuns(data);
-  const material=data.nodes.filter(node=>record?.material_ids.includes(node.id)&&!isWithheld(node,withheld)&&(!filtered.node_id||node.id===filtered.node_id)&&(!filtered.direction_id||data.directions.find(d=>d.id===filtered.direction_id)?.node_ids.includes(node.id))&&(!filtered.turn_id||node.turn_id===filtered.turn_id));
+  const material=byGridPosition(data.nodes).filter(node=>record?.material_ids.includes(node.id)&&!isWithheld(node,withheld)&&(!filtered.node_id||node.id===filtered.node_id)&&(!filtered.direction_id||data.directions.find(d=>d.id===filtered.direction_id)?.node_ids.includes(node.id))&&(!filtered.turn_id||node.turn_id===filtered.turn_id));
   const [artistName,setName]=useState(()=>artist().name);
   const blindLine=(turnId:string)=>{
     const run=data.blind_runs?.find(item=>item.turn_id===turnId);
@@ -86,8 +98,8 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
         close={()=>{sessionStorage.removeItem(storageKey(data.project.id));setEditing(null);}} saved={()=>{setEditing(null);void query.refetch();}}/></div>}
       {tab==='decisions'&&<>
         {scoped&&!editing&&!otherDraft&&<button onClick={()=>setEditing({})}>Add assessment</button>}
-        {records.map(item=><DecisionCard key={item.event_id} item={item} data={data} inspect={inspect} openDirection={openDirection} openRun={openRun}
-          revise={editing||otherDraft?undefined:()=>setEditing({previous:item})}/>)}
+        {latestVersions(records).map(item=><DecisionCard key={item.event_id} item={item} data={data} inspect={inspect} openDirection={openDirection} openRun={openRun}
+          previous={records.find(other=>other.event_id===item.previous_id)} revise={editing||otherDraft?undefined:()=>setEditing({previous:item})}/>)}
         {record&&!records.length&&<div className={s.recordEmpty}><h2>{search?'No decisions match.':'No decisions recorded here yet.'}</h2><p>Display choices keep their supplied reasons. Open material or a direction to add an assessment.</p></div>}
         <div className={s.actions}>{before&&<button onClick={()=>setBefore(undefined)}>Newest decisions</button>}{record?.next_before&&<button onClick={()=>setBefore(record.next_before!)}>Older decisions</button>}</div>
       </>}
@@ -108,16 +120,18 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
   </section>;
 }
 
-export function DecisionCard({item,data,inspect,openDirection,openRun,revise}:{item:Decision;data:Snapshot;inspect:(id:string)=>void;openDirection?:(id:string)=>void;openRun?:(id:string)=>void;revise?:()=>void}) {
+export function DecisionCard({item,data,inspect,openDirection,openRun,revise,previous}:{item:Decision;data:Snapshot;inspect:(id:string)=>void;openDirection?:(id:string)=>void;openRun?:(id:string)=>void;revise?:()=>void;
+  /** The version this one revises, when the record at hand lists it. */
+  previous?:Decision}) {
   const direction=data.directions.find(d=>d.id===item.direction_id);
   return <article className={s.decision} aria-label={`${kindName[item.kind]} by ${item.actor?.name??'unrecorded participant'}`}>
-    <div className={s.decisionMeta}><strong>{kindName[item.kind]}</strong><span>{item.actor?item.actor.kind==='human'&&item.actor.name==='Artist'?'Artist':`${item.actor.kind==='agent'?'Agent':'Artist'} · ${item.actor.name}`:'Participant not recorded'}</span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time></div>
+    <div className={s.decisionMeta}><strong>{kindName[item.kind]}</strong><span>{actorLine(item.actor)}</span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time></div>
     <p className={s.decisionReason}>{item.reason||'No reason supplied.'}</p>
     <div className={s.decisionLinks}>{item.node_ids.map(id=>{const node=data.nodes.find(n=>n.id===id);return node?<button key={id} onClick={()=>inspect(id)}>{label(node)}{!node.available?' · unavailable':''} ›</button>:<span key={id}>Material {id} · unavailable</span>;})}
       {direction&&openDirection&&<button onClick={()=>openDirection(direction.id)}>T{direction.row_idx} · {direction.title} ›</button>}
       {item.turn_id&&openRun&&<button onClick={()=>openRun(item.turn_id!)}>Execution grid ›</button>}
     </div>
-    <div className={s.decisionFoot}>{item.previous_id&&<span>Reason revised; the earlier version is retained.</span>}{item.revised_by&&<span>A later reason is recorded.</span>}{item.historical&&<span>Restored history</span>}{!item.revised_by&&revise&&<button onClick={revise}>Revise reason</button>}</div>
+    <div className={s.decisionFoot}>{item.previous_id&&<span>{previous&&!previous.reason?.trim()?'Reason given with the choice.':'Reason revised; the earlier version is retained.'}</span>}{item.revised_by&&<span>A later reason is recorded.</span>}{item.historical&&<span>Restored history</span>}{!item.revised_by&&revise&&<button onClick={revise}>Revise reason</button>}</div>
   </article>;
 }
 
