@@ -36,10 +36,11 @@ NOT_CHARGED = 'Nothing was charged.'
 
 class Record:
     """A stand-in for the server's record of one provider: what receipts bind,
-    which other attempts are unsettled, and the saved voices it keeps."""
+    which other attempts are unsettled or landed with a receipt, and the saved
+    voices it keeps."""
 
-    def __init__(self, *, bound=(), unsettled=(), sent_at=None, voices=None):
-        self.bound, self.unsettled, self.sent_at = set(bound), list(unsettled), sent_at
+    def __init__(self, *, bound=(), unsettled=(), receipted=(), sent_at=None, voices=None):
+        self.bound, self.unsettled, self.receipted, self.sent_at = set(bound), list(unsettled), list(receipted), sent_at
         self.voices, self.kept, self.reads = dict(voices or {}), [], 0
         self.on_read = None
 
@@ -47,7 +48,8 @@ class Record:
         self.reads += 1
         if self.on_read:
             self.on_read(self)
-        return {'bound': set(self.bound), 'unsettled': list(self.unsettled), 'sent_at': self.sent_at}
+        return {'bound': set(self.bound), 'unsettled': list(self.unsettled), 'receipted': list(self.receipted),
+                'sent_at': self.sent_at}
 
     async def saved_voice(self, generated):
         return self.voices.get(generated)
@@ -148,6 +150,9 @@ async def test_a_lost_second_attempt_through_the_server_leaves_the_first_attempt
         (slot,) = lost['slots']
         assert (slot['kind'], slot['charged_usd']) == ('timeout', None)
         assert 'no take for this line' in slot['detail']
+        # The face names the engine by its display name, and the move that may still find the take.
+        assert slot['cause'] == ('The answer from ElevenLabs v4 was lost before it arrived. Its charge is '
+                                 'unverified; collecting looks for the take without generating it again')
         assert fake.calls('GET', '/v1/history/hist-A/audio') == []                 # the first take stays the first's
         counts = await accounting(store(), p['id'])
         assert counts['charged_usd'] == pytest.approx((len(SPOKEN['preview_text']) + len(LINE)) * 80 / 1e6)
@@ -226,6 +231,64 @@ async def test_an_unsettled_attempt_of_the_same_line_makes_a_match_unattributabl
         await attempt(executor(fake), speech_envelope(saved_voice()), Record(unsettled=[sibling]))
     assert 'another attempt of the same line was out at the same time' in str(lost.value)
     assert lost.value.charged_usd is None and not [r for r in fake.requests if r.url.path.endswith('/audio')]
+
+
+@pytest.mark.usefixtures('rows', 'prices')
+async def test_a_landed_sibling_whose_take_history_cannot_name_makes_a_match_unattributable():
+    # Another attempt of this line in this voice landed, and its receipt holds only its
+    # answer's request id, which no listed item carries: the one match may be its take.
+    sibling = {'external': speech_envelope(saved_voice()), 'sent_at': time.time() - 1, 'ids': ['req-A']}
+    fake = (FakeElevenLabs().on('POST', SPEECH, httpx.ReadError('dropped'))
+            .on('GET', '/v1/history', listing(('hist-A', {'request_id': 'hist-req-A'})))
+            .on('GET', '/v1/history/hist-A/audio', httpx.Response(200, content=pcm())))
+    with pytest.raises(EngineFailure) as lost:
+        await attempt(executor(fake), speech_envelope(saved_voice()), Record(bound={'req-A'}, receipted=[sibling]))
+    assert 'another attempt of the same line landed at the same time' in str(lost.value)
+    assert lost.value.charged_usd is None and fake.calls('GET', '/v1/history/hist-A/audio') == []
+
+
+@pytest.mark.usefixtures('rows', 'prices')
+async def test_a_landed_sibling_history_names_leaves_the_one_match_left_to_bind():
+    sibling = {'external': speech_envelope(saved_voice()), 'sent_at': time.time() - 1, 'ids': ['req-A']}
+    fake = (FakeElevenLabs().on('POST', SPEECH, httpx.ReadError('dropped'))
+            .on('GET', '/v1/history', listing(('hist-A', {'request_id': 'req-A'}), 'hist-ours'))
+            .on('GET', '/v1/history/hist-ours/audio', httpx.Response(200, content=pcm())))
+    result, _ = await attempt(executor(fake), speech_envelope(saved_voice()), Record(bound={'req-A'},
+                                                                                   receipted=[sibling]))
+    assert result.external['history_item_id'] == 'hist-ours'
+    assert fake.calls('GET', '/v1/history/hist-A/audio') == []
+
+
+@pytest.mark.parametrize('history_request_id, why', [
+    ('req-A', 'no take for this line'),
+    ('hist-req-A', 'history does not say which take is its'),
+], ids=['history names the landed take by its answer', 'history names it otherwise'])
+async def test_a_lost_attempt_never_binds_a_landed_siblings_take_whatever_the_ids_say(
+        tmp_path, monkeypatch, history_request_id, why):
+    # Two attempts of one line in one voice: the first lands, its answer carrying request-id
+    # req-A and no history id; the second loses its connection before it was generated.
+    # History lists only the first attempt's take, under `history_request_id`.
+    fake = (FakeElevenLabs().on('POST', '/v1/text-to-voice/design', designed())
+            .on('POST', '/v1/text-to-voice', httpx.Response(200, json={'voice_id': 'voice-1'}))
+            .on('POST', SPEECH, httpx.Response(200, json={'audio_base64': b64(pcm()), 'alignment': None},
+                                               headers={'request-id': 'req-A'}), httpx.ReadError('dropped'))
+            .on('GET', '/v1/history', listing(('hist-A', {'request_id': history_request_id})))
+            .on('GET', '/v1/history/hist-A/audio', httpx.Response(200, content=pcm())))
+    async with boot(tmp_path, monkeypatch, fake) as (client, _):
+        p = await project(client)
+        _, voices = await landed(client, await prepare(client, p['id'], 'voice-design', DESCRIPTION,
+                                                       [(ELEVEN_DESIGN, 1, SPOKEN)]))
+        line = [(ELEVEN_SPEECH, 1, {})]
+        _, (first,) = await landed(client, await prepare(client, p['id'], 'speak', LINE, line, refs=[voices[0]['id']]))
+        lost = await settle_turn(await accepted(client, await prepare(client, p['id'], 'speak', LINE, line,
+                                                                      refs=[voices[0]['id']])), until={'failed', 'landed'})
+        (second,) = lost['slots']
+        speech = [n for n in await store().list_nodes(p['id']) if n['verb'] == 'speak']
+        counts = await accounting(store(), p['id'])
+    assert (second['status'], second['charged_usd']) == ('failed', None) and why in second['detail']
+    assert [n['id'] for n in speech] == [first['id']]                                # nothing bound twice
+    assert fake.calls('GET', '/v1/history/hist-A/audio') == []
+    assert counts['charged_usd'] == pytest.approx((len(SPOKEN['preview_text']) + len(LINE)) * 80 / 1e6)
 
 
 @pytest.mark.usefixtures('rows', 'prices')

@@ -253,6 +253,22 @@ async def test_the_decision_record_is_attributed_and_holds_no_audio(tmp_path, mo
         assert (await client.get('/api/crexil/projects/missing/decisions')).status_code == 404
 
 
+async def test_a_choice_made_with_its_reason_carries_it_on_its_selection_line(tmp_path, monkeypatch):
+    # The grid's fast pick on a blind run: one choice, its reason given with it.
+    async with casting(tmp_path, monkeypatch) as (client, _):
+        p = await project(client)
+        direction, turn, takes = await cast(client, p['id'])
+        chosen = await client.put(f"/api/crexil/directions/{direction['id']}/selection", json=command(
+            revision=await revision_of(client, p['id'], direction['id']), node_ids=[takes[1]['id']],
+            reason='Brightest of the three.'))
+        assert chosen.status_code == 200, chosen.text
+        assert chosen.json()['latest_decision']['reason'] == 'Brightest of the three.'
+        (line,) = (await client.get(f"/api/crexil/projects/{p['id']}/decisions")).json()['records']
+        assert (line['kind'], line['chosen'], line['reason'], line['blind']) == (
+            'selection', [takes[1]['id']], 'Brightest of the three.', True)
+        assert line['author'] == {'kind': 'human', 'name': 'Artist'} and line['run_id'] == turn['id']
+
+
 async def test_record_search_matches_words_never_key_names(tmp_path, monkeypatch):
     async with casting(tmp_path, monkeypatch) as (client, _):
         p = await project(client)

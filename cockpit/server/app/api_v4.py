@@ -392,8 +392,8 @@ TURNTABLE_MISSING = ("this mesh has no turntable render, so there is no "
                      "plate — the mesh file itself still downloads")
 
 RUNNER_SILENT = ("the turntable lives on the host and the 3D engine runner "
-                 "isn't answering — start it with `systemctl --user start "
-                 "3d-runner`, then reload")
+                 "isn't answering. Start this checkout's runner "
+                 "(scripts/3d-runner.sh), then reload")
 
 
 async def _fetch_turntable(job: str) -> bytes:
@@ -455,7 +455,8 @@ async def node_image(nid: str):
     if not path.is_file():
         raise HTTPException(404, "artefact file is missing from staging")
     media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    return FileResponse(path, media_type=media, headers=IMMUTABLE_CACHE)
+    return FileResponse(path, media_type=media, headers=IMMUTABLE_CACHE,
+                        stat_result=await blind.file_stat(_stack().db, node["turn_id"], path))
 
 
 @router.get("/nodes/{nid}/turntable",
@@ -468,7 +469,8 @@ async def node_turntable(nid: str):
     draw."""
     node = await _live_node(nid)
     path = await _turntable_file(node)
-    return FileResponse(path, media_type="image/webp", headers=IMMUTABLE_CACHE)
+    return FileResponse(path, media_type="image/webp", headers=IMMUTABLE_CACHE,
+                        stat_result=await blind.file_stat(_stack().db, node["turn_id"], path))
 
 
 @router.get("/nodes/{nid}/thumb",
@@ -499,7 +501,8 @@ async def node_thumb(nid: str):
             raise HTTPException(404, "artefact is not a readable image, so "
                                 "there is no thumbnail; the original may "
                                 "still open in the lightbox")
-    return FileResponse(dst, media_type="image/webp", headers=IMMUTABLE_CACHE)
+    return FileResponse(dst, media_type="image/webp", headers=IMMUTABLE_CACHE,
+                        stat_result=await blind.file_stat(_stack().db, node["turn_id"], dst))
 
 
 @router.post("/nodes/{nid}/position", response_model=NodePosition)
@@ -1314,10 +1317,30 @@ async def cancel_turn(turn_id: str):
 
 @router.post("/unbench", response_model=UnbenchResult)
 async def unbench(body: Unbench):
-    sched = _stack().scheduler
-    cleared = body.scope in sched.snapshot()["benches"]
-    await sched.unbench(body.scope)
-    return {"scope": body.scope, "cleared": cleared}
+    """Lift a bench from the legacy canvas (UNBENCH, TRY ONCE MORE) by the
+    project surface's resume rules: the lift names its participant on its
+    event (law 23); a runtime's bench lifts only once a live check finds
+    its cause gone, else 422 says what is still wrong (laws 3 and 4); and an
+    agent never sends held work that reserves money, nor any attempt of a
+    hidden run (403)."""
+    from .execution_controls import HIDDEN_RESUME, PAID_RESUME, remaining_cause, reserves_money
+    stack = _stack()
+    sched = stack.scheduler
+    bench = sched.standing(body.scope)
+    if bench is None:
+        return {"scope": body.scope, "cleared": False}
+    if body.actor.kind != "human":
+        held = await sched.held_by(body.scope)
+        hidden = await blind.hidden_turns(stack.db)
+        if any(slot["turn_id"] in hidden for slot in held):
+            raise HTTPException(403, HIDDEN_RESUME)
+        if reserves_money(held):
+            raise HTTPException(403, PAID_RESUME)
+    why = await remaining_cause(stack, bench)
+    if why:
+        raise HTTPException(422, why)
+    await sched.unbench(body.scope, actor=body.actor.model_dump())
+    return {"scope": body.scope, "cleared": True}
 
 
 @router.get("/events", response_model=Events)

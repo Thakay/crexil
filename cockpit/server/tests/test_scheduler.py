@@ -24,7 +24,8 @@ import pytest
 
 from app.db import Database
 from app.executors import DispatchRequest, ExecutionResult, Reconciliation
-from app.scheduler import ORPHAN_COPY, RetryRule, Scheduler
+from app.crexil_budget import accounting
+from app.scheduler import ORPHAN_COPY, UNSENT_COPY, RetryRule, Scheduler
 from fakes import FakeExecutor, Probe, Step, fail
 
 pytestmark = pytest.mark.anyio
@@ -614,7 +615,10 @@ async def test_output_arriving_after_a_lost_race_is_charged_once_and_kept(tmp_pa
                                           committed=0.05)
             slot_id = turn["slots"][0]["id"]
             await s.submit_turn(turn["id"], reqs)
-            await wait_until_running(db, slot_id)
+            for _ in range(300):                     # the call is out: its job is named
+                if (await db.get_slot(slot_id))["job_ref"]:
+                    break
+                await asyncio.sleep(0.01)
             await db.fail_slot(slot_id, cause="forced by test")
             gate.set()
             for _ in range(200):
@@ -774,9 +778,9 @@ async def test_retry_history_is_permanent_in_slot_events(tmp_path):
             await s.submit_turn(turn["id"], reqs)
             await settle(db, turn["id"], until={"landed"})
         types = [e["type"] for e in await db.slot_events(sid)]
-        assert types == ["slot.prepared", "slot.dispatched", "slot.retrying",
-                         "slot.queued", "slot.dispatched", "execution.output_discovered", "node.collected",
-                         "execution.output_collected", "node.landed"]
+        assert types == ["slot.prepared", "slot.dispatched", "slot.provider_sending", "slot.retrying",
+                         "slot.queued", "slot.dispatched", "slot.provider_sending", "execution.output_discovered",
+                         "node.collected", "execution.output_collected", "node.landed"]
 
 
 # --- restart recovery: a mid-batch restart recovers ---
@@ -885,8 +889,10 @@ async def test_orphaned_external_fails_honestly_with_unverified_amount(tmp_path)
         turn, _ = await make_batch(db, ws, [("gpt", "external")],
                                    committed=0.06)
         sid = turn["slots"][0]["id"]
-        await db.dispatch_slot(sid, external={"model": "gpt", "prompt": "p"},
-                               committed_usd=0.06)
+        slot = await db.dispatch_slot(sid, external={"model": "gpt", "prompt": "p"},
+                                      committed_usd=0.06)
+        await db.append_event("slot.provider_sending", **await db._slot_ids(slot),
+                              payload={"attempt": slot["attempt"]})   # the paid call left
         ext = FakeExecutor("or", "external")
         async with running(db, tmp_path, [ext], {"gpt": "or"}):
             done = await settle(db, turn["id"])
@@ -898,6 +904,25 @@ async def test_orphaned_external_fails_honestly_with_unverified_amount(tmp_path)
         assert unverified[0]["payload"]["reason"] == "restart"
         assert unverified[0]["payload"]["committed_usd"] == 0.06
         assert await db.workspace_charged(ws["id"]) == 0
+
+
+async def test_an_external_attempt_stopped_before_its_paid_call_settles_at_a_known_zero(tmp_path):
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace("A")
+        turn, _ = await make_batch(db, ws, [("gpt", "external")],
+                                   committed=0.06)
+        sid = turn["slots"][0]["id"]
+        await db.dispatch_slot(sid, external={"model": "gpt", "prompt": "p"},
+                               committed_usd=0.06)                  # no send recorded
+        ext = FakeExecutor("or", "external")
+        async with running(db, tmp_path, [ext], {"gpt": "or"}):
+            done = await settle(db, turn["id"])
+        slot = done["slots"][0]
+        assert (slot["status"], slot["kind"], slot["cause"]) == ("failed", "preflight", UNSENT_COPY)
+        assert slot["charged_usd"] == 0 and ext.starts == []        # never resubmitted (law 5)
+        assert await events_of(db, "slot.charge_unverified") == []
+        money = await accounting(db, ws["id"])
+        assert (money["reserved_usd"], money["unresolved_attempts"]) == (0, 0)
 
 
 async def test_a_queued_slot_without_payload_is_skipped_loudly(tmp_path):

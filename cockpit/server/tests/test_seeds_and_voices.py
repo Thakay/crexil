@@ -182,6 +182,42 @@ async def test_a_cancel_during_the_save_keeps_the_voice_and_sends_nothing_paid(t
     assert len(fake.calls('POST', SAVE)) == 1 and no_deletes(fake)
 
 
+async def test_a_restart_during_the_save_settles_the_unsent_line_at_a_known_zero(tmp_path, monkeypatch):
+    # The cockpit stops while the speech attempt saves its voice, before its paid call.
+    from app.crexil_budget import accounting
+    from app.scheduler import UNSENT_COPY
+    fake = (FakeElevenLabs().on('POST', '/v1/text-to-voice/design', designed())
+            .on('POST', SAVE, httpx.Response(200, json={'voice_id': 'voice-1'}))
+            .on('POST', SPEECH, spoken()))
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def saving(request):
+        if request.method == 'POST' and request.url.path == SAVE:
+            entered.set()
+            await release.wait()
+        return fake(request)
+
+    async with boot(tmp_path, monkeypatch, saving) as (client, _):
+        p = await project(client)
+        voice = await designed_take(client, p['id'])
+        turn_id = await accepted(client, await prepare(client, p['id'], 'speak', LINE, [(ELEVEN_SPEECH, 1, {})],
+                                                       refs=[voice['id']]))
+        await asyncio.wait_for(entered.wait(), 2)
+        sched = wiring.current.scheduler
+        await sched.stop()                    # a crash-equivalent stop keeps the running row running
+        release.set()
+        sched._started = sched._stopping = False
+        await sched.start()
+        (slot,) = (await store().get_turn(turn_id))['slots']
+        kinds = [e['type'] for e in await store().slot_events(slot['id'])]
+        counts = await accounting(store(), p['id'])
+    assert 'slot.provider_sending' not in kinds and fake.calls('POST', SPEECH) == []    # never sent
+    assert (slot['status'], slot['kind'], slot['cause'], slot['charged_usd']) == ('failed', 'preflight',
+                                                                                  UNSENT_COPY, 0)
+    assert 'slot.charge_unverified' not in kinds                                         # its charge is known (law 5)
+    assert (counts['reserved_usd'], counts['unresolved_attempts']) == (0, 0)
+
+
 @pytest.mark.usefixtures('rows', 'prices')
 async def test_a_voice_the_record_holds_is_used_at_dispatch_without_a_save_or_a_lookup():
     fake = FakeElevenLabs().on('POST', SPEECH, spoken())
@@ -270,9 +306,13 @@ async def test_the_record_names_bound_ids_unsettled_sends_and_this_attempts_send
         assert found['bound'] == {'req-landed', 'hist-landed'}                         # never this attempt's own
         assert sorted(u['slot_id'] for u in found['unsettled']) == sorted([lost['id'], running['id']])
         assert all(u['external'] == envelope and u['sent_at'] > 0 for u in found['unsettled'])
+        # A landed attempt is listed with the ids its receipt holds, never this attempt's own.
+        (other,) = found['receipted']
+        assert (other['slot_id'], other['ids'], other['external']) == (landed_['id'], ['hist-landed', 'req-landed'],
+                                                                     envelope)
         assert found['sent_at'] is not None
         assert (await db.provider_attempts('voice-runner', slot_id=mine['id'], attempt=1)) == {
-            'bound': set(), 'unsettled': [], 'sent_at': None}
+            'bound': set(), 'unsettled': [], 'receipted': [], 'sent_at': None}
         slot = await db.get_slot(mine['id'])
         await db.record_saved_voice(slot, 'elevenlabs', 'gen-0', 'voice-1', found=False)
         await db.record_saved_voice(slot, 'elevenlabs', 'gen-0', 'voice-1', found=True)   # kept once

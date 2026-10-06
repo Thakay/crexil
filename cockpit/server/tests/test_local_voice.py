@@ -456,6 +456,146 @@ async def test_a_silent_runner_never_runs_a_take_twice_through_the_shared_action
     assert len(list(door.jobs_dir.glob('*.json'))) == 2 and len(backend.calls) == 2   # one job per take
 
 
+# --- a request reaches the runner once (law 14) ---
+
+class Door(httpx.AsyncBaseTransport):
+    """The runner's door with its answers going astray. The first `refusals`
+    job requests are refused before anything is sent. The next `losses` reach
+    the runner, which queues the job, and the answer is lost on its way back;
+    with `dropped`, those requests are lost before the runner reads them. While
+    `silent`, lookups by client reference go unanswered."""
+
+    def __init__(self, *, refusals=0, losses=0, dropped=False, silent=False):
+        self.inner = httpx.AsyncHTTPTransport()
+        self.refusals, self.losses, self.dropped, self.silent = refusals, losses, dropped, silent
+        self.posts = 0
+
+    async def handle_async_request(self, request):
+        if request.method == 'POST' and request.url.path == '/jobs':
+            self.posts += 1
+            if self.refusals:
+                self.refusals -= 1
+                raise httpx.ConnectError('connection refused', request=request)
+            if self.losses:
+                self.losses -= 1
+                if not self.dropped:
+                    await (await self.inner.handle_async_request(request)).aread()
+                raise httpx.ReadError('the connection dropped before the answer arrived', request=request)
+        if self.silent and request.method == 'GET' and request.url.path == '/jobs':
+            raise httpx.ConnectError('the runner did not answer', request=request)
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self):
+        await self.inner.aclose()
+
+
+def attempt(number, **fields):
+    from dataclasses import replace
+    return replace(request(**fields), attempt=number)
+
+
+async def test_an_answer_lost_after_the_request_went_out_reattaches_to_its_one_job(tmp_path):
+    door_ = Door(losses=1)
+    with served(tmp_path) as (backend, door, base):
+        ex, collected = await opened(base, door_), Collector()
+        try:
+            handle = await ex.start(attempt(1, collector=collected))
+            result = await ex.wait(handle)
+        finally:
+            await ex.close()
+        (job,) = [json.loads(path.read_text()) for path in door.jobs_dir.glob('*.json')]
+    assert (handle.job_ref, job['client_ref']) == (job['id'], 'slot-1:1')
+    assert door_.posts == 1 and len(backend.calls) == 1                                  # one request, one job
+    assert result.primary_identity == 'take:0' and len(collected.landed()) == 3
+
+
+async def test_a_refused_connection_reached_nothing_and_is_the_failure_that_retries(tmp_path):
+    door_ = Door(refusals=1)
+    with served(tmp_path) as (backend, door, base):
+        ex = await opened(base, door_)
+        try:
+            with pytest.raises(EngineFailure) as refused:
+                await ex.start(attempt(1))
+            assert list(door.jobs_dir.glob('*.json')) == []
+            await ex.wait(await ex.start(attempt(2)))                # the scheduler's retry, as the next attempt
+        finally:
+            await ex.close()
+        refs = [json.loads(path.read_text())['client_ref'] for path in door.jobs_dir.glob('*.json')]
+    assert refused.value.kind == 'unreachable' and refused.value.charged_usd is None
+    assert refs == ['slot-1:2'] and len(backend.calls) == 1
+
+
+async def test_a_lost_answer_the_runner_cannot_place_leaves_the_take_uncertain(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_voice, 'REATTACH_S', 0.1)
+    with served(tmp_path) as (backend, door, base):
+        # The runner queued the job, then stopped answering lookups: collecting finds the job later.
+        silent = Door(losses=1, silent=True)
+        ex = await opened(base, silent)
+        try:
+            with pytest.raises(EngineFailure) as unplaced:
+                await ex.start(attempt(1))
+            silent.silent = False
+            (job,) = [json.loads(path.read_text()) for path in door.jobs_dir.glob('*.json')]
+            await finished(door, job['id'])
+            found = await ex.collect_existing({'id': 'slot-1', 'attempt': 1, 'job_ref': None},
+                                              request=attempt(1, collector=Collector()))
+        finally:
+            await ex.close()
+        # The request was lost before the runner read it: the runner holds no job for it.
+        dropped = await opened(base, Door(losses=1, dropped=True))
+        try:
+            with pytest.raises(EngineFailure) as unheld:
+                await dropped.start(attempt(1, slot='slot-2'))
+            gone = await dropped.collect_existing({'id': 'slot-2', 'attempt': 1, 'job_ref': None})
+        finally:
+            await dropped.close()
+    for failure in (unplaced.value, unheld.value):             # never `unreachable`, which would retry it
+        assert (failure.kind, str(failure), failure.plain, failure.charged_usd) == (
+            'uncertain', local_voice.LOST, True, 0)
+    assert found.kind == 'landed' and gone.kind == 'gone' and len(backend.calls) == 1
+
+
+async def test_a_lost_answer_and_a_refused_door_each_send_a_take_once_through_the_shared_actions(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(config, 'RETRY_BACKOFF_S', 0.01)
+    door_ = Door(losses=1, refusals=1)
+    with served(tmp_path) as (backend, door, base):
+        async with booted_audio(tmp_path, monkeypatch, executors={
+                'voice-runner': VoiceRunnerExecutor(base, transport=door_)}) as (client, _):
+            monkeypatch.setattr(config, 'VOICE_RUNNER_URL', base)
+            p = await project(client)
+            direction = await draft(client, p['id'], 'audio:voice-design:qwen3-tts', DESCRIPTION,
+                                    controls={'preview_text': PREVIEW}, count=2)
+            check = await reviewed(client, direction)
+            answer = await client.post(f"/api/crexil/directions/{direction['id']}/submit",
+                                       json=command(revision=check['revision'], review_token=check['token']))
+            turn = await settle_turn(answer.json()['turn_id'], until={'landed'})
+        refs = sorted(json.loads(path.read_text())['client_ref'] for path in door.jobs_dir.glob('*.json'))
+    first, second = turn['slots']
+    # The refused try retried visibly as attempt 2; the lost answer was re-attached, never sent again.
+    assert (first['attempt'], first['retry_of']) == (2, 'unreachable')
+    assert (second['attempt'], second['retry_of']) == (1, None)
+    assert refs == sorted([f"{first['id']}:2", f"{second['id']}:1"]) and len(backend.calls) == 2
+    assert door_.posts == 3
+
+
+def test_the_runner_keeps_one_job_per_client_reference_and_finds_it(tmp_path):
+    backend = StubBackend()
+    backend.gate = threading.Event()
+    with served(tmp_path, backend) as (_, door, base):
+        body = {'kind': 'voice-design', 'text': LINE, 'instruct': DESCRIPTION, 'n': 1, 'client_ref': 'slot-9:1'}
+        with httpx.Client(base_url=base) as client:
+            first = client.post('/jobs', json=body)
+            again = client.post('/jobs', json=body)
+            found = client.get('/jobs', params={'client_ref': 'slot-9:1'})
+            unknown = client.get('/jobs', params={'client_ref': 'slot-9:2'})
+            unnamed = client.get('/jobs')
+        assert first.status_code == again.status_code == 202
+        assert first.json()['job_id'] == again.json()['job_id'] == found.json()['id']
+        assert found.json()['client_ref'] == 'slot-9:1' and len(list(door.jobs_dir.glob('*.json'))) == 1
+        assert (unknown.status_code, unnamed.status_code) == (404, 400)
+
+
 # --- the startup check ---
 
 class Benches:

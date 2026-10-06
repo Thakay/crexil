@@ -295,6 +295,7 @@ async def test_a_character_package_lands_every_medium_where_a_game_engine_import
         assert isinstance(line['audio']['loudness_lufs'], float) and isinstance(line['audio']['peak_dbfs'], float)
         assert line['audio']['text'] == LINE and line['audio']['voice']['provider'] == 'voice-runner'
         assert line['audio']['terms'] is None and preview['audio']['text'] == PREVIEW
+        assert line['audio_version'] == sound['audio_version'] == preview['audio_version'] == manifests.AUDIO_VERSION == 1
         assert (line['verb'], line['transport'], line['provider'], line['local_only'], line['resolution']) == \
             ('speak', 'local', 'voice-runner', True, None)
         assert line['replayable'] == manifests.REPLAY_LOCAL_AUDIO
@@ -303,7 +304,8 @@ async def test_a_character_package_lands_every_medium_where_a_game_engine_import
             ('sfx', 'elevenlabs', 'elevenlabs', False)
         assert sound['replayable'] == manifests.REPLAY_EXTERNAL
         assert sound['audio']['terms']['no_ai_input'] is True and sound['audio']['terms']['allows'] == ['elevenlabs']
-        assert written['art']['audio'] is None and written['art']['resolution'] == {'width': 12, 'height': 8}
+        assert written['art']['audio'] is written['art']['audio_version'] is None
+        assert written['art']['resolution'] == {'width': 12, 'height': 8}
 
         # The record summary has one row per take, with its path and hash.
         rows = list(csv.DictReader(io.StringIO((root / 'records.csv').read_text())))

@@ -260,10 +260,8 @@ async def startup_checks(sched: Scheduler, comfy: ComfyClient,
     if not comfy_up and own is None:
         await sched.bench(
             COMFY_SCOPE, kind="unreachable",
-            cause=f"startup check: ComfyUI unreachable at "
-                  f"{config.COMFYUI_URL} — start it (systemctl --user start "
-                  f'comfyui), then POST /api/unbench {{"scope": '
-                  f'"{COMFY_SCOPE}"}}')
+            cause=f"Startup check: ComfyUI is not answering at {config.COMFYUI_URL}. "
+                  "Start this installation's ComfyUI there (scripts/comfyui.sh), then resume it.")
     elif comfy_up and own and own["kind"] in AUTO_CLEAR:
         await sched.unbench(COMFY_SCOPE)
     stale = benches.get("lane:local")
@@ -288,9 +286,8 @@ async def startup_checks(sched: Scheduler, comfy: ComfyClient,
         if ext is None:
             await sched.bench(
                 "lane:external", kind="no_key",
-                cause="startup check: no OpenRouter key — save one via "
-                      "/api/setup/openrouter, then POST /api/unbench "
-                      '{"scope": "lane:external"} (a bench, not a crash)')
+                cause="Startup check: there is no OpenRouter key. Save one in Connections, "
+                      "then resume hosted work.")
         return
     probe = await openrouter.probe()   # never raises
     if probe.get("ok"):
@@ -299,17 +296,17 @@ async def startup_checks(sched: Scheduler, comfy: ComfyClient,
     elif probe.get("error") == "key rejected (401)" and ext is None:
         await sched.bench(
             "lane:external", kind="dead_key",
-            cause="startup check: OpenRouter turned the key away — replace "
-                  "it via /api/setup/openrouter, then POST /api/unbench "
-                  '{"scope": "lane:external"}')
+            cause="Startup check: OpenRouter turned the key away. Replace the key in "
+                  "Connections, then resume hosted work.")
     # an unreachable probe benches nothing: the first real take fails
     # kind=unreachable and benches the lane with a live cause instead
 
 
 async def mesh_startup_check(sched: Scheduler, benches: dict) -> None:
     """The startup check on the 3D lane: a runner that isn't up benches its
-    two engines with the one command that fixes it, and the cockpit boots
-    anyway."""
+    two engines with the address it is expected at and the checkout's own
+    start script, never a service unit another installation may own, and
+    the cockpit boots anyway."""
     up = await probe_mesh_runner()
     for engine in sorted(MESH_ENGINES):
         scope = f"engine:{engine}"
@@ -317,10 +314,8 @@ async def mesh_startup_check(sched: Scheduler, benches: dict) -> None:
         if not up and b is None:
             await sched.bench(
                 scope, kind="unreachable",
-                cause=f"startup check: the 3D engine runner is not answering "
-                      f"at {config.THREED_URL} — start it (systemctl --user "
-                      f"start 3d-runner), then POST /api/unbench "
-                      f'{{"scope": "{scope}"}}')
+                cause=f"Startup check: the 3D engine runner is not answering at {config.THREED_URL}. "
+                      "Start this checkout's runner there (scripts/3d-runner.sh), then resume it.")
         elif up and b and b["kind"] in AUTO_CLEAR:
             await sched.unbench(scope)
 

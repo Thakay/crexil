@@ -128,6 +128,9 @@ class DispatchRequest:
     on_output: Callable[[CollectedOutput], Awaitable[bytes | None]] | None = None
     before_send: Callable[[], Awaitable[None]] | None = None
     record: ProviderRecord | None = None
+    # the slot's attempt this request belongs to, so a runtime can name one
+    # attempt's job apart from a retry's
+    attempt: int = 0
 
 
 @dataclass

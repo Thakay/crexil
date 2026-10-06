@@ -419,9 +419,25 @@ class CreativeStore:
                      'direction_id': direction['id'], 'parents': parents})
         return {'node': node, 'direction': await self.direction(direction['id'])}
 
+    async def continuation_row(self, wid: str, sources: list[str]) -> int | None:
+        """The row a continuation of these sources lands on: the row after the
+        last of their rows, beside the family's other continuations; None when
+        no source sits on a row. The client's `continuationRow` decides the same,
+        so a continuation joins its family whoever creates it."""
+        if not sources:
+            return None
+        ids = json.dumps(sources)
+        row = await self.db._one(
+            'SELECT MAX(row_idx) AS last FROM directions WHERE workspace_id=? AND id IN ('
+            'SELECT direction_id FROM direction_material WHERE node_id IN (SELECT value FROM json_each(?)) UNION '
+            'SELECT t.direction_id FROM direction_turns t JOIN nodes n ON n.turn_id=t.turn_id '
+            'WHERE n.id IN (SELECT value FROM json_each(?)))', (wid, ids, ids))
+        return None if row is None or row['last'] is None else row['last'] + 1
+
     async def new_direction(self, wid: str, title: str, setup: dict,
                             actor: dict, row_idx: int | None = None,
                             state: str = 'draft') -> dict:
+        """A new direction on `row_idx`, or on a new last row."""
         from .db import new_id, now_iso
         await self.project(wid)
         if row_idx is None:

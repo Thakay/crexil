@@ -204,12 +204,13 @@ class MeshExecutor:
 
     def _unreachable(self, e: Exception, when: str) -> EngineFailure:
         """Unreachable, on this lane: down is a bench with actionable copy,
-        never a crash. The words name the one command that fixes it."""
+        never a crash. The words name the address and the checkout's own start
+        script, never a service unit another installation may own."""
         return EngineFailure(
             "unreachable",
-            f"the 3D engine runner is not answering at {self._base} {when} "
-            f"— start it (systemctl --user start 3d-runner); the image "
-            f"engines beside this one are unaffected",
+            f"the 3D engine runner is not answering at {self._base} {when}. "
+            f"Start this checkout's runner there (scripts/3d-runner.sh); "
+            f"the image engines beside this one are unaffected",
             detail=str(e)[:600])
 
     # --- the four verbs ---

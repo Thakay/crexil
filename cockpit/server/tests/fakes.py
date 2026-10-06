@@ -72,8 +72,11 @@ class FakeExecutor:
 
     async def start(self, req: DispatchRequest) -> FakeHandle:
         self.starts.append(req.slot_id)
-        return FakeHandle(job_ref=f"job-{req.slot_id}-{len(self.starts)}",
-                          step=self._next_step(req.slot_id))
+        step = self._next_step(req.slot_id)
+        if isinstance(step.outcome, EngineFailure) and step.outcome.kind == "preflight":
+            raise step.outcome          # refused before the paid call, as a real preflight is
+        await guard(self, req)
+        return FakeHandle(job_ref=f"job-{req.slot_id}-{len(self.starts)}", step=step)
 
     async def wait(self, h: FakeHandle) -> ExecutionResult:
         self.probe.concurrent += 1
@@ -132,6 +135,18 @@ def fail(kind, msg="boom"):
     return EngineFailure(kind, msg)
 
 
+async def guard(ex, req: DispatchRequest) -> None:
+    """An external executor's last word before its paid call, as every real
+    one says it: the server's guard, which records the send; a refusal sends
+    nothing."""
+    if ex.lane != "external" or req.before_send is None:
+        return
+    try:
+        await req.before_send()
+    except ValueError as exc:
+        raise EngineFailure("preflight", str(exc), charged_usd=0) from exc
+
+
 def tone_wav(seconds=0.5, rate=24000, pitch=220.0, amplitude=0.3, channels=1, width=2) -> bytes:
     """A real PCM WAV tone, so collection measures it as it measures any take."""
     import math
@@ -182,6 +197,7 @@ class FakeAudioExecutor:
         pass
 
     async def start(self, req):
+        await guard(self, req)
         self.requests.append(req)
         return AudioHandle(job_ref=f'audio-{req.slot_id}-{len(self.requests)}', request=req)
 

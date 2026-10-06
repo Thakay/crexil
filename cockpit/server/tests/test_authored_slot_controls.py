@@ -13,7 +13,7 @@ import asyncio
 import pytest
 
 from app import config, wiring
-from app.execution_controls import PAID_RESUME, remaining_cause
+from app.execution_controls import HIDDEN_RESUME, PAID_RESUME, PAID_SEQUENCE, remaining_cause
 from app.executors import EngineFailure, GpuReading
 from app.scheduler import BenchEntry, Scheduler
 from fakes import FakeAudioExecutor, Step
@@ -21,13 +21,14 @@ from test_api_v4 import booted, settle_turn, store
 from test_audio_contract import PREVIEW, booted_audio, free_design_row
 from test_audio_contract import draft as audio_draft
 from test_audio_contract import submit as audio_submit
-from test_audio_guardrails import ELEVEN_DESIGN, SPOKEN, accepted, prepare
+from test_audio_guardrails import ELEVEN_DESIGN, LOCAL_DESIGN, SPOKEN, accepted, prepare
 from test_blind_everywhere import HOSTED, LOCAL, names_an_engine, prepared, ran, submitted
 from test_crexil import command, image_bytes, project
 from test_crexil_controls import control
 from test_crexil_execution import attest, draft, reviewed
-from test_crexil_hosted import discover, hosted
+from test_crexil_hosted import discover, hosted, limits
 from test_crexil_hosted import submit as submit_hosted
+from test_crexil_sequences import start as start_sequence
 from test_local_voice import served
 
 pytestmark = pytest.mark.anyio
@@ -356,7 +357,7 @@ async def test_moves_refuse_in_plain_words_with_the_next_move(tmp_path, monkeypa
 
         held_by_pause = await move(client, 'resume', paused)
         assert held_by_pause.status_code == 422 and held_by_pause.json()['detail'] == (
-            'This attempt waits for its run or project to resume. Resume that instead.')
+            'This attempt waits for its run, project or sequence to resume. Resume that instead.')
         stale = await move(client, 'cancel', paused, attempt=3)
         assert stale.status_code == 409 and stale.json()['detail'] == (
             'This attempt changed since it was read. Refresh it, then decide again.')
@@ -369,6 +370,69 @@ async def test_moves_refuse_in_plain_words_with_the_next_move(tmp_path, monkeypa
         settled = await move(client, 'resume', landed)
         assert settled.status_code == 409 and settled.json()['detail'] == (
             'This attempt is not held, so there is nothing to resume. Refresh it.')
+
+
+async def test_a_limit_hold_names_its_limit_and_the_move_that_exists(tmp_path, monkeypatch):
+    # The project's limit is lowered while the run's second attempt waits for the lane.
+    gate = asyncio.Event()
+    slow = FakeAudioExecutor('voice-runner', 'local', gate=gate)
+    async with booted_audio(tmp_path, monkeypatch, executors={'voice-runner': slow}) as (client, _):
+        p = await project(client)
+        turn_id = await accepted(client, await audio_draft(client, p['id'], f'audio:voice-design:{LOCAL}',
+                                                           'A gruff smith', controls={'preview_text': PREVIEW},
+                                                           count=2))
+        await statuses(turn_id, ['running', 'queued'])
+        current = (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project']
+        await limits(client, current, attempt_limit=1)
+        gate.set()
+        _, held = await statuses(turn_id, ['landed', 'held'])
+        answer = await move(client, 'resume', held)
+        assert answer.status_code == 422 and answer.json()['detail'] == (
+            'Project attempt limit is 1; used and reserved attempts total 2. '
+            "Raise the project's limit in its settings to send it, or cancel it.")
+        current = (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project']
+        await limits(client, current, attempt_limit=2)                   # raising it sends the attempt
+        await statuses(turn_id, ['landed', 'landed'])
+
+
+async def test_resuming_an_attempt_whose_limits_permit_it_now_sends_it(tmp_path, monkeypatch):
+    gate = asyncio.Event()
+    slow = FakeAudioExecutor('voice-runner', 'local', gate=gate)
+    async with booted_audio(tmp_path, monkeypatch, executors={'voice-runner': slow}) as (client, _):
+        p = await project(client)
+        turn_id = await accepted(client, await audio_draft(client, p['id'], f'audio:voice-design:{LOCAL}',
+                                                           'A gruff smith', controls={'preview_text': PREVIEW},
+                                                           count=2))
+        await statuses(turn_id, ['running', 'queued'])
+        await limits(client, (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project'],
+                     attempt_limit=1)
+        gate.set()
+        _, held = await statuses(turn_id, ['landed', 'held'])
+        # Room appears with nothing that reconsiders the hold, as when a reservation settles.
+        await store().conn.execute('UPDATE project_details SET limits_json=? WHERE workspace_id=?',
+                                   ('{"attempt_limit": 2}', p['id']))
+        await store().conn.commit()
+        answer = await move(client, 'resume', held)
+        assert answer.status_code == 409 and answer.json()['detail'] == (
+            'Its limits permit it now, so it went back to the queue. Refresh it.')
+        await statuses(turn_id, ['landed', 'landed'])
+
+
+async def test_a_runs_own_limit_hold_says_to_reuse_its_setup_with_a_higher_limit(tmp_path, monkeypatch):
+    # The first attempt is charged more than it reserved, so the run's own
+    # spending limit no longer fits its second attempt.
+    over = FakeAudioExecutor('elevenlabs', 'external', max_concurrency=1, cost=0.02)
+    async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': over}) as (client, _):
+        p = await project(client)
+        turn_id = await accepted(client, await prepare(client, p['id'], 'voice-design', 'A gruff smith',
+                                                       [(ELEVEN_DESIGN, 2, SPOKEN)], limit=0.02064))
+        _, held = await statuses(turn_id, ['landed', 'held'])
+        answer = await move(client, 'resume', held)
+        assert answer.status_code == 422 and answer.json()['detail'] == (
+            'Run spending limit is $0.02064; charged and reserved spending totals $0.03032. '
+            "A run's own limits are fixed once it is sent: cancel this attempt, then reuse its setup with a "
+            'higher limit.')
+        assert len(over.requests) == 1
 
 
 # --- blind runs ---
@@ -421,6 +485,135 @@ async def test_cancelling_a_hidden_attempt_names_neither_its_lane_nor_its_cost(t
         assert not names_an_engine([skipped.json(), stopping.json()])
         gate.set()
         await settle_turn(turn_id, until={'landed', 'skipped', 'failed'})
+
+
+async def test_an_agent_hears_one_neutral_line_for_every_hidden_attempt_whatever_its_price(tmp_path, monkeypatch):
+    # A blind run of the free local engine and paid ElevenLabs, both held: one
+    # by A9's repeat bench, the other behind a refused key.
+    local = FakeAudioExecutor('voice-runner', 'local', failure=EngineFailure('error', 'Qwen3-TTS crashed'))
+    hosted = FakeAudioExecutor('elevenlabs', 'external', max_concurrency=1, failure=EngineFailure(
+        'dead_key', 'ElevenLabs refused the key.', charged_usd=0))
+    async with booted_audio(tmp_path, monkeypatch, executors={'voice-runner': local, 'elevenlabs': hosted}) as (client, _):
+        p = await project(client)
+        turn, _ = await ran(client, await prepare(client, p['id'], 'voice-design', 'A gruff smith',
+                                                  [(LOCAL_DESIGN, 3, SPOKEN), (ELEVEN_DESIGN, 3, SPOKEN)], blind=True),
+                            until=('held', 'failed', 'landed'))
+        held = [slot for slot in turn['slots'] if slot['status'] == 'held']
+        assert {slot['engine'] for slot in held} == {'qwen3-tts', 'elevenlabs-voice-design'}
+        for slot in held:
+            answer = await move(client, 'resume', slot, actor=AGENT)
+            assert (answer.status_code, answer.json()['detail']) == (403, HIDDEN_RESUME)
+
+
+# --- no door sends held work that may spend for an agent (laws 22 and 23) ---
+
+async def controlled(client, scope, target, action, *, actor=None):
+    """A project, run or sequence control as its participant sends it; the answer as it is."""
+    url = f'/api/crexil/execution/{scope}/{target}'
+    body = command(revision=(await client.get(url)).json()['revision'], action=action, reason='Scope move')
+    if actor:
+        body['actor'] = actor
+    return await client.post(url, json=body)
+
+
+async def test_an_agent_pauses_and_cancels_but_never_resumes_paused_paid_work(tmp_path, monkeypatch):
+    paid = FakeAudioExecutor('elevenlabs', 'external')
+    async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': paid}) as (client, _):
+        p = await project(client)
+        assert (await controlled(client, 'project', p['id'], 'pause', actor=AGENT)).status_code == 200
+        kept = await accepted(client, await prepare(client, p['id'], 'voice-design', 'A gruff smith',
+                                                    [(ELEVEN_DESIGN, 2, SPOKEN)]))
+        dropped = await accepted(client, await prepare(client, p['id'], 'voice-design', 'A thin elf',
+                                                       [(ELEVEN_DESIGN, 1, SPOKEN)]))
+        await statuses(kept, ['held', 'held'])
+        assert (await controlled(client, 'run', kept, 'pause', actor=AGENT)).status_code == 200
+        for scope, target in (('project', p['id']), ('run', kept)):
+            refused = await controlled(client, scope, target, 'resume', actor=AGENT)
+            assert (refused.status_code, refused.json()['detail']) == (403, PAID_RESUME)
+        assert (await controlled(client, 'run', dropped, 'cancel', actor=AGENT)).status_code == 200
+        await statuses(dropped, ['skipped'])
+        assert paid.requests == []
+        assert [e['payload']['action'] for e in await events(client, 'execution.control')] == ['pause', 'pause', 'cancel']
+
+        for scope, target in (('run', kept), ('project', p['id'])):
+            assert (await controlled(client, scope, target, 'resume')).status_code == 200
+        await statuses(kept, ['landed', 'landed'])
+        assert len(paid.requests) == 2
+
+
+async def test_an_agent_resumes_paused_free_local_work(tmp_path, monkeypatch):
+    async with booted_audio(tmp_path, monkeypatch) as (client, _):
+        p = await project(client)
+        await control(client, 'project', p['id'], 'pause')
+        turn_id = await accepted(client, await audio_draft(client, p['id'], f'audio:voice-design:{LOCAL}',
+                                                           'A gruff smith', controls={'preview_text': PREVIEW}))
+        await statuses(turn_id, ['held'])
+        answer = await controlled(client, 'project', p['id'], 'resume', actor=AGENT)
+        assert answer.status_code == 200 and answer.json()['actor'] == AGENT
+        await statuses(turn_id, ['landed'])
+
+
+async def test_an_agent_never_resumes_a_paused_hidden_run_whatever_its_price(tmp_path, monkeypatch):
+    async with booted_audio(tmp_path, monkeypatch, rows=(free_design_row(),)) as (client, _):
+        p = await project(client)
+        await control(client, 'project', p['id'], 'pause')
+        check, answer = await submitted(client, await prepared(client, p['id'], (LOCAL, 1), (HOSTED, 1)))
+        assert check['ready'] and answer.status_code == 201, (check['errors'], answer.text)
+        await statuses(answer.json()['turn_id'], ['held', 'held'])
+        refused = await controlled(client, 'project', p['id'], 'resume', actor=AGENT)
+        assert (refused.status_code, refused.json()['detail']) == (403, HIDDEN_RESUME)
+
+
+@pytest.mark.parametrize('scope', ['sequence', 'project'])
+@pytest.mark.parametrize('limit', [0, 1.0], ids=['a sequence that cannot spend', 'a sequence that may spend'])
+async def test_an_agent_resumes_a_paused_sequence_only_when_it_cannot_spend(tmp_path, monkeypatch, scope, limit):
+    async with booted(tmp_path, monkeypatch) as (client, fakes):
+        attest()
+        fakes['comfy'].default = Step(data=image_bytes())
+        p = await project(client)
+        first = await draft(client, p['id'])
+        made = await client.post(f"/api/crexil/projects/{p['id']}/sequences", json=command(
+            title='Explore', limits={'attempt_limit': 16, 'spending_limit_usd': limit},
+            steps=[{'key': 'explore', 'direction_id': first['id'], 'revision': first['revision']}]))
+        assert made.status_code == 201, made.text
+        sid = made.json()['id']
+        await control(client, scope, sid if scope == 'sequence' else p['id'], 'pause')
+        await start_sequence(client, sid)
+        answer = await controlled(client, scope, sid if scope == 'sequence' else p['id'], 'resume', actor=AGENT)
+        if limit:
+            assert (answer.status_code, answer.json()['detail']) == (403, PAID_SEQUENCE)
+            assert fakes['comfy'].starts == []
+        else:
+            assert answer.status_code == 200, answer.text
+
+
+async def test_the_legacy_unbench_names_its_participant_and_keeps_the_resume_rules(tmp_path, monkeypatch):
+    refused = FakeAudioExecutor('elevenlabs', 'external', max_concurrency=1, failure=EngineFailure(
+        'dead_key', 'ElevenLabs refused the key.', charged_usd=0))
+    async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': refused}) as (client, _):
+        p = await project(client)
+        turn_id = await accepted(client, await prepare(client, p['id'], 'voice-design', 'A gruff smith',
+                                                       [(ELEVEN_DESIGN, 3, SPOKEN)]))
+        await statuses(turn_id, ['failed', 'held', 'held'])
+        scope = {'scope': 'provider:elevenlabs'}
+
+        agent = await client.post('/api/unbench', json={**scope, 'actor': AGENT})
+        assert (agent.status_code, agent.json()['detail']) == (403, PAID_RESUME)
+        monkeypatch.setattr(config, 'ELEVENLABS_API_KEY', '')
+        keyless = await client.post('/api/unbench', json=scope)
+        assert keyless.status_code == 422 and keyless.json()['detail'] == (
+            'ElevenLabs is not ready yet, so its attempts stay held. No key. Set ELEVENLABS_API_KEY in .env, '
+            'then restart.')
+        assert await events(client, 'engine.unbenched') == [] and len(refused.requests) == 1
+
+        monkeypatch.setattr(config, 'ELEVENLABS_API_KEY', 'test-elevenlabs-key-0123456789')
+        refused.failure = None
+        lifted = await client.post('/api/unbench', json=scope)                  # as the legacy canvas sends it
+        assert lifted.json() == {'scope': 'provider:elevenlabs', 'cleared': True}
+        await statuses(turn_id, ['failed', 'landed', 'landed'])
+        (event,) = await events(client, 'engine.unbenched')
+        assert event['payload']['actor'] == ARTIST
+        assert (await client.post('/api/unbench', json=scope)).json() == {**scope, 'cleared': False}
 
 
 # --- the review says which operations retry on their own (law 9) ---

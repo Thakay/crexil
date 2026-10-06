@@ -16,11 +16,15 @@ words as its cause, and nothing is generated.
 
 Recovery is a lookup of the runner's job records, and it never raises: a raised
 failure during recovery would bench the whole local lane and stop the image
-engines beside this one (law 1). Once the runner names a take's job, the take is
-never sent again: a poll the runner does not answer asks about the same job
-again, and a runner silent for REATTACH_S leaves the take's outcome uncertain,
-its job id kept, so collecting looks the job up and nothing is generated twice
-(law 14).
+engines beside this one (law 1). Each attempt's job carries the client
+reference `<slot>:<attempt>`, which the runner keeps one job for. Only a
+connection the runner refused, which reached nothing, fails as `unreachable`
+and retries. Once the request is out, the take is never sent again (law 14): an
+answer lost on its way back looks the job up by its client reference and
+re-attaches; a poll the runner does not answer asks about the same job again;
+and a runner silent for REATTACH_S, or one that holds no job for the
+reference, leaves the take's outcome uncertain, so collecting looks the job up
+later and nothing is generated twice.
 """
 
 from __future__ import annotations
@@ -48,6 +52,11 @@ REATTACH_S = 60.0
 START_HINT = 'Start it with tools/tts/runner.py (see tools/tts/README.md).'
 SILENT = ('The local voice runner stopped answering while this take was running, so it was not sent '
           'again. When the runner answers, collect files to look for its takes; nothing is generated again.')
+LOST = ("The local voice runner's answer to this take's request was lost, so it was not sent again. When the "
+        'runner answers, collect files to look for its takes; nothing is generated again.')
+# The failures that mean the request never reached the runner, so sending it
+# again cannot start a second job.
+REFUSED = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 
 @dataclass
@@ -100,8 +109,9 @@ class VoiceRunnerExecutor:
             raise EngineFailure('error', f"The local voice runner does not serve {verb or 'this request'}. "
                                          'Nothing was sent.', charged_usd=0)
         controls = envelope.get('controls') or {}
+        client_ref = reference(req.slot_id, req.attempt)
         body = {'kind': verb, 'language': controls.get('language') or 'English',
-                'n': int(envelope.get('takes') or 1), 'seed': envelope.get('seed'), 'client_ref': req.slot_id}
+                'n': int(envelope.get('takes') or 1), 'seed': envelope.get('seed'), 'client_ref': client_ref}
         if verb == 'voice-design':
             body.update(text=controls.get('preview_text'), instruct=envelope.get('text'))
         else:
@@ -113,8 +123,10 @@ class VoiceRunnerExecutor:
                 raise EngineFailure('preflight', str(exc), charged_usd=0) from exc
         try:
             answer = await self._http.post('/jobs', json=body)
-        except httpx.HTTPError as exc:
+        except REFUSED as exc:
             raise self._unreachable(exc, 'at the door') from exc
+        except httpx.HTTPError as exc:
+            return await self._reattach(req, client_ref, exc)
         if answer.status_code in (400, 413, 422):
             # The runner refused the request itself, in plain words that name
             # the field; they become the take's cause with the next move (laws 3, 4).
@@ -128,6 +140,26 @@ class VoiceRunnerExecutor:
         if not job_id:
             raise EngineFailure('error', 'The local voice runner accepted the take but named no job.', charged_usd=0)
         return VoiceHandle(job_ref=job_id, request=req)
+
+    async def _reattach(self, req: DispatchRequest, client_ref: str, lost: httpx.HTTPError) -> VoiceHandle:
+        """The take's job after the runner's answer was lost: looked up by its
+        client reference, never sent again (law 14). While the runner does
+        not answer, it is asked again for REATTACH_S; a runner that stays
+        silent, or holds no job for the reference, leaves the outcome
+        uncertain, and collecting looks the job up later."""
+        loop = asyncio.get_running_loop()
+        started, record = loop.time(), None
+        while True:
+            try:
+                record = await self._find(client_ref)
+            except httpx.HTTPError:
+                if loop.time() - started < REATTACH_S:
+                    await asyncio.sleep(POLL_S)
+                    continue
+            break
+        if not record or not record.get('id'):
+            raise EngineFailure('uncertain', LOST, detail=str(lost)[:600], charged_usd=0, plain=True) from lost
+        return VoiceHandle(job_ref=record['id'], request=req)
 
     async def _voice(self, req: DispatchRequest, voice: dict) -> dict:
         """The reference take's checked bytes and words for a `speak` job."""
@@ -181,33 +213,27 @@ class VoiceRunnerExecutor:
                 await self._http.delete(f'/jobs/{handle.job_ref}')
 
     async def reconcile(self, slot: dict, *, request: DispatchRequest | None = None) -> Reconciliation:
-        job_ref = slot.get('job_ref')
-        if not job_ref:
-            return Reconciliation('gone')     # stopped before the runner named a job
         try:
-            record = await self._fetch(job_ref)
+            record = await self._record_of(slot)
         except httpx.HTTPError:
             return Reconciliation('unverifiable')
         if record is None:
-            return Reconciliation('gone')
+            return Reconciliation('gone')     # the runner never queued this attempt's job
         if record.get('state') not in TERMINAL:
-            return Reconciliation('running', handle=VoiceHandle(job_ref=job_ref, request=request))
-        return await self._settled(job_ref, record, request)
+            return Reconciliation('running', handle=VoiceHandle(job_ref=record['id'], request=request))
+        return await self._settled(record['id'], record, request)
 
     async def collect_existing(self, slot: dict, *, request: DispatchRequest | None = None) -> Reconciliation:
         """Retrieve a finished job's takes again, without generating anything."""
-        job_ref = slot.get('job_ref')
-        if not job_ref:
-            return Reconciliation('gone')
         try:
-            record = await self._fetch(job_ref)
+            record = await self._record_of(slot)
         except httpx.HTTPError:
             return Reconciliation('unverifiable')
         if record is None:
             return Reconciliation('gone')
         if record.get('state') not in TERMINAL:
             return Reconciliation('unverifiable')
-        return await self._settled(job_ref, record, request)
+        return await self._settled(record['id'], record, request)
 
     async def verify_charge(self, _job_ref: str) -> float | None:
         return None                           # nothing bills on the card
@@ -230,6 +256,23 @@ class VoiceRunnerExecutor:
             return None
         answer.raise_for_status()
         return answer.json()
+
+    async def _find(self, client_ref: str) -> dict | None:
+        """The job the runner holds for this client reference, if any."""
+        answer = await self._http.get('/jobs', params={'client_ref': client_ref})
+        if answer.status_code == 404:
+            return None
+        answer.raise_for_status()
+        return answer.json()
+
+    async def _record_of(self, slot: dict) -> dict | None:
+        """An attempt's job record: by the job id the slot keeps, else by the
+        attempt's client reference, for a request whose answer never named it."""
+        if slot.get('job_ref'):
+            return await self._fetch(slot['job_ref'])
+        if not slot.get('id'):
+            return None
+        return await self._find(reference(slot['id'], slot['attempt']))
 
     async def _land(self, handle: VoiceHandle, record: dict) -> ExecutionResult:
         state = record.get('state')
@@ -280,6 +323,11 @@ class VoiceRunnerExecutor:
             raise EngineFailure('collection', f'The runner returned {answer.status_code} with '
                                               f'{len(answer.content)} bytes for take {index + 1}.')
         return answer.content
+
+
+def reference(slot_id: str, attempt: int) -> str:
+    """The client reference that names one attempt's job at the runner."""
+    return f'{slot_id}:{attempt}'
 
 
 def _read(path: str) -> bytes:

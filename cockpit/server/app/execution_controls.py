@@ -12,6 +12,11 @@ request never resumes twice. A runtime's own bench (a key, a runner, the card)
 lifts only once its cause is gone; an engine's own bench (A9's repeat, a model
 that was down, a timeout) lifts on request. Every control names its participant
 (law 23), and an attempt's answer names no engine of a blind run.
+
+Stopping never spends, so agents may pause and cancel. Sending held work that
+reserves money is the artist's act, so an agent's resume of a project, run or
+sequence is refused when it would send such work, and any resume of a hidden
+run's attempts is refused in one neutral line whatever their price.
 """
 
 from __future__ import annotations
@@ -34,6 +39,11 @@ class ExecutionPaused(ValueError):
 
 class ExecutionCancelled(ValueError):
     """An automatic retry still belongs to the attempt whose stop was requested."""
+
+
+class ArtistsMove(ValueError):
+    """A move only the artist makes (laws 22 and 23): a refusal routes answer
+    with 403 in its words."""
 
 
 async def _workspace(db, scope: Scope, target_id: str) -> str:
@@ -105,8 +115,18 @@ async def state(db, scope: Scope, target_id: str) -> dict:
                 'reason': payload.get('reason', ''), 'requested_at': event['ts'] if event else None}
 
 
+def _scope_clause(scope: Scope, target_id: str) -> tuple[str, list]:
+    """The condition on `slots s` that keeps the attempts a control reaches."""
+    if scope == 'run':
+        return ' AND s.turn_id=?', [target_id]
+    if scope == 'sequence':
+        return ' AND s.turn_id IN (SELECT turn_id FROM sequence_runs WHERE sequence_id=?)', [target_id]
+    return '', []
+
+
 async def record(db, scope: Scope, target_id: str, body) -> dict:
-    """Record intent inside the caller's attributed, idempotent command transaction."""
+    """Record intent inside the caller's attributed, idempotent command transaction.
+    An agent's resume that would send work that may spend raises `ArtistsMove`."""
     values = body.model_dump() if hasattr(body, 'model_dump') else dict(body)
     action = values['action']
     if action not in ('pause', 'resume', 'cancel'):
@@ -115,18 +135,16 @@ async def record(db, scope: Scope, target_id: str, body) -> dict:
         before = await state(db, scope, target_id)
         if before['revision'] != values['revision']:
             raise Conflict('Execution controls changed in another view. Refresh before trying again.')
+        if action == 'resume' and before['paused'] and values['actor']['kind'] != 'human':
+            refusal = await _agent_resume_refusal(db, scope, target_id, before['workspace_id'])
+            if refusal:
+                raise ArtistsMove(refusal)
         paused = {'pause': True, 'resume': False, 'cancel': before['paused']}[action]
         reason = values.get('reason', '')
-        query = ("SELECT s.id,s.attempt,s.status FROM slots s JOIN turns t ON t.id=s.turn_id "
-                 "WHERE t.workspace_id=? AND s.status IN ('queued','held','running','late')")
-        args = [before['workspace_id']]
-        if scope == 'run':
-            query += ' AND s.turn_id=?'
-            args.append(target_id)
-        elif scope == 'sequence':
-            query += ' AND s.turn_id IN (SELECT turn_id FROM sequence_runs WHERE sequence_id=?)'
-            args.append(target_id)
-        slots = await db._all(query + ' ORDER BY s.created_at,s.pos,s.id', args)
+        clause, extra = _scope_clause(scope, target_id)
+        slots = await db._all("SELECT s.id,s.attempt,s.status FROM slots s JOIN turns t ON t.id=s.turn_id "
+                              "WHERE t.workspace_id=? AND s.status IN ('queued','held','running','late')" + clause
+                              + ' ORDER BY s.created_at,s.pos,s.id', [before['workspace_id'], *extra])
         targets = [{'slot_id': slot['id'], 'attempt': slot['attempt']} for slot in slots] if action == 'cancel' else []
         await db._append_event('execution.control', workspace_id=before['workspace_id'],
             turn_id=target_id if scope == 'run' else None,
@@ -187,6 +205,41 @@ RUNTIME_KINDS = frozenset({'unreachable', 'dead_key', 'no_key', 'gpu_held'})
 HIDDEN_NOT_READY = "Its engine is not ready yet, so its attempts stay held. Check Connections, then resume."
 PAID_RESUME = ("Resuming paid work is the artist's act: this would send held attempts that reserve money. "
                'An agent may resume free local work; the artist resumes the rest.')
+PAID_SEQUENCE = ("Resuming this sequence is the artist's act: its next runs may spend money. "
+                 'An agent may resume free local work; the artist resumes the rest.')
+# An agent hears the same refusal for every attempt of a hidden run, so its
+# answer never tells a paid engine from a free one.
+HIDDEN_RESUME = 'This run is blind. The artist resumes its attempts.'
+
+
+async def _agent_resume_refusal(db, scope: Scope, target_id: str, wid: str) -> str | None:
+    """Why an agent may not resume this project, run or sequence, or None. A
+    resume sends the attempts a pause holds in its scope, and lets a paused
+    sequence with steps left send its next runs; work that may spend is the
+    artist's to send. A sequence whose spending limit is zero cannot spend."""
+    from .blind import hidden_turns
+    clause, extra = _scope_clause(scope, target_id)
+    rows = await db._all("SELECT s.* FROM slots s JOIN turns t ON t.id=s.turn_id "
+                         "WHERE t.workspace_id=? AND s.status='held'" + clause, [wid, *extra])
+    paused = []
+    for row in rows:
+        holds = [event for event in await db.slot_events(row['id']) if event['type'] == 'slot.held']
+        if holds and holds[-1]['payload'].get('pause'):
+            paused.append(dict(row))
+    hidden = await hidden_turns(db, wid)
+    if any(slot['turn_id'] in hidden for slot in paused):
+        return HIDDEN_RESUME
+    if reserves_money(paused):
+        return PAID_RESUME
+    if scope != 'run':
+        sequences = await db._all(
+            "SELECT limits_json FROM sequences WHERE state='active' AND "
+            + ('id=?' if scope == 'sequence' else 'workspace_id=?')
+            + " AND EXISTS (SELECT 1 FROM sequence_steps WHERE sequence_id=sequences.id AND state!='complete')",
+            (target_id,))
+        if any(json.loads(row['limits_json']).get('spending_limit_usd') != 0 for row in sequences):
+            return PAID_SEQUENCE
+    return None
 
 
 def _values(body) -> dict:
@@ -273,18 +326,39 @@ async def cancel_attempt(db, slot_id: str, body, *, hidden: bool = False) -> dic
         return _view(slot, 'cancel', values, _cancel_words(slot, hidden=hidden))
 
 
+def limit_words(holding: list[tuple[str, str]]) -> str:
+    """Why limits hold an attempt, and the move that exists (laws 3 and 4): a
+    project's or a sequence's limit is raised where it is set; a run's own
+    limits are fixed once it is sent, so its attempt is cancelled and its
+    setup reused with a higher limit."""
+    scopes = {scope for scope, _ in holding}
+    lines = ' '.join(line for _, line in holding)
+    if 'run' in scopes:
+        return (f"{lines} A run's own limits are fixed once it is sent: cancel this attempt, then reuse its "
+                'setup with a higher limit.')
+    places = " and the ".join(f"{scope}'s" for scope in ('project', 'sequence') if scope in scopes)
+    where = ' in its settings' if scopes == {'project'} else ''
+    return f"{lines} Raise the {places} limit{'s' if len(scopes) > 1 else ''}{where} to send it, or cancel it."
+
+
 async def held_attempt(db, scheduler, slot_id: str, attempt: int):
     """The held attempt and the bench that holds it. A refusal says why it
-    waits instead, and the move that sends it."""
+    waits instead, and the move that sends it. An attempt held by limits that
+    permit it now goes back to the queue, as after a limit is raised."""
+    from .crexil_budget import holding_limits
     slot = await _attempt(db, slot_id, attempt)
     if slot['status'] != 'held':
         raise Conflict('This attempt is not held, so there is nothing to resume. Refresh it.')
     holds = [event for event in await db.slot_events(slot_id) if event['type'] == 'slot.held']
     hold = holds[-1]['payload'] if holds else {}
     if hold.get('pause'):
-        raise ValueError('This attempt waits for its run or project to resume. Resume that instead.')
+        raise ValueError('This attempt waits for its run, project or sequence to resume. Resume that instead.')
     if hold.get('limit'):
-        raise ValueError('This attempt waits for a spending limit. Raise the limit to send it, or cancel it.')
+        holding = await holding_limits(db, slot)
+        if holding:
+            raise ValueError(limit_words(holding))
+        await scheduler.resume_budget_holds((await db._slot_ids(slot))['workspace_id'])
+        raise Conflict('Its limits permit it now, so it went back to the queue. Refresh it.')
     bench = scheduler.standing(hold.get('bench'))
     if bench is None:
         raise Conflict("Nothing holds this attempt's engine any more. Refresh it; if it stays held, "

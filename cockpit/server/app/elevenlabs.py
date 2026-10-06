@@ -35,8 +35,9 @@ Guarantees:
 - A lost speech answer binds only its own attempt's take: the history item with
   the lost answer's request id when it carried one; otherwise the one item in
   the attempt's voice, model, text, settings and format, dated from the
-  attempt's send, that no receipt binds and no other unsettled attempt of the
-  same speech could have made. Without a voice id, or with any doubt, nothing is
+  attempt's send, that no receipt binds and no other attempt of the same speech
+  could have made: none unsettled, and none landed whose take history names by
+  none of its receipt's ids. Without a voice id, or with any doubt, nothing is
   bound, so nothing is charged twice. A recovered take records the original
   generation's request id.
 
@@ -807,8 +808,10 @@ class ElevenLabsExecutor:
         """This attempt's own take among history items, or None with the plain
         reason none is bound. A lost answer's request id names the take
         exactly. Without one, the take is the one item of this speech dated
-        from the send that no receipt binds, and only when no other unsettled
-        attempt of the same speech was sent before it was made."""
+        from the send that no receipt binds, and only when no other attempt of
+        the same speech sent before it was made could own it: none is
+        unsettled, and every one whose answer landed is named by its receipt
+        among the listed items. Recall gives way to safety."""
         bound = record.get('bound') or set()
 
         def free(item: dict) -> bool:
@@ -829,10 +832,20 @@ class ElevenLabsExecutor:
             return None, f'ElevenLabs history holds {_matching(len(matches))}, {UNSAFE}'
         speech, voices = _speech_key(envelope), _voice_keys(envelope) | {voice_id}
         made = matches[0]['date_unix']
-        if any(_speech_key(other.get('external') or {}) == speech and _voice_keys(other.get('external') or {}) & voices
-               and made >= int(other['sent_at']) - HISTORY_GRACE_S for other in record.get('unsettled') or []):
+        listed = {key for item in items for key in (item.get('history_item_id'), item.get('request_id')) if key}
+
+        def sibling(other: dict) -> bool:
+            external = other.get('external') or {}
+            return (_speech_key(external) == speech and bool(_voice_keys(external) & voices)
+                    and made >= int(other['sent_at']) - HISTORY_GRACE_S)
+
+        if any(sibling(other) for other in record.get('unsettled') or []):
             return None, (f'ElevenLabs history holds {_matching(1)}, but another attempt of the same line was '
                           f'out at the same time, {UNSAFE}')
+        # A sibling whose take history names by none of its receipt's ids could own this match.
+        if any(sibling(other) and not listed & set(other.get('ids') or ()) for other in record.get('receipted') or []):
+            return None, (f'ElevenLabs history holds {_matching(1)}, but another attempt of the same line landed '
+                          f'at the same time and history does not say which take is its, {UNSAFE}')
         return matches[0], ''
 
     async def _recover_speech(self, req: DispatchRequest, envelope: dict, voice_id: str | None, sent_at: float,

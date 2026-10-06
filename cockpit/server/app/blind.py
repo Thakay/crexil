@@ -14,8 +14,9 @@ folder or copy names its engine before the reveal; a continuation from a hidden
 take is refused at review, so no child's request carries its source's engine.
 
 A hidden take shows one time, its run's creation time: its landing time, its
-attempt's timings and its own events' times wait for the reveal, so the order
-in which takes land never shows through the clock. A bench event names no hidden
+attempt's timings, its own events' times and its files' modification time (and
+the ETag made from it) wait for the reveal, and every list keeps its run's grid
+order, so the order in which takes land never shows. A bench event names no hidden
 take: a held take's bench scope is withheld, an engine-and-run bench of a hidden
 run reads as masked and stays out of the queue's bench list, and hidden takes
 leave every bench's held and resumed lists. A resume recorded on a hidden take
@@ -41,7 +42,9 @@ are arranged once at Run by `arrange`; after that they never move (law 8).
 from __future__ import annotations
 
 import json
+import os
 import random
+from datetime import datetime
 from pathlib import PurePosixPath
 
 HIDDEN_ENGINE = 'hidden'
@@ -182,6 +185,18 @@ async def is_hidden(db, turn_id: str | None) -> bool:
     return bool(turn_id) and turn_id in await hidden_turns(db)
 
 
+async def file_stat(db, turn_id: str | None, path) -> os.stat_result | None:
+    """The file facts a file response sends for a hidden take: its own size,
+    with its run's creation time as the file's time, so neither Last-Modified
+    nor the ETag made from it tells the order in which takes landed. None
+    when the take's run is not hidden: the response reads the file's own."""
+    created = (await hidden_runs(db)).get(turn_id) if turn_id else None
+    if created is None:
+        return None
+    at = datetime.fromisoformat(created).timestamp()
+    return os.stat_result((*os.stat(path)[:7], at, at, at))
+
+
 def plain_cause(kind: str | None) -> str:
     """A hidden take's failure line: the kind's plain words, no engine named."""
     return _CAUSES.get(kind or '', 'This take did not land.') + _REVEAL_FOR_MORE
@@ -199,6 +214,12 @@ def scrub(value):
 def _hidden_name(filename: str, label: str) -> str:
     """An engine-neutral file name that keeps the extension the bytes need."""
     return label + PurePosixPath(filename or '').suffix
+
+
+def take_name(filename: str) -> str:
+    """A hidden take's file name as every read shows it: `hidden-take` and the
+    extension its bytes need, never the name its engine gave it."""
+    return _hidden_name(filename, 'hidden-take')
 
 
 def output_name(member: dict) -> str:
@@ -257,7 +278,7 @@ def mask(kind: str, item: dict) -> dict:
     if kind == 'node':
         if out.get('material'):
             material = dict(out['material'])
-            material['filename'] = _hidden_name(material['filename'], 'hidden-take')
+            material['filename'] = take_name(material['filename'])
             material['origin'] = scrub(material.get('origin') or {})
             out['material'] = material
         if 'retained_files' in out:

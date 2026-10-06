@@ -22,7 +22,9 @@ PIPE_DIR = HERE / "trellis2-pipeline"
 
 os.environ.setdefault("HF_HOME", os.path.expanduser("~/models/hf"))
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-# nvdiffrast JIT-compiles its torch plugin on first use — needs the lane toolchain.
+# nvdiffrast's CUDA plugin is built at install time (the `_nvdiffrast_c` extension in
+# this venv), so a take compiles nothing for it; any build this environment runs uses
+# the lane's own CUDA 12.4 toolchain (`cuda124`), never the system's.
 os.environ.setdefault("CUDA_HOME", str(HERE / "cuda124"))
 os.environ["PATH"] = str(HERE / "cuda124" / "bin") + os.pathsep + os.environ.get("PATH", "")
 os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "8.9")
@@ -110,8 +112,8 @@ def make_parser() -> argparse.ArgumentParser:
     # re-run to_glb at another target without reloading the 4B pipeline.
     # ON by default: the artist cannot know at generate
     # time whether a lower LOD is wanted later — that decision comes after
-    # looking at the mesh — and 21–92 MiB (measured across two props) is the
-    # cheaper half of that bet against 134 s of GPU.
+    # looking at the mesh, and 21–182 MiB (measured across three props) is
+    # the cheaper half of that bet against 134 s of GPU.
     ap.add_argument("--no-save-fields", dest="save_fields", action="store_false",
                     help="skip fields.npz — no re-extraction from this take")
     return ap

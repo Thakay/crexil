@@ -7,19 +7,27 @@ order (law 8), never the project snapshot. It carries facts, ids, labels and
 reasons only: no take's bytes and no address to fetch them, because ElevenLabs'
 terms forbid its audio as input to any machine learning and an agent's language
 model is one. A blind run passes through
-`blind.mask`, so engine, model, seed, per-take cost and timing stay withheld
-until its authored reveal; run totals and the cap stay visible (law 22). Takes are
-named the way the grid names them: run index, cell letters, and `.n` for a later
-output of the same cell.
+`blind.mask`, so engine, model, seed, per-take cost, timing and loudness stay
+withheld until its authored reveal; run totals and the cap stay visible (law 22).
+While any attempt of a hidden run is queued, running or late, every cell of that
+run reads as one neutral face, as the grid shows it: `running`, with no takes,
+retry, kind, cause or free collection, and the summary counts its attempts done,
+because which takes land first tells its engines apart. Takes are named the way
+the grid names them: run index, cell letters, and `.n` for a later output of the
+same cell.
 
 A voice session is started by the artist: it opens the microphone and spends
 minutes. The server asks ElevenLabs for a short-lived conversation token, or a
 signed URL, with the key; the key never leaves the server and the token is handed
-over once and kept out of every receipt (law 18). Minutes are capped (law 22): an
-open session counts its whole maximum until it ends, a session starts only when
-the minutes left cover that maximum, and ElevenLabs is not asked when they do not.
-Session starts and ends are events that name their author (law 23); they belong
-to the installation, not to a project, so no project backup carries them.
+over once and kept out of every receipt (law 18), so a replayed start answers its
+session without asking for another. Minutes are capped (law 22): an open session
+counts its whole maximum until it ends, a session starts only when the minutes
+left cover that maximum, and ElevenLabs is not asked when they do not. A session
+is ended by its starter's kind of participant, and its minutes are the longer of
+what the panel observed and the server's own time since the start, never more
+than its maximum, so no client's account lowers the meter. Session starts and
+ends are events that name their author (law 23); they belong to the
+installation, not to a project, so no project backup carries them.
 """
 
 from __future__ import annotations
@@ -87,21 +95,37 @@ def _elapsed_ms(slot: dict, now: datetime) -> int | None:
     return max(0, int((end - started).total_seconds() * 1000))
 
 
-def summary(cells: list[dict]) -> str:
-    """One plain line for a run: counts by state, then each cause once (law 1)."""
-    if not cells:
+def summary(cells: list[dict], progress: list[str] = ()) -> str:
+    """One plain line for a run: counts by state, then each cause once (law 1).
+    `progress` holds one line for each hidden run still in flight, whose cells
+    are left out of `cells`."""
+    if not cells and not progress:
         return 'Not submitted yet.'
     counts = Counter(cell['state'] for cell in cells)
     words = [f'{counts[state]} {word}' for state, word in STATE_WORDS.items() if counts[state]]
     words += [f'{n} {state}' for state, n in counts.items() if state not in STATE_WORDS]
-    line = ', '.join(words) + '.'
+    line = ', '.join(words) + '.' if words else ''
     causes = Counter(cell['cause'] for cell in cells if cell['state'] in ('failed', 'held') and cell['cause'])
     for cause, n in causes.items():
         line += ' ' + (cause if n == 1 else f'{cause.rstrip(".")} ({n} cells).')
-    return line
+    return ' '.join(part for part in (line, *progress) if part)
 
 
 AGENT_AUDIO = ('duration_s', 'loudness_lufs', 'text', 'voice')
+# A hidden run with an attempt in one of these states is still in flight; a held
+# attempt counts as settled, as on the grid.
+IN_FLIGHT = ('queued', 'running', 'late')
+# The face every cell of a hidden run in flight wears.
+VEILED = {'state': 'running', 'retrying': False, 'kind': None, 'cause': None, 'collectable': False}
+
+
+def _hidden_take(take: dict) -> dict:
+    """A hidden take as an agent reads it: masked, and without its loudness,
+    which groups takes by engine."""
+    masked = blind.mask('node', take)
+    if masked.get('audio'):
+        masked['audio'] = {**masked['audio'], 'loudness_lufs': None}
+    return masked
 
 
 def _take(node: dict, turn_idx: int, pos: int, selection: set[str], sounds: dict) -> dict:
@@ -149,8 +173,9 @@ async def run_view(db, did: str) -> dict:
     for node in sorted(nodes, key=lambda n: (n['output_index'] or 0, n['id'])):
         outputs[node['slot_id']].append(node)
     now = datetime.now(timezone.utc)
-    cells = []
+    cells, shown, progress = [], [], []
     for turn in turns:
+        veiled = turn['id'] in hidden and any(slot['status'] in IN_FLIGHT for slot in turn['slots'])
         for slot in turn['slots']:
             takes = [_take(node, turn['idx'], slot['pos'], selection, sounds) for node in outputs[slot['id']]]
             cell = {'slot_id': slot['id'], 'turn_id': turn['id'], 'label': label(turn['idx'], slot['pos']),
@@ -164,8 +189,16 @@ async def run_view(db, did: str) -> dict:
                     'collectable': (slot['id'], slot['attempt']) in collectable, 'takes': takes}
             if turn['id'] in hidden:
                 cell = {**blind.mask('slot', cell), 'elapsed_ms': None,
-                        'takes': [blind.mask('node', take) for take in takes]}
+                        'takes': [_hidden_take(take) for take in takes]}
+            if veiled:
+                cell.update(VEILED, takes=[])
+            else:
+                shown.append(cell)
             cells.append(cell)
+        if veiled:
+            done = sum(slot['status'] not in IN_FLIGHT for slot in turn['slots'])
+            progress.append(f"Run {turn['idx']} is in progress: {done} of {len(turn['slots'])} attempts done. "
+                            'Its takes show when it settles.')
     return {'run_id': did, 'project_id': wid, 'title': direction['title'], 'state': direction['state'],
             'revision': direction['revision'], 'action': setup.get('action') or 'generate',
             'prompt': setup.get('prompt') or '',
@@ -177,7 +210,7 @@ async def run_view(db, did: str) -> dict:
                              'revealed': bool(blind_runs.get(t['id'], {}).get('revealed')),
                              'control': controls[t['id']]} for t in turns],
             'cells': cells, 'selection': list(direction['selection'] or []), 'decisions': history,
-            'summary': summary(cells), 'event_seq': seq}
+            'summary': summary(shown, progress), 'event_seq': seq}
 
 
 # --- voice sessions ---
@@ -284,23 +317,23 @@ async def _session(db, sid: str) -> dict:
 
 async def start_session(creative: CreativeStore, body) -> dict:
     """Start one voice session for the artist and return a `VoiceSessionStarted`.
-    A replay of the same request returns the same session with a fresh token;
-    the token is never part of the stored receipt."""
+    The token is handed over once and never kept: a replay of the same request
+    answers the same session without one, so one session never opens two
+    conversations."""
     db, scope, request = creative.db, 'voice_sessions.start', body.model_dump()
     previous = await creative.delivered(body.request_id, scope, request)
     if previous is not None:
-        session = await _session(db, previous['session']['session_id'])
-        if session['ended_at'] is not None:
-            raise Conflict('This voice session already ended. Start a new one.')
-        return {**previous, **_handover(await mint(body.connection)), 'session': session, 'usage': await usage(db)}
+        return await _replayed(db, previous)
     if body.project_id is not None:
         await creative.project(body.project_id)
     allowed = await usage(db)
     if not allowed['ready']:
         raise ValueError(' '.join(allowed['reasons']))
     minted = await mint(body.connection)
+    started = False
 
     async def apply():
+        nonlocal started
         allowed = await usage(db)
         if not allowed['ready']:
             raise ValueError(' '.join(allowed['reasons']))
@@ -309,27 +342,49 @@ async def start_session(creative: CreativeStore, body) -> dict:
             'session_id': sid, 'project_id': body.project_id, 'actor': body.actor.model_dump(),
             'max_seconds': config.VOICE_SESSION_MAX_S, 'connection': body.connection,
             'conversation_id': minted['conversation_id']})
+        started = True
         return {'session': await _session(db, sid), 'conversation_token': None, 'signed_url': None}
 
     receipt = await creative.command(body.request_id, scope, request, apply)
+    if not started:                            # the same request started its session meanwhile
+        return await _replayed(db, receipt)
     return {**receipt, **_handover(minted), 'usage': await usage(db)}
+
+
+async def _replayed(db, receipt: dict) -> dict:
+    session = await _session(db, receipt['session']['session_id'])
+    if session['ended_at'] is not None:
+        raise Conflict('This voice session already ended. Start a new one.')
+    return {**receipt, 'session': session, 'usage': await usage(db)}
 
 
 def _handover(minted: dict) -> dict:
     return {'conversation_token': minted['conversation_token'], 'signed_url': minted['signed_url']}
 
 
+ENDED_BY_STARTER = ('A voice session is ended by the artist who started it: ending it settles its minutes. '
+                    'An agent may ask the artist to end it.')
+
+
 async def end_session(creative: CreativeStore, sid: str, body) -> dict:
-    """Record a session's end with the minutes the panel observed (law 17). A session
-    already ended keeps its first end and author."""
+    """Record a session's end by its starter's kind of participant (law 23).
+    Its minutes are the longer of what the panel observed (law 17) and the
+    server's own time since the start, never more than the session's maximum,
+    so no client's account lowers the meter (law 22); the panel's own figure
+    stays on the event. A session already ended keeps its first end and author."""
+    from .execution_controls import ArtistsMove
     db = creative.db
 
     async def apply():
         session = await _session(db, sid)
         if session['ended_at'] is None:
+            if body.actor.kind != session['actor']['kind']:
+                raise ArtistsMove(ENDED_BY_STARTER)
+            ran = (datetime.now(timezone.utc) - datetime.fromisoformat(session['started_at'])).total_seconds()
             await db.append_event('voice_session.ended', payload={
-                'session_id': sid, 'actor': body.actor.model_dump(), 'elapsed_s': body.elapsed_s,
-                'conversation_id': body.conversation_id})
+                'session_id': sid, 'actor': body.actor.model_dump(),
+                'elapsed_s': round(min(max(body.elapsed_s, ran), session['max_seconds']), 3),
+                'reported_s': body.elapsed_s, 'conversation_id': body.conversation_id})
             session = await _session(db, sid)
         return session
 
