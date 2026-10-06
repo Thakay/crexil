@@ -259,7 +259,7 @@ export type Row = {
   notForThis: Chip[];  // dashed group, never empty-hidden, never filtered away
 };
 
-const KIND: Record<Payload, string> = { image: "IMAGE", "3d": "MESH" };
+const KIND: Record<Payload, string> = { image: "IMAGE", "3d": "MESH", audio: "AUDIO" };
 
 // What we actually know about the node, and nothing more: payload, engine,
 // whether a seed was recorded, and whether it's set aside. Frame size and

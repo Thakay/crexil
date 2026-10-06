@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS nodes(
   slot_id              TEXT REFERENCES slots(id),
   take                 INTEGER,
   output_index         INTEGER NOT NULL DEFAULT 0 CHECK(output_index >= 0),
-  payload              TEXT NOT NULL CHECK(payload IN ('image','3d')),
+  payload              TEXT NOT NULL CHECK(payload IN ('image','3d','audio')),
   verb                 TEXT NOT NULL,
   prompt               TEXT,
   engine               TEXT,
@@ -233,7 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_events_promoted
 from .crexil_store import SCHEMA as CREXIL_SCHEMA
 
 SCHEMA += CREXIL_SCHEMA
-SCHEMA_VERSION = "12"
+SCHEMA_VERSION = "13"
 
 # Slot lifecycle (PRD §2): to-status -> the from-statuses it is legal from.
 # Policy detail (cancel semantics, late handling) is the scheduler's, in code;
@@ -439,11 +439,51 @@ class Database:
             async with self._tx():
                 await self.conn.execute("UPDATE meta SET value='12' WHERE key='schema_version'")
             version = "12"
+        if version == "12":
+            await self._widen_node_payloads()
+            version = "13"
         if version != SCHEMA_VERSION:
             raise SchemaVersionError(f"unsupported schema version {version}")
         # Fresh stores already have the new column; existing stores gain it in
         # the rung above before this index can be created.
         await self.conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_nodes_slot_take ON nodes(slot_id,take,output_index) WHERE slot_id IS NOT NULL')
+
+    async def _widen_node_payloads(self) -> None:
+        """v13: nodes may hold audio. SQLite cannot alter a CHECK, so the
+        table is rebuilt by SQLite's documented procedure: foreign keys off
+        outside the transaction, copy every row by column name, drop, rename,
+        recreate the table's own indexes and triggers, require an empty
+        foreign key check, then stamp the version, all in one transaction.
+        A store that already allows audio only gains the stamp."""
+        row = await self._one("SELECT sql FROM sqlite_master WHERE type='table' AND name='nodes'")
+        table = row['sql']
+        before = "CHECK(payload IN ('image','3d'))"
+        if "'audio'" not in table and table.count(before) != 1:
+            raise SchemaVersionError(f"{self._path}: the nodes table has an unrecognised payload "
+                                     "constraint; refusing to rebuild it")
+        await self.conn.execute('PRAGMA foreign_keys=OFF')
+        try:
+            async with self._tx():
+                if "'audio'" not in table:
+                    extras = [r['sql'] for r in await self._all(
+                        "SELECT sql FROM sqlite_master WHERE tbl_name='nodes' AND type IN ('index','trigger') "
+                        "AND sql IS NOT NULL ORDER BY type, name")]
+                    columns = ', '.join(r['name'] for r in await self._all('PRAGMA table_info(nodes)'))
+                    widened = table.replace(before, "CHECK(payload IN ('image','3d','audio'))")
+                    widened = re.sub(r'^CREATE TABLE\s+"?nodes"?', 'CREATE TABLE nodes_v13', widened, count=1)
+                    await self.conn.execute(widened)
+                    await self.conn.execute(f'INSERT INTO nodes_v13({columns}) SELECT {columns} FROM nodes')
+                    await self.conn.execute('DROP TABLE nodes')
+                    await self.conn.execute('ALTER TABLE nodes_v13 RENAME TO nodes')
+                    for statement in extras:
+                        await self.conn.execute(statement)
+                problems = await self._all('PRAGMA foreign_key_check')
+                if problems:
+                    raise SchemaVersionError(f"{self._path}: {len(problems)} rows lost their references "
+                                             "while widening node payloads; nothing was changed")
+                await self.conn.execute("UPDATE meta SET value='13' WHERE key='schema_version'")
+        finally:
+            await self.conn.execute('PRAGMA foreign_keys=ON')
 
     async def close(self) -> None:
         if self._conn:
@@ -1074,6 +1114,85 @@ class Database:
         nodes = [self._node_row(r) for r in rows]
         await self._attach_parents(nodes)
         return nodes
+
+    # --- audio facts and blind runs ---
+
+    _AUDIO_COLUMNS = ("container", "codec", "sample_rate", "channels", "duration_s",
+                      "loudness_lufs", "peak_dbfs", "peaks", "text", "voice", "alignment")
+
+    async def record_audio_facts(self, node_id: str, facts: dict) -> None:
+        """Store an audio take's measured and reported facts once; a repeated
+        collection of the same material keeps the first record."""
+        values = [facts.get(key) for key in self._AUDIO_COLUMNS]
+        for index in (7, 9, 10):              # peaks, voice, alignment are JSON
+            values[index] = json.dumps(values[index]) if values[index] is not None else None
+        values[7] = values[7] or "[]"
+        async with self._locked():
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO audio_info(node_id,container,codec,sample_rate,channels,duration_s,"
+                "loudness_lufs,peak_dbfs,peaks_json,text,voice_json,alignment_json) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (node_id, *values))
+
+    async def audio_facts(self, workspace_id: str) -> dict[str, dict]:
+        """Every audio take's facts in one project, by node id."""
+        rows = await self._all("SELECT a.* FROM audio_info a JOIN nodes n ON n.id=a.node_id "
+                               "WHERE n.workspace_id=?", (workspace_id,))
+        facts = {}
+        for row in rows:
+            item = dict(row)
+            item["peaks"] = json.loads(item.pop("peaks_json"))
+            for key in ("voice", "alignment"):
+                raw = item.pop(key + "_json")
+                item[key] = json.loads(raw) if raw is not None else None
+            facts[item.pop("node_id")] = item
+        return facts
+
+    async def audio_fact(self, node_id: str) -> dict | None:
+        node = await self.get_node(node_id)
+        return (await self.audio_facts(node["workspace_id"])).get(node_id) if node else None
+
+    async def material_origin(self, node_id: str) -> dict:
+        """A material's recorded origin (how it entered the project, and any
+        provider terms on it), or an empty record when none was kept."""
+        row = await self._one("SELECT origin_json FROM material_info WHERE node_id=?", (node_id,))
+        return json.loads(row["origin_json"]) if row else {}
+
+    async def saved_voice(self, provider: str, generated_voice_id: str) -> str | None:
+        """The provider voice an earlier take saved from this designed voice."""
+        row = await self._one(
+            "SELECT json_extract(voice_json,'$.voice_id') AS voice_id FROM audio_info "
+            "WHERE json_extract(voice_json,'$.provider')=? "
+            "AND json_extract(voice_json,'$.from_generated_voice_id')=? "
+            "AND json_extract(voice_json,'$.voice_id') IS NOT NULL ORDER BY rowid DESC LIMIT 1",
+            (provider, generated_voice_id))
+        return row["voice_id"] if row else None
+
+    async def mark_blind_run(self, turn_id: str, workspace_id: str, actor: dict) -> None:
+        """Record, inside the caller's transaction, that a run is blind."""
+        ts = now_iso()
+        async with self._locked():
+            await self.conn.execute(
+                "INSERT INTO blind_runs(turn_id,workspace_id,actor_json,created_at) VALUES(?,?,?,?)",
+                (turn_id, workspace_id, json.dumps(actor), ts))
+        await self.append_event("run.blinded", workspace_id=workspace_id, turn_id=turn_id,
+                                payload={"actor": actor})
+
+    async def blind_runs(self, workspace_id: str | None = None) -> list[dict]:
+        """Blind runs with their reveal, read from the authored `run.revealed`
+        event; a run is revealed by its first such event."""
+        where, args = ("WHERE b.workspace_id=?", (workspace_id,)) if workspace_id else ("", ())
+        rows = await self._all(
+            "SELECT b.*, e.ts AS revealed_at, e.payload_json AS reveal_json FROM blind_runs b "
+            "LEFT JOIN events e ON e.seq=(SELECT MIN(seq) FROM events WHERE type='run.revealed' "
+            f"AND turn_id=b.turn_id) {where} ORDER BY b.created_at", args)
+        runs = []
+        for row in rows:
+            reveal = json.loads(row["reveal_json"]) if row["reveal_json"] else None
+            runs.append({"turn_id": row["turn_id"], "workspace_id": row["workspace_id"],
+                         "actor": json.loads(row["actor_json"]), "created_at": row["created_at"],
+                         "revealed": reveal is not None, "revealed_at": row["revealed_at"],
+                         "revealed_by": (reveal or {}).get("actor")})
+        return runs
 
     async def _attach_parents(self, nodes: list[dict]) -> None:
         if not nodes:

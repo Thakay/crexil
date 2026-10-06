@@ -11,7 +11,8 @@
       "Flags flip as usage proves them: update value/state here with dated evidence when real use observes something new.",
       "verbs: which 3D steps this engine serves (law 16). The surfaces read it to badge a verb an engine does not do rather than hide the engine (law 12). An image engine has no verbs list: the image lane's steps are presets, not engine-declared. The RUNNER is the authority (tools/3d/runner.py KINDS) and cockpit/server/app/mesh.py MESH_KINDS is its server-side mirror; this list is the published copy, and a test holds the three in agreement (test_mesh.py).",
       "params: the handles a SURFACE may offer for a verb, keyed by verb then by the runner's own param name. It is a published OFFER, not the runner's whitelist: the runner accepts more than this (a knob it takes but the product does not offer is simply absent here), so the guard is `published ⊆ runner` and never equality. A key here that the runner would refuse by name is the drift the test catches. A mesh engine has one because its handles are engine-declared; an image engine's live in presets/*.json `inputs` instead, which is why no image row carries this key.",
-      "params[verb][key]: `label` is the artist's name for it, `effect` the permanently visible plain-effect line (never a tooltip), `type`/`choices`/`default` the control. `state` is the knob's own verification (law 12), read the same way a capability's is: verified = this range was run and measured, unverified = authored from the engine's docs and not yet exercised. `supported: false` publishes a handle this engine does NOT have, with `why`: the surface lists it and dashes it rather than leaving an artist to wonder whether the app forgot it (law 12: badge, never filter). Seed is NOT here: it is a run-level field, published as the `seed` capability above."
+      "params[verb][key]: `label` is the artist's name for it, `effect` the permanently visible plain-effect line (never a tooltip), `type`/`choices`/`default` the control. `state` is the knob's own verification (law 12), read the same way a capability's is: verified = this range was run and measured, unverified = authored from the engine's docs and not yet exercised. `supported: false` publishes a handle this engine does NOT have, with `why`: the surface lists it and dashes it rather than leaving an artist to wonder whether the app forgot it (law 12: badge, never filter). Seed is NOT here: it is a run-level field, published as the `seed` capability above.",
+      "audio rows (payload audio) name their `provider`, the adapter that reaches them (elevenlabs or voice-runner), and `enabled`. Per verb they declare `models`, `params` (public controls), `fixed` provider fields, `tariffs` ({unit, micro_usd, measure, source, read_on}: exact integer micro-dollars, where measure names the text or control the unit counts), `takes_per_attempt`, and optional `text_limits`. `voice_providers` limits speech to voices designed or saved at those providers. `terms` records the provider's terms on its outputs: every take carries them, and a hop they forbid is badged with their reason (laws 12, 21). The seed is published as the `seed` capability, as for 3D."
     ],
     "homes": {
       "external prices and seed pins": "providers.json (pins/overrides) + the live OpenRouter catalogue; the authoritative cost is per-generation usage.cost",
@@ -405,6 +406,368 @@
           "value": null,
           "state": "verified",
           "note": "Not applicable — no text channel."
+        }
+      }
+    },
+    {
+      "id": "elevenlabs-voice-design",
+      "name": "ElevenLabs Voice Design",
+      "lane": "external",
+      "payload": "audio",
+      "provider": "elevenlabs",
+      "enabled": false,
+      "verbs": [
+        "voice-design"
+      ],
+      "models": {
+        "voice-design": "eleven_multilingual_ttv_v2"
+      },
+      "takes_per_attempt": {
+        "voice-design": 3
+      },
+      "fixed": {
+        "voice-design": {
+          "output_format": "pcm_24000",
+          "auto_generate_text": false
+        }
+      },
+      "params": {
+        "voice-design": {
+          "preview_text": {
+            "label": "Preview line",
+            "type": "text",
+            "required": true,
+            "min_length": 100,
+            "max_length": 1000,
+            "effect": "The words all three previews speak. Billed once per attempt, so the price is known before the call.",
+            "state": "unverified"
+          },
+          "loudness": {
+            "label": "Loudness",
+            "type": "float",
+            "min": -1,
+            "max": 1,
+            "step": 0.05,
+            "default": 0.5,
+            "effect": "0 is about -24 LUFS. It also becomes the saved voice's loudness.",
+            "state": "unverified"
+          }
+        }
+      },
+      "tariffs": {
+        "voice-design": {
+          "unit": "1k_characters",
+          "micro_usd": 80000,
+          "measure": "preview_text",
+          "source": "https://elevenlabs.io/pricing/api",
+          "read_on": "2026-10-05"
+        }
+      },
+      "terms": {
+        "no_ai_input": true,
+        "provider": "elevenlabs",
+        "allows": [
+          "elevenlabs"
+        ],
+        "reason": "ElevenLabs' terms do not allow its audio as input to another AI model.",
+        "source": "https://elevenlabs.io/use-policy",
+        "updated": "2026-08-17"
+      },
+      "price": "Published tariff: the preview line's characters at the design model's speech rate, once per attempt ($0.08 per 1,000 characters list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
+      "note": "Designs three voice previews from a description. A preview becomes a saved ElevenLabs voice the first time it speaks, which uses one of the account's voice slots.",
+      "capabilities": {
+        "seed": {
+          "value": true,
+          "state": "unverified",
+          "note": "Accepted per request; ElevenLabs does not promise identical takes."
+        },
+        "voiceRef": {
+          "value": false,
+          "state": "verified",
+          "note": "Designs from words only. Reference-audio design is not offered."
+        },
+        "textLimit": {
+          "value": 1000,
+          "state": "unverified",
+          "note": "The preview line takes 100 to 1,000 characters."
+        }
+      }
+    },
+    {
+      "id": "elevenlabs-v4",
+      "name": "ElevenLabs v4",
+      "lane": "external",
+      "payload": "audio",
+      "provider": "elevenlabs",
+      "enabled": false,
+      "verbs": [
+        "speak"
+      ],
+      "models": {
+        "speak": "eleven_v4"
+      },
+      "voice_providers": [
+        "elevenlabs"
+      ],
+      "text_limits": {
+        "speak": 10000
+      },
+      "fixed": {
+        "speak": {
+          "output_format": "pcm_24000",
+          "enable_logging": true
+        }
+      },
+      "params": {
+        "speak": {
+          "stability": {
+            "label": "Stability",
+            "type": "float",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "default": 0.5,
+            "effect": "Higher reads steadier; lower reads more expressive.",
+            "state": "unverified"
+          },
+          "similarity_boost": {
+            "label": "Similarity",
+            "type": "float",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "default": 0.75,
+            "effect": "How closely the read keeps to the voice.",
+            "state": "unverified"
+          }
+        }
+      },
+      "tariffs": {
+        "speak": {
+          "unit": "1k_characters",
+          "micro_usd": 80000,
+          "measure": "prompt",
+          "source": "https://elevenlabs.io/pricing/api",
+          "read_on": "2026-10-05"
+        }
+      },
+      "terms": {
+        "no_ai_input": true,
+        "provider": "elevenlabs",
+        "allows": [
+          "elevenlabs"
+        ],
+        "reason": "ElevenLabs' terms do not allow its audio as input to another AI model.",
+        "source": "https://elevenlabs.io/use-policy",
+        "updated": "2026-08-17"
+      },
+      "price": "Published tariff: $0.08 per 1,000 characters of the line (list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
+      "note": "Reads lines in a voice designed or saved at ElevenLabs. v4 honours stability and similarity only.",
+      "capabilities": {
+        "seed": {
+          "value": true,
+          "state": "unverified",
+          "note": "Best effort: ElevenLabs states its outputs are not deterministic."
+        },
+        "voiceRef": {
+          "value": true,
+          "state": "unverified",
+          "note": "Takes a voice designed or saved at ElevenLabs, never another engine's audio."
+        },
+        "textLimit": {
+          "value": 10000,
+          "state": "unverified",
+          "note": "Up to 10,000 characters per request."
+        }
+      }
+    },
+    {
+      "id": "elevenlabs-sfx",
+      "name": "ElevenLabs Sound Effects",
+      "lane": "external",
+      "payload": "audio",
+      "provider": "elevenlabs",
+      "enabled": false,
+      "verbs": [
+        "sfx"
+      ],
+      "models": {
+        "sfx": "eleven_text_to_sound_v2"
+      },
+      "fixed": {
+        "sfx": {
+          "output_format": "pcm_48000"
+        }
+      },
+      "params": {
+        "sfx": {
+          "duration_seconds": {
+            "label": "Duration (seconds)",
+            "type": "float",
+            "required": true,
+            "min": 0.5,
+            "max": 30,
+            "step": 0.1,
+            "default": 2.0,
+            "effect": "Always sent, so the price is known before the call.",
+            "state": "unverified"
+          },
+          "prompt_influence": {
+            "label": "Prompt influence",
+            "type": "float",
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "default": 0.3,
+            "effect": "Higher follows the description more literally.",
+            "state": "unverified"
+          },
+          "loop": {
+            "label": "Seamless loop",
+            "type": "bool",
+            "default": false,
+            "effect": "Makes a sound that repeats without a seam.",
+            "state": "unverified"
+          }
+        }
+      },
+      "tariffs": {
+        "sfx": {
+          "unit": "second",
+          "micro_usd": 2000,
+          "measure": "duration_seconds",
+          "source": "https://elevenlabs.io/pricing/api",
+          "read_on": "2026-10-05"
+        }
+      },
+      "terms": {
+        "no_ai_input": true,
+        "provider": "elevenlabs",
+        "allows": [
+          "elevenlabs"
+        ],
+        "reason": "ElevenLabs' terms do not allow its audio as input to another AI model.",
+        "source": "https://elevenlabs.io/use-policy",
+        "updated": "2026-08-17"
+      },
+      "price": "Published tariff: $0.12 per minute of requested sound ($0.002 per second, list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
+      "note": "One sound per call; variations are separate attempts. 48 kHz PCM output needs a plan that allows it.",
+      "capabilities": {
+        "seed": {
+          "value": false,
+          "state": "verified",
+          "note": "The sound endpoint takes no seed, so a take is a record, never a replay."
+        },
+        "voiceRef": {
+          "value": false,
+          "state": "verified",
+          "note": "Not meaningful for sound effects."
+        },
+        "textLimit": {
+          "value": null,
+          "state": "unverified",
+          "note": "The description's limit is not published."
+        }
+      }
+    },
+    {
+      "id": "qwen3-tts",
+      "name": "Qwen3-TTS 1.7B",
+      "lane": "local",
+      "payload": "audio",
+      "provider": "voice-runner",
+      "enabled": false,
+      "verbs": [
+        "voice-design",
+        "speak"
+      ],
+      "models": {
+        "voice-design": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "speak": "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+      },
+      "takes_per_attempt": {
+        "voice-design": 3
+      },
+      "params": {
+        "voice-design": {
+          "preview_text": {
+            "label": "Preview line",
+            "type": "text",
+            "required": true,
+            "min_length": 1,
+            "max_length": 1000,
+            "effect": "The words each designed take speaks.",
+            "state": "unverified"
+          },
+          "language": {
+            "label": "Language",
+            "type": "enum",
+            "default": "English",
+            "choices": [
+              "English",
+              "Chinese",
+              "Japanese",
+              "Korean",
+              "German",
+              "French",
+              "Russian",
+              "Portuguese",
+              "Spanish",
+              "Italian"
+            ],
+            "effect": "The language the take is spoken in.",
+            "state": "unverified"
+          }
+        },
+        "speak": {
+          "language": {
+            "label": "Language",
+            "type": "enum",
+            "default": "English",
+            "choices": [
+              "English",
+              "Chinese",
+              "Japanese",
+              "Korean",
+              "German",
+              "French",
+              "Russian",
+              "Portuguese",
+              "Spanish",
+              "Italian"
+            ],
+            "effect": "The language the line is spoken in.",
+            "state": "unverified"
+          }
+        }
+      },
+      "tariffs": {
+        "voice-design": {
+          "unit": "attempt",
+          "micro_usd": 0
+        },
+        "speak": {
+          "unit": "attempt",
+          "micro_usd": 0
+        }
+      },
+      "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
+      "note": "Open weights (Apache-2.0) run by the local voice runner in its own environment. Designs a voice from a description, then speaks new lines cloned from a designed take of at least 3 seconds. It clones only takes made or imported in Crexil.",
+      "capabilities": {
+        "seed": {
+          "value": true,
+          "state": "unverified",
+          "note": "Measured 2026-10-05: the same seed gave the same take in one process. Identity across library versions or cards is not promised."
+        },
+        "voiceRef": {
+          "value": true,
+          "state": "unverified",
+          "note": "Speaks in the voice of any audio take its provider's terms allow, read with that take's words."
+        },
+        "textLimit": {
+          "value": null,
+          "state": "unverified",
+          "note": "The practical line limit is not measured."
         }
       }
     }

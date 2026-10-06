@@ -10,6 +10,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from .schemas import HealthComfy, Node, SetupStatus, Turn
 
+Payload = Literal['image', '3d', 'audio']
+
 
 class Actor(BaseModel):
     kind: Literal['human', 'agent']
@@ -61,6 +63,7 @@ class MaterialRecord(BaseModel):
     controls: dict
     submitted: dict | None
     regions: dict | None
+    identity_hidden: bool | None = None      # a blind run's take before its reveal
 
 
 class Reference(BaseModel):
@@ -114,7 +117,8 @@ class RegionInstruction(BaseModel):
 
 class Preparation(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    action: Literal['generate', 'continue', 'combine', 'region', 'custom', 'mesh', 'decimate', 'texture', 'import', 'prepare'] = 'generate'
+    action: Literal['generate', 'continue', 'combine', 'region', 'custom', 'mesh', 'decimate', 'texture', 'import', 'prepare',
+                    'voice-design', 'speak', 'sfx'] = 'generate'
     prompt: str = Field(default='', max_length=32000)
     references: list[Reference] = Field(default_factory=list, max_length=32)
     operations: list[OperationChoice] = Field(default_factory=list, max_length=32)
@@ -128,6 +132,10 @@ class Preparation(BaseModel):
     regions: list[RegionInstruction] = Field(default_factory=list, max_length=8)
     region_overlap_policy: Literal['nd3-v1'] | None = None
     region_regenerate_unclaimed: bool = False
+    # Engine identity is withheld from every read of the run until an
+    # authored reveal; take positions are arranged once at Run (law 8).
+    # Null or false: not blind.
+    blind: bool | None = None
 
 
 class MaskAdjustment(BaseModel):
@@ -216,11 +224,21 @@ class CreateDirection(Command):
     setup: Preparation = Field(default_factory=Preparation)
 
 
+class ConnectionView(BaseModel):
+    """One provider's first-use state. A key is described, never shown."""
+    provider: str
+    label: str
+    ok: bool | None                    # None: not checked
+    detail: str
+    key_source: Literal['env', 'stored'] | None = None
+
+
 class SetupOverview(BaseModel):
     preview: bool
     comfyui_url: str
     comfyui: HealthComfy
     openrouter: SetupStatus
+    connections: list[ConnectionView] = Field(default_factory=list)
 
 
 class OperationRequirements(BaseModel):
@@ -484,12 +502,35 @@ class RetainedFile(BaseModel):
     file: str | None
 
 
+class AudioFacts(BaseModel):
+    """Measured once by the server at collection; the bytes never change.
+
+    `loudness_lufs` is gated integrated loudness by ITU-R BS.1770-4 (null
+    when no 400 ms block clears the absolute gate). `peaks` is the absolute
+    sample peak of up to 256 equal spans, from 0 to 1, for drawing. `text` is
+    the spoken words, `voice` the voice identity the engine reported, and
+    `alignment` per-character timing when the engine reports it. Format facts
+    are null only while a blind run withholds them."""
+    container: str | None
+    codec: str | None
+    sample_rate: int | None
+    channels: int | None
+    duration_s: float
+    loudness_lufs: float | None
+    peak_dbfs: float | None
+    peaks: list[float]
+    text: str | None
+    voice: dict | None
+    alignment: dict | None
+
+
 class MaterialNode(Node):
     output_index: int
     available: bool
     purged_at: str | None
     material: MaterialInfo | None
     retained_files: list[RetainedFile] = Field(default_factory=list)
+    audio: AudioFacts | None = None
 
 
 class ExecutionOutputView(BaseModel):
@@ -520,6 +561,18 @@ class ExecutionGroupView(BaseModel):
     created_at: str
     updated_at: str
     outputs: list[ExecutionOutputView]
+    identity_hidden: bool | None = None
+
+
+class BlindRunView(BaseModel):
+    """A run whose engine identity is withheld until an authored reveal."""
+    turn_id: str
+    workspace_id: str
+    actor: Actor
+    created_at: str
+    revealed: bool
+    revealed_at: str | None
+    revealed_by: Actor | None
 
 
 class ProjectSnapshot(BaseModel):
@@ -534,6 +587,7 @@ class ProjectSnapshot(BaseModel):
     restoration: dict | None = None
     event_seq: int
     execution_groups: list[ExecutionGroupView]
+    blind_runs: list[BlindRunView] = Field(default_factory=list)
 
 
 class ImportResult(BaseModel):
@@ -541,25 +595,69 @@ class ImportResult(BaseModel):
     direction: DirectionView
 
 
+class OperationInput(BaseModel):
+    """One public control. Absent facts stay null; producers may add more keys."""
+    model_config = ConfigDict(extra='allow')
+    key: str
+    label: str | None = None
+    type: Literal['text', 'int', 'float', 'enum', 'seed', 'bool'] | None = None
+    default: Any = None
+    required: bool | None = None
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    choices: list[Any] | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    supported: bool | None = None
+    reason: str | None = None
+
+
+class SourceRoleView(BaseModel):
+    """One source an operation takes, in order, with the payloads it accepts
+    (law 21) and the reasons some takes of those payloads are refused."""
+    role: str
+    accepts: list[Payload]
+    restrictions: list[str] = Field(default_factory=list)
+
+
+class TariffView(BaseModel):
+    """A published price, exact in integer micro-dollars (one millionth of a US
+    dollar). `measure` names the control or text the unit counts; a
+    reservation from it is still a tariff, never a hard bound (law 22)."""
+    unit: Literal['attempt', 'image', '1k_characters', 'second', 'generation']
+    micro_usd: int = Field(ge=0)
+    measure: str | None = None
+    source: str = ''
+    read_on: str = ''
+
+
 class OperationView(BaseModel):
     id: str
     label: str
     revision: str
     actions: list[str]
-    inputs: list[dict]
+    inputs: list[OperationInput]
     source_limit: int
-    evidence: str
-    availability: str
+    evidence: Literal['declared', 'observed', 'qualified']
+    availability: Literal['verified', 'unverified', 'incomplete', 'unavailable']
     reasons: list[str]
     execution_location: str
     data_destination: str
     price_usd: float | None
     maximum_usd_per_attempt: float | None
     cost_basis: str
+    # role names only; `sources` carries their accepted payloads
     source_roles: list[str] = Field(default_factory=list)
-    output_payload: str = 'image'
+    sources: list[SourceRoleView] = Field(default_factory=list)
+    output_payload: Literal['image', '3d', 'audio', 'file'] = 'image'
     limitations: list[str] = Field(default_factory=list)
     attempt_max: int = 16
+    takes_per_attempt: int = 1
+    provider: str | None = None
+    price_unit: Literal['attempt', 'image', '1k_characters', 'second', 'generation'] | None = None
+    tariff: TariffView | None = None
+    pinned: bool = False
 
 
 class ExecutionReview(BaseModel):
@@ -573,6 +671,8 @@ class ExecutionReview(BaseModel):
     blocked_attempts: int
     maximum_usd: float | None
     reserved_usd: float = 0
+    # the same reservation, exact in integer micro-dollars
+    reserved_micro_usd: int = 0
     snapshot: dict
 
 
@@ -589,6 +689,46 @@ class SubmittedDirection(BaseModel):
 
 class CollectExecution(Command):
     take: int = Field(ge=1)
+
+
+class RevealRun(Command):
+    reason: str = Field(default='', max_length=4000)
+
+
+class PreferenceCandidate(BaseModel):
+    """One take the decision was made among, as the record states it."""
+    node_id: str
+    position: int                      # frozen grid position (law 8)
+    engine: str
+    provider: str | None
+    model: str | None
+    seed: int | None
+    cost_micro_usd: int | None         # charged when known, else committed
+
+
+class PreferenceRecord(BaseModel):
+    """One decision, derived from a selection or an assessment event."""
+    decision_id: str
+    project_id: str
+    run_id: str | None                 # the turn
+    direction_id: str | None
+    verb: str | None
+    brief: str                         # the prompt as typed
+    candidates: list[PreferenceCandidate]
+    chosen: list[str]
+    reason: str | None
+    author: Actor | None
+    blind: bool
+    decided_at: str
+
+
+class PreferenceExport(BaseModel):
+    """The artist's decision record: never a training or evaluation dataset,
+    and it holds no audio."""
+    project_id: str
+    generated_at: str
+    purpose: str
+    records: list[PreferenceRecord]
 
 
 class GraphTarget(BaseModel):

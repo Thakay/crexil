@@ -62,6 +62,35 @@ CREATE TABLE IF NOT EXISTS material_info(
  height INTEGER,
  origin_json TEXT NOT NULL DEFAULT '{}'
 ) STRICT;
+CREATE TABLE IF NOT EXISTS audio_info(
+ node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+ container TEXT NOT NULL,
+ codec TEXT NOT NULL,
+ sample_rate INTEGER NOT NULL CHECK(sample_rate > 0),
+ channels INTEGER NOT NULL CHECK(channels > 0),
+ duration_s REAL NOT NULL CHECK(duration_s >= 0),
+ loudness_lufs REAL,
+ peak_dbfs REAL,
+ peaks_json TEXT NOT NULL DEFAULT '[]',
+ text TEXT,
+ voice_json TEXT,
+ alignment_json TEXT
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS trg_audio_info_immutable BEFORE UPDATE ON audio_info BEGIN
+ SELECT RAISE(ABORT, 'measured audio facts are immutable');
+END;
+CREATE TABLE IF NOT EXISTS blind_runs(
+ turn_id TEXT PRIMARY KEY REFERENCES turns(id),
+ workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+ actor_json TEXT NOT NULL,
+ created_at TEXT NOT NULL
+) STRICT;
+CREATE TRIGGER IF NOT EXISTS trg_blind_runs_immutable BEFORE UPDATE ON blind_runs BEGIN
+ SELECT RAISE(ABORT, 'a blind run stays blind until its reveal event');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_blind_runs_retained BEFORE DELETE ON blind_runs BEGIN
+ SELECT RAISE(ABORT, 'blind runs are part of the record');
+END;
 CREATE TABLE IF NOT EXISTS execution_groups(
  id TEXT PRIMARY KEY,
  slot_id TEXT NOT NULL REFERENCES slots(id),
@@ -311,6 +340,7 @@ class CreativeStore:
         return out
 
     async def snapshot(self, wid: str) -> dict:
+        from . import blind
         from .material_files import view as retained_files
         from .api_v4 import _node_view, _turn_view
         from .execution_outputs import inventory
@@ -331,6 +361,7 @@ class CreativeStore:
             for direction in directions:
                 direction['latest_decision'] = next((item for item in reversed(history)
                     if concerns_direction(item, direction)), None)
+            sounds = await self.db.audio_facts(wid)
             nodes = []
             for node in await self.db.list_nodes(wid, include_purged=True):
                 info = await self.db._one('SELECT * FROM material_info WHERE node_id=?', (node['id'],))
@@ -339,9 +370,18 @@ class CreativeStore:
                     material['origin'] = json.loads(material.pop('origin_json'))
                 nodes.append({**_node_view(node), 'output_index': node['output_index'], 'purged_at': node['purged_at'],
                     'available': not node['purged_at'] and Path(node['output_path']).is_file(),
-                    'material': material, 'retained_files': await retained_files(self.db, node)})
+                    'material': material, 'retained_files': await retained_files(self.db, node),
+                    'audio': sounds.get(node['id'])})
+            hidden = await blind.hidden_turns(self.db, wid)
+            slot_turns = {slot['id']: turn['id'] for turn in turns for slot in turn['slots']}
+            views = [_turn_view(t) for t in turns]
+            for view in views:
+                if view['id'] in hidden:
+                    view['slots'] = [blind.mask('slot', slot) for slot in view['slots']]
+            groups = await inventory(self.db, wid)
             return {'project': project, 'directions': directions,
-                    'nodes': nodes, 'turns': [_turn_view(t) for t in turns],
+                    'nodes': await blind.apply(self.db, 'node', nodes, workspace_id=wid),
+                    'turns': views,
                     'charged_usd': await self.db.workspace_charged(wid),
                     'accounting': await accounting(self.db, wid),
                     'execution_controls': [await control_state(self.db, 'project', wid),
@@ -349,7 +389,10 @@ class CreativeStore:
                         *[await control_state(self.db, 'sequence', sequence['id']) for sequence in sequences]],
                     'sequences': sequences,
                     'restoration': await restore_context(self.db, wid),
-                    'event_seq': await self.db.latest_seq(), 'execution_groups': await inventory(self.db, wid)}
+                    'event_seq': await self.db.latest_seq(),
+                    'execution_groups': await blind.apply(self.db, 'group', groups, workspace_id=wid,
+                                                          turn_of=lambda group: slot_turns.get(group['slot_id'])),
+                    'blind_runs': await self.db.blind_runs(wid)}
 
     async def receive_material(self, wid: str, *, path: Path, sha256: str, filename: str,
                                media_type: str, payload: str, width: int | None,
@@ -396,7 +439,10 @@ class CreativeStore:
         return await self.direction(did)
 
     async def revise_direction(self, did: str, revision: int, changes: dict,
-                               actor: dict, reason: str | None = None) -> dict:
+                               actor: dict, reason: str | None = None,
+                               facts: dict | None = None) -> dict:
+        """Apply one revision; `facts` are recorded on its event beside the change
+        (for example that a selection was made while its run was blind)."""
         from .db import now_iso
         before = await self.direction(did)
         if before['revision'] != revision:
@@ -412,7 +458,7 @@ class CreativeStore:
         await self.db.conn.execute(
             'UPDATE directions SET revision=revision+1,updated_at=? WHERE id=?', (now_iso(), did))
         await self.db.append_event('direction.changed', workspace_id=before['workspace_id'],
-            payload={'direction_id': did, 'revision': revision + 1, 'changes': changes,
+            payload={**(facts or {}), 'direction_id': did, 'revision': revision + 1, 'changes': changes,
                      'actor': actor, 'reason': reason})
         await self.db.touch_workspace(before['workspace_id'])
         return await self.direction(did)

@@ -114,6 +114,8 @@ def catalogue(stack) -> list[dict]:
                 'revision': digest([engine, kind, specs, notes, config.THREED_URL])[:16],
                 'actions': [action], 'inputs': specs, 'source_limit': len(ROLES[kind]),
                 'source_roles': ROLES[kind], 'output_payload': '3d', 'limitations': notes,
+                'sources': [{'role': role, 'accepts': ['image' if role in ('image', 'appearance') else '3d']}
+                            for role in ROLES[kind]], 'price_unit': 'attempt',
                 'attempt_max': 4 if kind in SEEDED_KINDS else 1,
                 'evidence': 'declared', 'availability': 'unavailable' if unavailable else 'unverified',
                 'reasons': ['Generation is disconnected in this isolated preview.'] if config.CREXIL_PREVIEW else

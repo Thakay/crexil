@@ -19,7 +19,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from . import config, presets
-from . import hosted_images, crexil_budget, crexil_mesh
+from . import blind, hosted_images, crexil_audio, crexil_budget, crexil_mesh
 from .crexil_schemas import Preparation
 from .crexil_store import Conflict, CreativeStore
 from .db import new_id
@@ -67,7 +67,8 @@ def catalogue(stack, graphs: dict | None = None) -> list[dict]:
                        ['The local runtime is paused or unavailable.'] if unavailable else [],
             'execution_location': 'Configured ComfyUI runtime', 'data_destination': config.COMFYUI_URL,
             'price_usd': 0.0 if bound == 0 else None, 'maximum_usd_per_attempt': bound,
-            'cost_basis': 'Reviewed unmetered workflow bytes' if bound == 0 else 'No enforceable cost bound'})
+            'cost_basis': 'Reviewed unmetered workflow bytes' if bound == 0 else 'No enforceable cost bound',
+            'sources': [{'role': 'source', 'accepts': ['image']}], 'price_unit': 'attempt'})
     for model in stack.provider_catalog.selectable().values():
         limit = hosted_images.source_limit(model)
         unavailable = preview or not stack.openrouter.key_present or 'lane:external' in benches or f"engine:{model['id']}" in benches
@@ -79,8 +80,10 @@ def catalogue(stack, graphs: dict | None = None) -> list[dict]:
                        ['The provider is paused, unavailable, or needs a key.'] if unavailable else [],
             'execution_location': 'Hosted provider', 'data_destination': config.OPENROUTER_URL,
             'price_usd': model.get('price_usd_per_image'), 'maximum_usd_per_attempt': None,
-            'cost_basis': 'Published tariffs can reserve expected spend; this route has no enforceable per-request ceiling'})
-    return results + crexil_mesh.catalogue(stack)
+            'cost_basis': 'Published tariffs can reserve expected spend; this route has no enforceable per-request ceiling',
+            'sources': [{'role': 'source', 'accepts': ['image']}] if limit else [], 'price_unit': 'image',
+            'provider': 'openrouter', 'pinned': bool(model.get('pinned'))})
+    return results + crexil_mesh.catalogue(stack) + crexil_audio.catalogue(stack)
 
 
 def strict_value(spec: dict, value):
@@ -152,12 +155,13 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
     sources = []
     source_nodes = []
     mesh_action = setup.action in crexil_mesh.ACTIONS
+    audio_action = setup.action in crexil_audio.ACTIONS
     for ref in setup.references:
         node = await stack.db.get_node(ref.node_id)
         if not node or node['workspace_id'] != direction['workspace_id'] or node['purged_at'] or not Path(node['output_path']).is_file():
             errors.append(f'Source {ref.node_id} is unavailable. Restore or replace it.')
             continue
-        if not mesh_action and node['payload'] != 'image':
+        if not mesh_action and not audio_action and node['payload'] != 'image':
             errors.append('This action needs image sources. Use a mesh operation for 3D material.')
         source_nodes.append(node)
         sources.append({'node_id': node['id'], 'sha256': hashlib.sha256(Path(node['output_path']).read_bytes()).hexdigest()})
@@ -213,7 +217,7 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
             errors.extend(f"{op['label']}: {reason}" for reason in op['reasons'])
         bound = op['maximum_usd_per_attempt']
         hosted_model = stack.provider_catalog.selectable().get(choice.operation_id)
-        if bound is None and not hosted_model:
+        if bound is None and not hosted_model and not op.get('audio_verb'):
             unknown = True
             errors.append(f"{op['label']} has no enforceable cost bound. Its estimate cannot protect this spending limit.")
         if op.get('mesh_kind'):
@@ -223,6 +227,21 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
                 if compiled is not None:
                     compiled[choice.operation_id] = envelope
             except (ValueError, OSError) as exc:
+                errors.append(f"{op['label']}: {exc}")
+        elif op.get('audio_verb'):
+            try:
+                envelope = await crexil_audio.compile_request(stack.db, op, setup, choice, source_nodes)
+                if envelope['paid'] and setup.spending_policy != 'published_tariff':
+                    raise ValueError('This engine charges by a published tariff, which is not a hard cap. '
+                                     'Choose published-tariff budgeting explicitly or use an unmetered local engine.')
+                bound = Decimal(envelope['reserved_micro_usd']) / crexil_budget.MICRO_USD
+                chosen[-1].update(applied_controls=envelope['controls'], reserved_usd=float(bound),
+                                  reserved_micro_usd=envelope['reserved_micro_usd'])
+                uses_tariff = uses_tariff or envelope['paid']
+                if compiled is not None:
+                    compiled[choice.operation_id] = envelope
+            except (ValueError, OSError) as exc:
+                unknown = unknown or isinstance(exc, crexil_budget.UnknownPrice)
                 errors.append(f"{op['label']}: {exc}")
         elif choice.operation_id in stack.catalog:
             try:
@@ -350,7 +369,8 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
             'ready': ready_count > 0, 'errors': errors, 'attempts': count,
             'ready_attempts': ready_count, 'blocked_attempts': count - ready_count,
             'maximum_usd': None if uses_tariff or unknown and not ready_count else float(maximum),
-            'reserved_usd': float(maximum), 'snapshot': snapshot}
+            'reserved_usd': float(maximum),
+            'reserved_micro_usd': int((maximum * crexil_budget.MICRO_USD).to_integral_value()), 'snapshot': snapshot}
 
 
 async def freeze(stack, did: str, body, *, staged_directories: list | None = None,
@@ -394,6 +414,9 @@ async def freeze(stack, did: str, body, *, staged_directories: list | None = Non
         inputs = op['applied_controls']
         if op.get('mesh_kind'):
             specs.extend(crexil_mesh.frozen_specs(op, compiled[op['id']], parents, setup))
+            continue
+        if op.get('audio_verb'):
+            specs.extend(crexil_audio.frozen_specs(op, compiled[op['id']], parents, setup))
             continue
         if op.get('hosted'):
             envelope = compiled[op['id']]
@@ -449,18 +472,23 @@ async def freeze(stack, did: str, body, *, staged_directories: list | None = Non
                                                'registration_revision': op.get('registration_revision'),
                                                'kind_of_work': setup.purpose,
                                                'output_ports': op.get('output_ports', [])}}})
+    if setup.blind:
+        specs = blind.arrange(specs)
     frames = [[snapshot['region']['source']['width'], snapshot['region']['source']['height']] for s in specs] if capability == 'region' else [None if 'mesh_job' in (s.get('submitted_graph') or {}) else _frame_of(s['dials']) for s in specs]
     if setup.action in crexil_mesh.ACTIONS:
         from .api_v4_mesh import _refuse_if_disk_cannot_hold_meshes
         await _refuse_if_disk_cannot_hold_meshes(len(specs))
-    else:
+    elif setup.action not in crexil_audio.ACTIONS:
+        # audio takes are seconds of PCM, far below the pixel-based estimate
         await _refuse_if_disk_cannot_hold(stack.db, [f[0] * f[1] if f else ASSUMED_PX for f in frames])
     turn = await stack.db.create_turn_with_slots(direction['workspace_id'], setup.prompt,
         {'crexil': {**snapshot, 'review_token': body.review_token, 'actor': body.actor.model_dump(),
                     'request_id': body.request_id, 'maximum_usd': reviewed['maximum_usd'],
                     **({'sequence': sequence_context} if sequence_context else {})},
          **({'region': {'region_ids': region_ids, 'policy': snapshot['region']['policy']}} if region_ids else {})}, specs)
-    await stack.db.conn.execute('INSERT INTO direction_turns VALUES(?,?)', (did, turn['id']))
+    await stack.db.conn.execute('INSERT INTO direction_turns(direction_id,turn_id) VALUES(?,?)', (did, turn['id']))
+    if setup.blind:
+        await blind.mark(stack.db, turn['id'], direction['workspace_id'], body.actor.model_dump())
     if region_ids:
         await stack.db.mark_regions_consumed(region_ids, turn['id'])
     for slot in turn['slots']:
@@ -468,7 +496,8 @@ async def freeze(stack, did: str, body, *, staged_directories: list | None = Non
         mesh_kind = (slot.get('submitted_graph') or {}).get('mesh_job', {}).get('kind')
         await stack.db.append_event('slot.prepared', workspace_id=direction['workspace_id'],
             turn_id=turn['id'], slot_id=slot['id'], payload={'engine': slot['engine'],
-                'payload': '3d' if mesh_kind else next((p['payload'] for p in slot['dials']['crexil']['output_ports'] if p['primary']), 'image'),
+                'payload': slot['dials']['crexil'].get('output_payload') or ('3d' if mesh_kind else next(
+                    (p['payload'] for p in slot['dials']['crexil']['output_ports'] if p['primary']), 'image')),
                 'verb': mesh_verb(mesh_kind) if mesh_kind else setup.action, 'prompt': slot['dials'].get('prompt', setup.prompt), 'parents': parents,
                 'actor': body.actor.model_dump(), 'direction_id': did, 'frame': frames[slot['pos']]})
     submitted_ids = {op['id'] for op in snapshot['operations'] if op['ready']}

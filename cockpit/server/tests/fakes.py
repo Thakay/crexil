@@ -4,7 +4,7 @@ which wire them through the real app via `wiring.EXECUTOR_FACTORY`."""
 import asyncio
 from dataclasses import dataclass, field
 
-from app.executors import (DispatchRequest, EngineFailure, ExecutionResult,
+from app.executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult,
                            Handle, Reconciliation)
 
 
@@ -130,3 +130,111 @@ class FakeExecutor:
 
 def fail(kind, msg="boom"):
     return EngineFailure(kind, msg)
+
+
+def tone_wav(seconds=0.5, rate=24000, pitch=220.0, amplitude=0.3, channels=1, width=2) -> bytes:
+    """A real PCM WAV tone, so collection measures it as it measures any take."""
+    import math
+    import struct
+
+    from app.audio import wrap_pcm
+    full = (1 << (8 * width - 1)) - 1
+    frames = bytearray()
+    for i in range(int(seconds * rate)):
+        value = int(amplitude * full * math.sin(2 * math.pi * pitch * i / rate))
+        if width == 1:
+            sample = struct.pack('<B', value + 128)
+        elif width == 3:
+            sample = value.to_bytes(3, 'little', signed=True)
+        else:
+            sample = struct.pack('<h' if width == 2 else '<i', value)
+        frames += sample * channels
+    return wrap_pcm(bytes(frames), sample_rate=rate, channels=channels, sample_width=width)
+
+
+@dataclass
+class AudioHandle(Handle):
+    request: DispatchRequest | None = None
+
+
+class FakeAudioExecutor:
+    """Scripted audio provider. Each attempt returns the envelope's `takes`
+    WAV takes through the real collector, with the voice facts a real
+    adapter reports. `data` replaces the bytes, `failure` fails the attempt,
+    `gate` holds it until set, and `max_concurrency` is the executor's own
+    permit. `requests` records every request; `collected` every free
+    collection the scheduler asked of it."""
+
+    def __init__(self, name, lane, *, data=None, failure=None, gate=None, delay_s=0.0,
+                 max_concurrency=None, cost=None):
+        self.name, self.lane = name, lane
+        self.data, self.failure, self.gate, self.delay_s, self.cost = data, failure, gate, delay_s, cost
+        if max_concurrency:
+            self.max_concurrency = max_concurrency
+        self.requests: list[DispatchRequest] = []
+        self.collected: list[str] = []
+        self.probe = Probe()
+
+    async def open(self):
+        pass
+
+    async def close(self):
+        pass
+
+    async def start(self, req):
+        self.requests.append(req)
+        return AudioHandle(job_ref=f'audio-{req.slot_id}-{len(self.requests)}', request=req)
+
+    def _voice(self, envelope, index, slot_id):
+        verb = envelope.get('verb')
+        if verb == 'voice-design':
+            return {'provider': self.name, 'kind': 'designed', 'generated_voice_id': f'gen-{slot_id}-{index}'}
+        if verb == 'speak':
+            recorded = (envelope.get('voice') or {}).get('recorded') or {}
+            return {'provider': self.name, 'kind': 'saved' if self.name == 'elevenlabs' else 'cloned',
+                    'voice_id': f'voice-{slot_id}', 'from_generated_voice_id': recorded.get('generated_voice_id'),
+                    'reference_node_id': (envelope.get('voice') or {}).get('source_node_id')}
+        return None
+
+    async def wait(self, h):
+        self.probe.concurrent += 1
+        self.probe.max_concurrent = max(self.probe.max_concurrent, self.probe.concurrent)
+        try:
+            if self.gate is not None:
+                await self.gate.wait()
+            if self.delay_s:
+                await asyncio.sleep(self.delay_s)
+            if self.failure is not None:
+                raise self.failure
+            envelope = h.request.external or {}
+            spoken = ((envelope.get('controls') or {}).get('preview_text') if envelope.get('verb') == 'voice-design'
+                      else envelope.get('text') if envelope.get('verb') == 'speak' else None)
+            primary = None
+            for index in range(int(envelope.get('takes') or 1)):
+                data = self.data if self.data is not None else tone_wav(pitch=180 + 40 * index)
+                output = CollectedOutput(identity=f'take:{index}', filename=f'take-{index + 1}.wav', data=data,
+                                         payload='audio', descriptor={'audio': {
+                                             'text': spoken, 'voice': self._voice(envelope, index, h.request.slot_id),
+                                             'alignment': None}})
+                if h.request.on_output:
+                    await h.request.on_output(output)
+                if primary is None:
+                    primary = ExecutionResult(data=data, payload='audio', filename=output.filename,
+                                              primary_identity=output.identity, descriptor=output.descriptor,
+                                              charged_usd=self.cost)
+            return primary
+        finally:
+            self.probe.concurrent -= 1
+
+    async def cancel(self, h):
+        pass
+
+    async def reconcile(self, slot, *, request=None):
+        return Reconciliation('gone')
+
+    async def verify_charge(self, job_ref):
+        return None
+
+    async def collect_existing(self, slot, *, request=None):
+        self.collected.append(slot['id'])
+        return Reconciliation('failed', cause='The scripted provider has nothing to collect.', failure_kind='error')
