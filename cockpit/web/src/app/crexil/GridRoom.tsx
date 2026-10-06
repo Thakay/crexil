@@ -117,10 +117,15 @@ export function RoomLine({data, turns, takes, fastPick, refresh}: {
     .map(run => ({turn, run})));
   const audible = takes.some(isAudible);
   const status = useRef<HTMLSpanElement>(null);
-  const playing = usePlayer(state => state.playing ? state.nodeId : null);
+  // A take started, stopped or refused says itself; what was said before gives way to it.
+  const player = usePlayer(state => `${state.nodeId}:${state.playing}:${state.error}`);
   const {announce} = fastPick;
-  // A take started from the keyboard says itself; what was said before gives way to it.
-  useEffect(() => {if (playing) announce('');}, [playing, announce]);
+  const heard = useRef(player);
+  useEffect(() => {
+    if (heard.current === player) return;
+    heard.current = player;
+    announce('');
+  }, [player, announce]);
   // Law 13, said while local work is in flight; a blind run's in-flight work may be local.
   const local = turns.some(turn => inFlight(turn) && (hidden.has(turn.id)
     || turn.slots.some(slot => ['queued', 'running'].includes(slot.status) && engineLane(slot.engine) !== 'hosted')));
@@ -145,13 +150,16 @@ function pickedFrom(data: Snapshot, turn: Turn): string[] {
   return direction.selection.filter(id => data.nodes.some(node => node.id === id && node.turn_id === turn.id));
 }
 
-/** The take in the player, said politely when a key starts or stops it. */
+/** The take in the player, said politely when a key starts or stops it, or why it did not
+ *  play: the browser blocked it, or the voice director's session is connecting. */
 function Playing({takes}: {takes: readonly (Material | null)[]}) {
   const id = usePlayer(state => state.nodeId);
   const playing = usePlayer(state => state.playing);
+  const error = usePlayer(state => state.error);
   const matched = usePlayer(state => Boolean(state.nodeId && state.levels[state.nodeId]?.matched));
   const take = takes.find(item => item !== null && item.id === id) ?? null;
-  return take ? playingLine(take, playing, matched) : null;
+  if (!take) return null;
+  return error ? `${label(take)} · ${error}` : playingLine(take, playing, matched);
 }
 
 function PickReason({wid, pick, settle, refresh}: {wid: string; pick: FastPick; settle: (line: string | null) => void; refresh: () => void}) {

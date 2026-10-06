@@ -304,6 +304,7 @@ function ProjectWorkspace({id}: {id: string}) {
       <a className={s.quiet} href={projectHref()}>+ New project</a>
       <div className={s.spacer}/><a className={s.quiet} href={`#/connections?project=${id}`}>Connections</a><a className={s.quiet} href={`#/operations?project=${id}`}>Operations</a><button onClick={fromHere(store.getState().showImport)}>Import material</button>
       <button className={s.door} onClick={fromHere(() => store.getState().openRecord())}>Record ›</button>
+      <VoiceDirectorPanel projectId={id} doorClassName={s.door}/>
       <button onClick={fromHere(store.getState().showSequences)}>Sequences{data.sequences?.length?` · ${data.sequences.length}`:''}</button>
       <button onClick={fromHere(store.getState().showDeliveries)}>Deliveries</button>
       <button onClick={fromHere(store.getState().showBackup)}>Back up</button>
@@ -413,7 +414,6 @@ function ProjectWorkspace({id}: {id: string}) {
       onClose={ran => {store.getState().closeDrawer(); if (record) requestAnimationFrame(() => recordOrigin().current?.focus()); else focusAfterDrawer(activeDraft, ran);}}/>}
     {inspect && <Inspection key={inspect.id} node={inspect} data={data} close={closeLayer} navigate={inspectNode} openGroup={id=>store.getState().openGroup(id)} openRecord={()=>store.getState().openRecord({node_id:inspect.id},inspect.id)} returnLabel={record?'Record':'Project'}/>}
     {group&&<OutputGroup group={group} close={()=>store.getState().closeGroup()} refresh={refresh} inspect={id=>{store.getState().closeGroup();inspectNode(id);}}/>}
-    <VoiceDirectorPanel projectId={id}/>
     <div className={s.queue}><span>{activeSlots.length} active or unresolved · Local engines take turns on one GPU</span><span>{busy ? 'Saving work…' : 'Changes stay in this project'}</span></div>
   </>;
 }

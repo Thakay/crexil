@@ -215,6 +215,13 @@ describe('the working line', () => {
     await act(() => player.play('b1'));
     expect(screen.getByRole('status')).toHaveTextContent('Playing 0B · 4.4 s · as recorded');
   });
+  it("says why a take did not play, such as the voice director's session connecting", async () => {
+    mount(snapshot());
+    const remove = player.beforePlay(() => 'The voice director is connecting. Play the take once it is listening.');
+    await act(() => player.play('a1'));
+    remove();
+    expect(screen.getByRole('status')).toHaveTextContent('0A · The voice director is connecting. Play the take once it is listening.');
+  });
 });
 
 describe('audition in the grid room', () => {

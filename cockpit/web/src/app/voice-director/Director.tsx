@@ -356,8 +356,9 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
       {usage && !usage.ready && <ul className={css.reasons}>{usage.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
       {unrecorded
         ? <button type="button" onClick={() => void recordEnd(unrecorded)}>Record the last session's minutes</button>
-        : <button type="button" className={css.paid} disabled={!usage?.ready || busy} onClick={() => void start()}>
-            {busy ? 'Starting…' : `Start · up to ${usage ? money(sessionPrice(usage)) : '…'}`}
+        // A session that cannot start carries no price: there is no money about to move (law 6).
+        : <button type="button" className={usage?.ready ? css.paid : undefined} disabled={!usage?.ready || busy} onClick={() => void start()}>
+            {busy ? 'Starting…' : usage?.ready ? `Start · up to ${money(sessionPrice(usage))}` : 'Start'}
           </button>}
     </section>}
 

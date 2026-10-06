@@ -126,30 +126,41 @@ test('focus stays in the column when the control that held it goes away', async 
   await waitFor(() => expect(screen.getByRole('heading', {name: 'Voice director'})).toHaveFocus());
 });
 
-test('closing while the door makes way returns focus to where it came from', async () => {
+test('closing returns focus to the door, whatever opened over the Filmstrip meanwhile', async () => {
   const store = createViewStore();
   render(<ViewContext.Provider value={store}><button type="button">Act on 0A</button>
     <VoiceDirectorPanel projectId="p1" door={fakeDoor()}/></ViewContext.Provider>);
   await openDoor();
   act(() => store.getState().openGrid(0));
-  const take = screen.getByRole('button', {name: 'Act on 0A'});
-  take.focus();
   (await screen.findByRole('button', {name: /Start · up to/})).focus();
   press();
   expect(screen.queryByRole('complementary', {name: 'Voice director'})).toBeNull();
-  await waitFor(() => expect(take).toHaveFocus());
+  await waitFor(() => expect(screen.getByRole('button', {name: 'Voice director ›'})).toHaveFocus());
 });
 
-test('the closed door makes way while anything is open over the Filmstrip, and returns with it', () => {
+test('the door stays in its bar whatever is open over the Filmstrip, since no room puts its Esc there', () => {
   const store = createViewStore();
   render(<ViewContext.Provider value={store}><VoiceDirectorPanel projectId="p1" door={fakeDoor()}/></ViewContext.Provider>);
-  expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
-  act(() => store.getState().inspect('n1'));
-  expect(screen.queryByRole('button', {name: 'Voice director ›'})).toBeNull();
-  act(() => { store.getState().closeTop(); });
-  expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
-  act(() => store.setState({drawer: 'd1'}));
-  expect(screen.queryByRole('button', {name: 'Voice director ›'})).toBeNull();
-  act(() => store.setState({drawer: null}));
-  expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
+  for (const open of [() => store.getState().inspect('n1'), () => store.getState().openGrid(0), () => store.setState({drawer: 'd1'})]) {
+    act(open);
+    expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
+  }
+});
+
+test('the door closes an idle column, and brings focus into a column in session, whose close would end it', async () => {
+  render(<VoiceDirectorPanel projectId="p1" door={fakeDoor()} doorClassName="bar-door"/>);
+  const door = screen.getByRole('button', {name: 'Voice director ›'});
+  expect(door).toHaveClass('bar-door');
+  await openDoor();
+  expect(door).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.click(door);
+  expect(screen.queryByRole('complementary', {name: 'Voice director'})).toBeNull();
+  expect(door).toHaveAttribute('aria-expanded', 'false');
+  await openDoor();
+  await startSession();
+  door.focus();
+  fireEvent.click(door);
+  expect(screen.getByRole('complementary', {name: 'Voice director'})).toBeInTheDocument();
+  expect(screen.getByRole('heading', {name: 'Voice director'})).toHaveFocus();
+  expect(sdk.end).not.toHaveBeenCalled();
 });
