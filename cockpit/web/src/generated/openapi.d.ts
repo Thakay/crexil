@@ -809,7 +809,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Sequence */
+        /**
+         * Create Sequence
+         * @description Create a sequence for its participant (law 23). An agent's sequence keeps
+         *     the default limits, as an agent's edit would: limits are the artist's (403).
+         */
         post: operations["create_sequence_api_crexil_projects__wid__sequences_post"];
         delete?: never;
         options?: never;

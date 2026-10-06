@@ -12973,6 +12973,7 @@
     },
     "/api/crexil/projects/{wid}/sequences": {
       "post": {
+        "description": "Create a sequence for its participant (law 23). An agent's sequence keeps\nthe default limits, as an agent's edit would: limits are the artist's (403).",
         "operationId": "create_sequence_api_crexil_projects__wid__sequences_post",
         "parameters": [
           {

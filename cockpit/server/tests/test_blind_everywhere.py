@@ -20,10 +20,12 @@ from test_api_v4 import booted, settle_turn, store
 from test_audio_contract import PREVIEW, booted_audio, draft, free_design_row, operation
 from test_crexil import command, image_bytes, project
 from test_crexil_execution import attest, reviewed
+from test_crexil_execution import draft as image_draft
 
 pytestmark = pytest.mark.anyio
 
 LOCAL, HOSTED = 'qwen3-tts', 'test-elevenlabs-design'
+ARTIST_ACTOR = {'kind': 'human', 'name': 'Artist'}
 LOCAL_LABEL = 'Design voice · Qwen3-TTS 1.7B'
 PROMPT = 'A gruff dwarf blacksmith, low and warm'
 # What a hidden take's reads must never name, lower-cased: engine ids, providers, labels, models.
@@ -457,6 +459,64 @@ async def test_agents_cannot_change_a_sequences_spending_limits(tmp_path, monkey
         assert retitled.status_code == 200 and retitled.json()['title'] == 'Explore wider'
         artist = await edit(limits={'attempt_limit': 32, 'spending_limit_usd': 0})
         assert artist.status_code == 200 and artist.json()['limits']['attempt_limit'] == 32
+
+
+async def test_an_agents_new_sequence_keeps_the_default_limits(tmp_path, monkeypatch):
+    agent = {'kind': 'agent', 'name': 'Scout'}
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        attest()
+        p = await project(client)
+
+        async def create(actor, **limits):
+            first = await image_draft(client, p['id'])
+            body = command(title='Explore', steps=[{'key': 'explore', 'direction_id': first['id'],
+                                                    'revision': first['revision']}], actor=actor,
+                           **({'limits': limits} if limits else {}))
+            return await client.post(f"/api/crexil/projects/{p['id']}/sequences", json=body)
+
+        for limits in ({'attempt_limit': 64, 'spending_limit_usd': 25, 'spending_policy': 'published_tariff'},
+                       {'attempt_limit': 4, 'spending_limit_usd': 0}):
+            refused = await create(agent, **limits)
+            assert refused.status_code == 403 and refused.json()['detail'].startswith(
+                "Changing a new sequence's spending limits is the artist's act")
+        assert (await client.get(f"/api/crexil/projects/{p['id']}")).json()['sequences'] == []
+        kept = await create(agent)
+        assert kept.status_code == 201 and kept.json()['limits'] == {
+            'attempt_limit': 16, 'spending_limit_usd': 0, 'spending_policy': 'hard_cap'}
+        assert (await create(ARTIST_ACTOR, attempt_limit=64, spending_limit_usd=25,
+                             spending_policy='published_tariff')).status_code == 201
+
+
+async def test_an_agent_sends_paid_work_only_inside_a_spending_limit_the_artist_set(tmp_path, monkeypatch):
+    from app.crexil_execution import UNBOUNDED_AGENT
+    from test_audio_guardrails import ELEVEN_DESIGN, SPOKEN
+    from test_audio_guardrails import prepare as prepare_audio
+    from test_crexil_hosted import limits
+    agent = {'kind': 'agent', 'name': 'Scout'}
+    paid = FakeAudioExecutor('elevenlabs', 'external')
+    async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': paid}) as (client, _):
+        p = await project(client)
+        assert p['limits'] == {}                                          # a new project has none
+
+        async def agent_submits(wid, action, cast):
+            direction = await prepare_audio(client, wid, action, 'A gruff smith', cast)
+            check = await reviewed(client, direction)
+            assert check['ready'], check['errors']
+            return await client.post(f"/api/crexil/directions/{direction['id']}/submit", json=command(
+                revision=check['revision'], review_token=check['token'], actor=agent))
+
+        refused = await agent_submits(p['id'], 'voice-design', [(ELEVEN_DESIGN, 2, SPOKEN)])
+        assert (refused.status_code, refused.json()['detail']) == (403, UNBOUNDED_AGENT)
+        assert paid.requests == [] and await store().list_turns(p['id']) == []
+        free = await agent_submits(p['id'], 'voice-design', [(f'audio:voice-design:{LOCAL}', 1, SPOKEN)])
+        assert free.status_code == 201, free.text                        # free work stays open to agents
+
+        bounded = await limits(client, (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project'],
+                               spending_limit_usd=1.0, spending_policy='published_tariff')
+        sent = await agent_submits(bounded['id'], 'voice-design', [(ELEVEN_DESIGN, 2, SPOKEN)])
+        assert sent.status_code == 201, sent.text
+        await settle_turn(sent.json()['turn_id'], until={'landed'})
+        assert len(paid.requests) == 2
 
 
 # --- reads that the first blind pass left out ---

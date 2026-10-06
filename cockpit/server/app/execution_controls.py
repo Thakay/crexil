@@ -41,8 +41,9 @@ class ExecutionCancelled(ValueError):
     """An automatic retry still belongs to the attempt whose stop was requested."""
 
 
-class ArtistsMove(Exception):
-    """A move only the artist makes (laws 22 and 23); routes answer 403 in its words."""
+class ArtistsMove(ValueError):
+    """A move only the artist makes (laws 22 and 23): a refusal routes answer
+    with 403 in its words."""
 
 
 async def _workspace(db, scope: Scope, target_id: str) -> str:

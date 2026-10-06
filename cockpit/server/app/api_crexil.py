@@ -57,12 +57,16 @@ DEFECTS = (KeyError, IndexError, ValidationError, json.JSONDecodeError, UnicodeE
 
 def refused(exc: Exception) -> HTTPException:
     """The one translation of a refusal into a plain-language response.
-    Raises a defect unchanged; maps unfinished features to 501, conflicts to
-    409, missing records to 404 and other refusals to 422. A conflict that names
+    Raises a defect unchanged; maps the artist's own moves asked by an agent to
+    403, unfinished features to 501, conflicts to 409, missing records to 404
+    and other refusals to 422. A conflict that names
     its kind, such as spending that moved since review, also carries that kind
     in the `X-Crexil-Conflict` header so a client or agent can act on it."""
     if isinstance(exc, DEFECTS):
         raise exc
+    from .execution_controls import ArtistsMove
+    if isinstance(exc, ArtistsMove):
+        return HTTPException(403, str(exc))
     if isinstance(exc, (blind.NotBuilt, decisions.NotBuilt)):
         return HTTPException(501, str(exc))
     if isinstance(exc, Conflict):
@@ -360,13 +364,10 @@ async def control_execution(scope: Literal['project', 'run', 'sequence'], target
     """Pause, resume or cancel a project, run or sequence, for its participant
     (law 23). Agents may pause and cancel; resuming work that may spend is the
     artist's act (403)."""
-    from .execution_controls import ArtistsMove, record
+    from .execution_controls import record
     async def apply():
         return await record(store().db, scope, target_id, body)
-    try:
-        saved = await command(body, f'execution.control:{scope}:{target_id}', apply)
-    except ArtistsMove as exc:
-        raise HTTPException(403, str(exc)) from exc
+    saved = await command(body, f'execution.control:{scope}:{target_id}', apply)
     await wiring.current.scheduler.apply_execution_controls()
     wiring.current.sequences.wake.set()
     return saved
@@ -374,7 +375,11 @@ async def control_execution(scope: Literal['project', 'run', 'sequence'], target
 
 @router.post('/projects/{wid}/sequences', response_model=SequenceView, status_code=201)
 async def create_sequence(wid: str, body: CreateSequence):
+    """Create a sequence for its participant (law 23). An agent's sequence keeps
+    the default limits, as an agent's edit would: limits are the artist's (403)."""
     from .crexil_sequences import create
+    artist_sets_limits(body.actor, CreateSequence.model_fields['limits'].default_factory().model_dump(),
+                       body.limits, "a new sequence's")
     return await command(body, 'sequences.create:' + wid, lambda: create(store().db, wid, body))
 
 
