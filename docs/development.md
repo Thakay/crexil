@@ -227,6 +227,12 @@ ElevenLabs is reached directly over HTTP, never through its SDK, because the SDK
 could charge twice for one take. `LIVE_ELEVENLABS=1` with `ELEVENLABS_API_KEY` set runs one opt-in live
 sound-effect test that costs about $0.001; `scripts/check.sh` never runs it.
 
+A designed ElevenLabs voice becomes a saved voice, which takes one of the account's voice slots, the
+first time it speaks. Crexil saves each designed voice at most once: the save is kept in the record
+(`voice.saved`) as soon as ElevenLabs answers, and before saving Crexil looks the voice up in the
+account by its `crexil_generated_voice_id` label. Crexil never deletes a voice; free slots in the
+ElevenLabs account. A save refused because every slot is in use says so.
+
 ### Local ComfyUI lane
 
 - ComfyUI is a separate checkout with its own virtual environment, reached at `COMFYUI_URL`.
@@ -302,7 +308,7 @@ sound-effect test that costs about $0.001; `scripts/check.sh` never runs it.
 - **No authentication.** The server trusts localhost: a Host allow-list, an Origin check, and a key
   setup route that refuses non-loopback clients unless `COCKPIT_LOOPBACK_PUBLISH=1` (set in
   `compose.yaml`, where clients arrive from a bridge address). Never expose the port.
-- **Store schema.** `db.py` upgrades an older store when it opens it (schema 7 today). Older code
+- **Store schema.** `db.py` upgrades an older store when it opens it (schema 13 today). Older code
   refuses a newer file, and a file older than schema 4 is refused, never migrated. Use a fresh
   `COCKPIT_DB` when you move back across a schema change. `docker compose down -v` deletes the
   `cockpit-data` volume, which holds the store and the staging folder. Compose names that volume

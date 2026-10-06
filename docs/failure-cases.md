@@ -57,6 +57,8 @@ A `dead_key` or `unreachable` failure from an audio provider benches that provid
 
 Every failed slot keeps three fields. `cause` is one plain line per kind, from `plain_cause` in `scheduler.py`. It never carries a status code or a stack trace (law 3). `detail` is the engine's raw text, cut to 1600 characters, shown only behind the cell's DETAILS fold. `kind` picks the buttons. The same facts go into a permanent `slot.failed` event with the attempt, engine, frame and cost.
 
+An audio adapter that refuses a take before generation words its own line instead (`EngineFailure.plain`): the cause, "Nothing was charged." and the next move, such as replacing the key, adding credit, choosing another voice take or freeing a voice slot. The scheduler shows those words as the cause, and as the bench's cause when the refusal benches the provider. A rate limit keeps the curated line, which counts the tries. ElevenLabs' own message stays in `detail`.
+
 The cell's second line states cost (law 5): GPU time and takes still queued for a local take, dollars for a paid take, including "nothing was charged". Free buttons come first. A paid button comes last, shows its price, and is never the default (laws 4 and 6). Failed cells that share one cause are also named once in the turn's footer (law 1). This logic is in `batch/grid.ts` and tested in `batch/grid.test.ts`.
 
 If the cockpit's own code fails on a take, `capture.py` records a `cockpit.failure` event with the traceback. The slot fails as `internal` with a plain line, and the lane serves the next take (`test_law_3_an_internal_crash_still_speaks_plainly` in `test_laws.py`, `test_capture.py`).
@@ -92,6 +94,8 @@ Only two kinds retry on their own (`default_retry_policy` in `scheduler.py`):
 | `unreachable` | 1 | `COCKPIT_RETRY_BACKOFF_S` (2 s) |
 
 The provider's window is read from the `Retry-After` header (seconds or a date) or from `X-RateLimit-Reset` (`retry_after_from` in `openrouter.py`). While an external take waits, it gives back its concurrency permit, so one slow provider does not block the others. A take re-queued under C2 is also marked as a retry (`gpu_held`). Every other kind is final. Running it again is the artist's choice.
+
+A project run freezes whether its slots may retry on their own: audio slots do, image and 3D slots do not. Both kinds that retry mean the provider refused the request or never received it, so a retry never pays twice. The refused attempt's known zero charge is recorded on its `slot.retrying` event, so its reservation stops counting against every cap (law 22).
 
 Nothing retries silently (law 9). Before the wait, the scheduler writes a `slot.retrying` event with the kind, the attempt, the limit, the wait, whose clock it is, and the time of the next try. The slot returns to `queued` with `retry_of` set. `GET /api/queue` lists the waits under `retries`. The cell reads RETRYING · ATTEMPT i OF n with a countdown, and the queue strip marks a running retry. `retry_of` stays on the row after the take lands. A manual reroll clears it. A cancel during the wait wins: the slot is skipped and nothing more is sent.
 
@@ -261,9 +265,9 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 
 ### C1 · Closed with a queue in flight
 **Status: partly implemented.**
-- **System does:** the queue lives in the server, so closing the browser stops nothing. When the server restarts, `_recover` in `scheduler.py` rebuilds the benches and sorts every unfinished slot. Queued slots are queued again with the same seeds. A running local take is looked up at its engine: it lands, fails, or is queued again. If ComfyUI cannot be reached for that lookup, the local lane is benched and the slot stays `running` until the next startup looks it up again. A running external take is never sent again. It fails with a line saying the cockpit restarted during the call, and `slot.charge_unverified` states the committed amount. A slot whose prepared payload is lost is skipped and says to reroll. A `late` slot stays late. One `scheduler.recovered` event holds the counts.
+- **System does:** the queue lives in the server, so closing the browser stops nothing. When the server restarts, `_recover` in `scheduler.py` rebuilds the benches and sorts every unfinished slot. Queued slots are queued again with the same seeds. A running local take is looked up at its engine: it lands, fails, or is queued again. If ComfyUI cannot be reached for that lookup, the local lane is benched and the slot stays `running` until the next startup looks it up again. A running external take is never sent again. It fails with a line saying the cockpit restarted during the call, and `slot.charge_unverified` states the committed amount. A slot whose prepared payload is lost is skipped and says to reroll. A `late` slot stays late. One `scheduler.recovered` event holds the counts. ElevenLabs speech is collected from ElevenLabs' history as the attempt's own take only: by its lost answer's request id, or by the one take of the same voice, model, text, settings and format, made after the attempt was sent, that no receipt binds and that no other unsettled attempt of the same line could have made. Otherwise it says the take cannot be collected safely, and nothing is generated again.
 - **Missing:** no summary is shown to the artist on reopen. The remainder runs without an offer.
-- **Tests:** the restart section of `test_scheduler.py`, `test_region_slot_survives_a_restart` in `test_api_v4_regions.py`, `test_a_queued_mesh_slot_survives_a_restart` in `test_api_v4_mesh.py`.
+- **Tests:** the restart section of `test_scheduler.py`, `test_region_slot_survives_a_restart` in `test_api_v4_regions.py`, `test_a_queued_mesh_slot_survives_a_restart` in `test_api_v4_mesh.py`, and the recovery tests in `test_audio_hardening.py`.
 
 ### C2 · GPU held by another program
 **Status: implemented.**
@@ -324,8 +328,8 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 ### D6 · Seedless engine, artist tries to reproduce
 **Status: implemented.**
 - **Artist sees:** with the seed locked, the SEED dial says how many slots ignore the lock and names the models. Roster rows carry a seed badge with its verified or unverified state. A cell without a seed says NO SEED.
-- **System does:** the seed is sent only to external models whose catalogue entry says `supports_seed`. The request record keeps exactly what was sent.
-- **Lives in:** `composer/dials.ts` (`seedBadges`), `composer/badges.ts`, `api_v4.py`. Tests: `composer/dials.test.ts`, `composer/badges.test.ts`.
+- **System does:** the seed is sent only to external models whose catalogue entry says `supports_seed`. The request record keeps exactly what was sent. Audio engine rows declare the seeds they take (`seed_range`). Review refuses a fixed or locked seed outside that range, and freeze draws a random seed inside it, so the seed recorded is the seed sent.
+- **Lives in:** `composer/dials.ts` (`seedBadges`), `composer/badges.ts`, `api_v4.py`, `crexil_audio.py` (`check_seeds`, `take_seed`). Tests: `composer/dials.test.ts`, `composer/badges.test.ts`, `test_seeds_and_voices.py`.
 
 ## 7. Family E: checks before Run
 
@@ -352,8 +356,8 @@ A check disarms or warns. It never produces a red cell.
 ### E5 · Prompt over an engine's token limit
 **Status: implemented.**
 - **Artist sees:** one warning per stepped local engine whose token window the prompt overruns. It names the engine, how many of the slots it holds, the token count as ABOUT, the window and whether that window is unverified, and says nothing is cut. Run stays armed.
-- **System does:** the count is a client-side estimate and says so. Engines with no window in the capability matrix say nothing, and external models get no token warning. The server never shortens a prompt and never refuses one for length.
-- **Lives in:** `composer/tokens.ts`. Tests: `test_e5_the_server_never_truncates_and_never_refuses_a_long_prompt` in `test_trust_cases.py`, `composer/tokens.test.ts`, `E5:` in `e2e/trust-cases.spec.ts`.
+- **System does:** the count is a client-side estimate and says so. Engines with no window in the capability matrix say nothing, and external models get no token warning. The server never shortens a prompt, and never refuses an image prompt for length. Audio engines that declare `text_limits` are refused at review, in plain words, when the text is longer: ElevenLabs v4 takes 10,000 characters, and the local voice engine 2,000 for a line and for a voice description. ElevenLabs' Voice Design description and sound-effect prompt limits are not published and wait for a live key.
+- **Lives in:** `composer/tokens.ts`, and `text_limits` in `crexil_audio.py`. Tests: `test_e5_the_server_never_truncates_and_never_refuses_a_long_prompt` in `test_trust_cases.py`, `composer/tokens.test.ts`, `E5:` in `e2e/trust-cases.spec.ts`, `test_a_description_longer_than_the_local_engine_takes_is_refused_at_review` in `test_audio_guardrails.py`.
 
 ### E6 · Free video memory and free disk at Run
 **Status: implemented.**
