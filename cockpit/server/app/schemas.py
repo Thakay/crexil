@@ -970,7 +970,7 @@ class TurnCancelResult(BaseModel):
 
 
 class Unbench(BaseModel):
-    scope: str                           # "lane:local" | "lane:external" | "engine:<id>"
+    scope: str                           # "lane:local" | "lane:external" | "engine:<id>" | "provider:<name>"
 
 
 class UnbenchResult(BaseModel):

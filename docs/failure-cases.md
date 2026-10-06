@@ -53,6 +53,8 @@ An executor reports every failure to the scheduler as one `EngineFailure` with a
 | `collection` | files were reported but could not be collected, or an audio take could not be measured; the bytes are kept | none |
 | `preflight` | the request was stopped before it reached the provider; nothing was sent | none |
 
+A `dead_key` or `unreachable` failure from an audio provider benches that provider only (`provider:elevenlabs`, `provider:voice-runner`), so its engines wait while every other engine keeps working (law 1). OpenRouter's failures bench the external lane, as before.
+
 Every failed slot keeps three fields. `cause` is one plain line per kind, from `plain_cause` in `scheduler.py`. It never carries a status code or a stack trace (law 3). `detail` is the engine's raw text, cut to 1600 characters, shown only behind the cell's DETAILS fold. `kind` picks the buttons. The same facts go into a permanent `slot.failed` event with the attempt, engine, frame and cost.
 
 The cell's second line states cost (law 5): GPU time and takes still queued for a local take, dollars for a paid take, including "nothing was charged". Free buttons come first. A paid button comes last, shows its price, and is never the default (laws 4 and 6). Failed cells that share one cause are also named once in the turn's footer (law 1). This logic is in `batch/grid.ts` and tested in `batch/grid.test.ts`.

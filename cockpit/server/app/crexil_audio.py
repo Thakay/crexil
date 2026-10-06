@@ -17,7 +17,6 @@ nothing here calls a provider.
 
 from __future__ import annotations
 
-import hashlib
 from decimal import Decimal
 from pathlib import Path
 
@@ -101,7 +100,8 @@ def reasons(stack, row: dict) -> list[str]:
     if provider == 'elevenlabs' and not config.ELEVENLABS_API_KEY:
         return ['Needs an ElevenLabs key. Set ELEVENLABS_API_KEY in .env, then restart.']
     benches = stack.scheduler.snapshot()['benches']
-    if f'lane:{lane}' in benches or f"engine:{row['id']}" in benches:
+    if (f'provider:{provider}' in benches or f"engine:{row['id']}" in benches
+            or (lane == 'local' and 'lane:local' in benches)):
         return ['The local runtime is paused or unavailable.' if lane == 'local'
                 else 'The provider is paused or unavailable.']
     return []
@@ -217,7 +217,9 @@ async def compile_request(db, op: dict, setup, choice, nodes: list[dict]) -> dic
             raise ValueError(f"{row['name']} speaks only with voices designed or saved at "
                              f"{', '.join(audio_executors.LABELS.get(p, p) for p in row['voice_providers'])}. "
                              'Choose such a take, or a local voice engine.')
-        digest = hashlib.sha256(Path(node['output_path']).read_bytes()).hexdigest()
+        digest = await db.file_sha256(node['output_path'])
+        if digest is None:
+            raise ValueError('The voice take is no longer on disk. Restore or replace it. All sources are kept.')
         voice = {'source_node_id': node['id'], 'sha256': digest, 'text': facts.get('text'), 'recorded': recorded}
         if recorded.get('provider') == row['provider'] and recorded.get('generated_voice_id') and not recorded.get('voice_id'):
             saved = await db.saved_voice(row['provider'], recorded['generated_voice_id'])

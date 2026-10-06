@@ -194,8 +194,12 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
             continue
         if not mesh_action and not audio_action and node['payload'] != 'image':
             errors.append('This action needs image sources. Use a mesh operation for 3D material.')
+        digest = await stack.db.file_sha256(node['output_path'])
+        if digest is None:
+            errors.append(f'Source {ref.node_id} is unavailable. Restore or replace it.')
+            continue
         source_nodes.append(node)
-        sources.append({'node_id': node['id'], 'sha256': hashlib.sha256(Path(node['output_path']).read_bytes()).hexdigest()})
+        sources.append({'node_id': node['id'], 'sha256': digest})
     if len({r.node_id for r in setup.references}) != len(setup.references):
         errors.append('A source is listed more than once.')
     if setup.action == 'generate' and setup.references:
