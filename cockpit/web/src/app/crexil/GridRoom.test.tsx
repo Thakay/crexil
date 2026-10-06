@@ -25,7 +25,9 @@ type Sent = {method: string; path: string; body: Record<string, unknown>};
 let sent: Sent[] = [];
 let answers: Record<string, () => Response> = {};
 
-beforeEach(() => {
+beforeEach(async () => {
+  // A frame a previous test asked for (focus back to a face) runs before this test's room exists.
+  await new Promise(resolve => requestAnimationFrame(resolve));
   sent = [];
   answers = {};
   vi.stubGlobal('fetch', vi.fn(async (input: Request) => {
