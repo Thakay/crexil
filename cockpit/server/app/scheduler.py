@@ -53,6 +53,9 @@ COLLECTABLE_COPY = ("The cockpit restarted during the external call. Its outcome
                     "is generated again.")
 UNCERTAIN_COPY = ("The runtime may have accepted this request, but its outcome could not "
                   "be confirmed. It was not submitted again. Reconcile the runtime record first.")
+# Every external executor calls `before_send`, which records `slot.provider_sending`,
+# right before its paid call; an attempt without that record never sent one.
+UNSENT_COPY = 'The cockpit restarted before this request was sent. Nothing was charged.'
 
 
 @dataclass(frozen=True)
@@ -1900,6 +1903,16 @@ class Scheduler:
             if slot["status"] == "running":
                 if req:
                     await execution_outputs.recover_files(self.db, self._staging, slot, req)
+                if ex.lane == "external" and not await self.db._one(
+                        "SELECT 1 FROM events WHERE slot_id=? AND type='slot.provider_sending' "
+                        "AND json_extract(payload_json,'$.attempt')=?", (slot['id'], slot['attempt'])):
+                    # Stopped before its paid call: nothing left, so its charge is a known zero (law 5).
+                    await execution_outputs.finish(self.db, slot, 'incomplete',
+                                                   {'failure_kind': 'preflight', 'cause': UNSENT_COPY})
+                    with suppress(ValueError):
+                        await self.db.fail_slot(slot['id'], cause=UNSENT_COPY, kind='preflight', charged_usd=0)
+                    counts['failed'] += 1
+                    continue
                 if ex.lane == "external":
                     from .execution_controls import cancel_requested
                     stopped = await cancel_requested(self.db, slot)
