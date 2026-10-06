@@ -3,7 +3,8 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // The local draft owns recoverable saves and explicit conflict choices. Operation
 // changes preserve the remaining source/control values; Run needs a fresh review.
 // Every operation says where its request goes and what goes with it before it is
-// chosen. A run can be blind: its engines stay hidden until the artist reveals them.
+// chosen, and the review says which of the run's attempts retry on their own (law 9).
+// A run can be blind: its engines stay hidden until the artist reveals them.
 // When spending moved since review, submitting reviews again once and shows the new
 // totals before Run is asked for again; any other conflict means the request changed.
 // Empty words can start from the words of a section in this preparation's family, its
@@ -16,7 +17,7 @@ import { ActionError, blankPreparation, command, isDefiniteRefusal, isSpendingCo
   result, money, type Direction, type Material, type Operation, type Preparation } from './api';
 import { useEscapeLayer } from './keys';
 import { operationStanding } from './capability';
-import { dataLine, priceLine, tariffOffer, tariffPriced } from './operationFacts';
+import { dataLine, priceLine, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
 import { runFace } from './runFace';
 import { sourceRoles as rolesOf } from './media';
 import s from './Filmstrip.module.css';
@@ -308,7 +309,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
       {setup.instructions && <p>For the next participant: {setup.instructions}</p>}
       {Boolean(review.snapshot.project_instructions) && <p>Project instructions: {String(review.snapshot.project_instructions)}</p>}
       {Boolean(review.snapshot.region)&&<RegionReview value={review.snapshot.region as Record<string,unknown>}/>}
-      {review.ready && <p>The saved sources, controls and operation revisions will be frozen in the record. This run makes no automatic retries.</p>}
+      {review.ready && <p>The saved sources, controls and operation revisions will be frozen in the record. {retriesLine(review.automatic_retry ?? {}, operations)}</p>}
       {review.ready && setup.blind && <p>Blind run: each take's engine and price stay hidden until you reveal the run. Its total stays visible.</p>}
     </section>}
     {runError && <p className={s.error} role="alert">{runError}</p>}

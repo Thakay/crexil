@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Operation } from './api';
-import { dataLine, priceLine, tariffOffer, tariffPriced } from './operationFacts';
+import { dataLine, priceLine, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
 
 const op = (fields: Partial<Operation>) => ({label: 'Op', maximum_usd_per_attempt: null, price_usd: null, tariff: null,
   price_unit: null, cost_basis: 'Basis', data_destination: 'https://api.elevenlabs.io', ...fields}) as Operation;
@@ -38,5 +38,24 @@ describe('priceLine and the tariff offer (laws 5 and 22)', () => {
     expect(tariffOffer([paid])).toBe('Design voice · ElevenLabs Voice Design is priced by its published tariff, with no hard ceiling. '
       + 'A hard cap refuses it before anything is sent.');
     expect(tariffOffer([paid, op({label: 'Speak · ElevenLabs v4'})])).toMatch(/^Design voice · ElevenLabs Voice Design and Speak · ElevenLabs v4 are priced/);
+  });
+});
+
+describe('retriesLine: whether a run retries on its own (law 9)', () => {
+  const ops = [{id: 'a', label: 'Make a sound · ElevenLabs SFX'}, {id: 'b', label: 'Design voice · Qwen3-TTS 1.7B'},
+    {id: 'c', label: 'Raw · FLUX.2 klein'}, {id: 'd', label: 'Design voice · ElevenLabs Voice Design'}];
+  it('says a run whose operations never retry makes no automatic retries, as when the review names none', () => {
+    expect(retriesLine({c: false}, ops)).toBe('This run makes no automatic retries.');
+    expect(retriesLine({}, ops)).toBe('This run makes no automatic retries.');
+  });
+  it('says when every attempt retries on its own, and that the retry shows', () => {
+    expect(retriesLine({a: true, b: true}, ops)).toBe('An attempt whose engine asks to wait or cannot be reached is tried again '
+      + 'on its own, and the retry shows on that attempt.');
+  });
+  it('names the operations that retry by their catalogue labels, and says the others do not', () => {
+    expect(retriesLine({a: true, c: false}, ops)).toBe('Make a sound · ElevenLabs SFX tries an attempt again on its own when the engine '
+      + 'asks to wait or cannot be reached, and the retry shows on that attempt. The other operations make no automatic retries.');
+    expect(retriesLine({b: true, c: false, d: true}, ops)).toMatch(
+      /^Design voice · Qwen3-TTS 1\.7B and Design voice · ElevenLabs Voice Design try an attempt again on its own when /);
   });
 });

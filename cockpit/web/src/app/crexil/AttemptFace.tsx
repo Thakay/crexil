@@ -1,10 +1,10 @@
 // One attempt without material, drawn as its face: one line of what happened, one of
 // what it cost, its next moves as buttons, free first, raw engine text behind DETAILS
-// (laws 3, 4, 5). attempts.ts decides every word; this only draws them inside the
-// cell's frozen footprint (law 8), so a failure changes the cell's contents, never
-// its size. A move this surface cannot make yet stays visible and inert with its
-// reason (law 12).
-import { remedyTitle, type AttemptFaceVM, type RemedyId } from './attempts';
+// (laws 3, 4, 5). A move that sends work that reserves money wears money gold with its
+// price on its face, kept whole when the label wraps, never the primary frame (law 6).
+// attempts.ts decides every word; this only draws them inside the cell's frozen
+// footprint (law 8), so a failure changes the cell's contents, never its size.
+import type { AttemptFaceVM, RemedyId } from './attempts';
 import s from './Filmstrip.module.css';
 
 export function AttemptFace({face, onRemedy, busy = false}: {
@@ -18,9 +18,9 @@ export function AttemptFace({face, onRemedy, busy = false}: {
     {face.progress && <p className={s.attemptProgress} title={face.progress}>{face.progress}</p>}
     {face.cost && <p className={s.attemptLine} title={face.cost}>{face.cost}</p>}
     {face.remedies.length > 0 && <div className={`${s.attemptRemedies} ${face.detail || face.receipt ? s.besideDetails : ''}`}>{face.remedies.map(remedy =>
-      <button key={remedy.id} className={remedy.gated ? s.remedyGated : remedy.primary ? s.remedyPrimary : undefined}
-        aria-disabled={remedy.gated || busy ? true : undefined} title={remedyTitle(remedy)}
-        onClick={() => {if (!remedy.gated && !busy) onRemedy(remedy.id);}}>{remedy.label}</button>)}</div>}
+      <button key={remedy.id} className={remedy.primary ? s.remedyPrimary : remedy.price ? s.remedyPaid : undefined}
+        aria-disabled={busy || undefined} title={remedy.title ?? remedy.label} onClick={() => {if (!busy) onRemedy(remedy.id);}}>
+        {remedy.label}{remedy.price && <> · <span className={s.remedyPrice}>{remedy.price}</span></>}</button>)}</div>}
     {(face.detail || face.receipt) && <details className={s.attemptDetails}><summary>DETAILS</summary>
       {face.receipt && <pre>{face.receipt}</pre>}{face.detail && <pre>{face.detail}</pre>}</details>}
   </div>;

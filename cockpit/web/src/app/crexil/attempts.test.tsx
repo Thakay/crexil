@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { AttemptFace } from './AttemptFace';
-import { attemptFace, RESUME_ENGINE_GATED, sharedCauses, type AttemptContext } from './attempts';
+import { attemptFace, CANCEL_TITLE, RESUME_TITLE, sharedCauses, type AttemptContext, type AttemptFaceVM } from './attempts';
 
 const NOW = Date.parse('2026-10-05T12:00:30Z');
 
@@ -16,11 +16,17 @@ const local = {id: 'raw-flux2', output_payload: 'image', maximum_usd_per_attempt
 const hosted = {id: 'openai/gpt-image-2', output_payload: 'image', maximum_usd_per_attempt: .04, price_usd: .04, tariff: null};
 const voice = {id: 'audio:speak:elevenlabs-tts', output_payload: 'audio', maximum_usd_per_attempt: .0032, price_usd: null,
   tariff: {unit: '1k_characters', micro_usd: 80000}};
+const sfx = {id: 'audio:sfx:elevenlabs-sfx', output_payload: 'audio', maximum_usd_per_attempt: null, price_usd: .002,
+  tariff: {unit: 'second', micro_usd: 2000}};
 
 function ctx(fields: Partial<AttemptContext> = {}, slots: object[] = []): AttemptContext {
   return {turn: {id: 't1', idx: 0, prompt: 'A brass lamp', slots: slots as never} as never,
-    operations: [local, hosted, voice] as never, controls: [], nowMs: NOW, ...fields};
+    operations: [local, hosted, voice, sfx] as never, controls: [], nowMs: NOW, ...fields};
 }
+/** Each remedy as [id, label, primary, price]. */
+const moves = (face: AttemptFaceVM) => face.remedies.map(r => [r.id, r.label, r.primary, r.price]);
+
+afterEach(cleanup);
 
 describe('attemptFace: what happened · what it cost · what to do next (laws 3, 4, 5)', () => {
   it('a local failure states GPU time, the takes still queued, and offers its free next move first', () => {
@@ -28,7 +34,7 @@ describe('attemptFace: what happened · what it cost · what to do next (laws 3,
     const face = attemptFace(slot({cause: 'raw-flux2 failed on this take.', detail: 'Traceback…'}), ctx({}, [slot({}), queued]));
     expect(face).toMatchObject({label: '0A', title: 'FAILED', tone: 'dead', engine: 'raw-flux2', cause: 'raw-flux2 failed on this take.',
       detail: 'Traceback…', cost: '12s of GPU time spent · 1 take still queued'});
-    expect(face.remedies).toEqual([{id: 'reuse', label: 'REUSE SETUP', primary: true, gated: null}]);
+    expect(moves(face)).toEqual([['reuse', 'REUSE SETUP', true, null]]);
   });
   it('names an attempt past Z by the same letters as its takes', () => {
     expect(attemptFace(slot({pos: 25}), ctx()).label).toBe('0Z');
@@ -65,15 +71,16 @@ describe('attemptFace: what happened · what it cost · what to do next (laws 3,
     expect(face.receipt).toContain('job id    gen-1');
     expect(face.remedies.map(r => [r.id, r.primary])).toEqual([['copy-receipt', true], ['collect', false], ['reuse', false]]);
   });
-  it('no remedy on a face spends money (law 6)', () => {
+  it('a failed face spends no money and stops nothing: a paid path opens a preparation (law 6)', () => {
     const kinds = ['error', 'oom', 'blank', 'charged_blank', 'collection', 'uncertain', 'dead_key', 'rate_limit', 'moderation'];
-    const ids = kinds.flatMap(kind => attemptFace(slot({kind, engine: 'openai/gpt-image-2', charged_usd: .04}), ctx()).remedies.map(r => r.id));
-    expect(new Set(ids)).toEqual(new Set(['reuse', 'collect', 'connections', 'copy-receipt']));
+    const remedies = kinds.flatMap(kind => attemptFace(slot({kind, engine: 'openai/gpt-image-2', charged_usd: .04}), ctx()).remedies);
+    expect(new Set(remedies.map(r => r.id))).toEqual(new Set(['reuse', 'collect', 'connections', 'copy-receipt']));
+    expect(remedies.every(r => r.price === null)).toBe(true);
   });
   it('a late attempt waits, already dispatched, and can be collected if it arrived', () => {
     const face = attemptFace(slot({status: 'late', engine: 'openai/gpt-image-2', committed_usd: .04}), ctx());
     expect(face).toMatchObject({title: 'LATE', tone: 'waiting', cost: 'already paid, ~$0.04 — lands here if it still arrives'});
-    expect(face.remedies).toEqual([{id: 'collect', label: 'COLLECT FILES', primary: true, gated: null}]);
+    expect(moves(face)).toEqual([['collect', 'COLLECT FILES', true, null]]);
   });
   it('a skipped attempt informs and offers its setup again', () => {
     const face = attemptFace(slot({status: 'skipped'}), ctx());
@@ -82,44 +89,99 @@ describe('attemptFace: what happened · what it cost · what to do next (laws 3,
   });
 });
 
-describe('a held attempt carries its own resume (laws 2 and 4)', () => {
+describe('a held attempt carries its own resume, live and authored (laws 2, 4 and 23)', () => {
   const control = (scope: string, target_id: string, paused: boolean) => ({scope, target_id, paused, revision: 3}) as never;
-  it('resumes its paused run, or the paused project', () => {
+  const repeat = (fields: object = {}) => ({bench: 'engine:elevenlabs-sfx@turn:t1', benchKind: 'repeat',
+    benchCause: 'elevenlabs-sfx failed twice in this run.', ...fields});
+  it('resumes its paused run, or the paused project, and keeps its cancel last', () => {
     const run = attemptFace(slot({status: 'held'}), ctx({controls: [control('run', 't1', true), control('project', 'p', true)]}));
     expect(run).toMatchObject({title: 'HELD', tone: 'waiting', cost: 'waiting costs nothing'});
-    expect(run.remedies).toEqual([{id: 'resume-run', label: 'RESUME RUN 0', primary: true, gated: null}]);
+    expect(moves(run)).toEqual([['resume-run', 'RESUME RUN 0', true, null], ['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
     const project = attemptFace(slot({status: 'held', engine: 'openai/gpt-image-2'}), ctx({controls: [control('project', 'p', true)]}));
     expect(project.cost).toBe('nothing charged while it waits');
-    expect(project.remedies.map(r => r.id)).toEqual(['resume-project']);
+    expect(project.remedies.map(r => r.id)).toEqual(['resume-project', 'cancel-attempt']);
   });
-  it('an engine benched for this run after repeated failures (A9) offers to prepare again, and keeps its retry inert', () => {
+  it('A9 on local work: preparing again leads, and TRY ONCE MORE sends it as it is, free', () => {
     const face = attemptFace(slot({status: 'held'}), ctx({queue: {bench: 'engine:raw-flux2@turn:t1', benchKind: 'repeat',
-      benchCause: 'raw-flux2 failed twice in this run.'}}));
+      benchCause: 'raw-flux2 failed twice in this run.', reservedUsd: 0}}));
     expect(face.progress).toBe('raw-flux2 failed twice in this run.');
-    expect(face.remedies).toEqual([{id: 'reuse', label: 'REUSE SETUP', primary: true, gated: null},
-      {id: 'resume-engine', label: 'TRY ONCE MORE', primary: false, gated: RESUME_ENGINE_GATED}]);
+    expect(moves(face)).toEqual([['reuse', 'REUSE SETUP', true, null], ['resume-engine', 'TRY ONCE MORE', false, null],
+      ['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+    expect(face.remedies[1].title).toBe(RESUME_TITLE);
   });
-  it('a card held by another program waits, with its resume inert', () => {
-    const face = attemptFace(slot({status: 'held'}), ctx({queue: {bench: 'lane:local', benchKind: 'gpu_held', benchCause: null}}));
+  it('A9 on paid work: TRY ONCE MORE carries what the held attempts it sends reserve, never primary, free moves first (law 6)', () => {
+    const face = attemptFace(slot({status: 'held', engine: 'elevenlabs-sfx', committed_usd: .01}), ctx({queue: repeat({reservedUsd: .02})}));
+    expect(face.cost).toBe('nothing charged while it waits');
+    expect(moves(face)).toEqual([['reuse', 'REUSE SETUP', true, null], ['resume-engine', 'TRY ONCE MORE', false, 'UP TO $0.02'],
+      ['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+  });
+  it('without the queue view, a paid resume carries its own attempt’s reservation, exact below a cent (law 5)', () => {
+    expect(attemptFace(slot({status: 'held', engine: 'elevenlabs-sfx', committed_usd: .01}), ctx({queue: repeat()})).remedies[1])
+      .toMatchObject({label: 'TRY ONCE MORE', price: 'UP TO $0.01'});
+    expect(attemptFace(slot({status: 'held', engine: 'elevenlabs-tts', committed_usd: .0032}), ctx()).remedies[1])
+      .toMatchObject({label: 'RESUME ENGINE', price: 'UP TO $0.0032'});
+  });
+  it('a card held by another program offers its resume, free, and its cancel', () => {
+    const face = attemptFace(slot({status: 'held'}), ctx({queue: {bench: 'lane:local', benchKind: 'gpu_held', benchCause: null, reservedUsd: 0}}));
     expect(face.progress).toBe('Shared GPU held: the card is taken.');
-    expect(face.remedies.map(r => [r.id, r.gated !== null])).toEqual([['resume-engine', true]]);
+    expect(moves(face)).toEqual([['resume-engine', 'RESUME ENGINE', false, null], ['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+  });
+  it('a benched connection says why and points to Connections first, its resume live after it', () => {
+    const face = attemptFace(slot({status: 'held'}), ctx({queue: {bench: 'provider:voice-runner', benchKind: 'unreachable',
+      benchCause: 'The voice runner is not answering.'}}));
+    expect(face.progress).toBe('The voice runner is not answering.');
+    expect(moves(face)).toEqual([['connections', 'CONNECTIONS', true, null], ['resume-engine', 'RESUME ENGINE', false, null],
+      ['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+    const paid = attemptFace(slot({status: 'held', engine: 'elevenlabs-sfx', committed_usd: .01}),
+      ctx({queue: {bench: 'provider:elevenlabs', benchKind: 'dead_key', benchCause: null, reservedUsd: .03}}));
+    expect(moves(paid)[1]).toEqual(['resume-engine', 'RESUME ENGINE', false, 'UP TO $0.03']);
   });
   it('names a hold in plain words when the queue view carries no cause, and never by its raw scope', () => {
     const face = attemptFace(slot({status: 'held', engine: 'elevenlabs-tts'}), ctx({queue: {bench: 'provider:elevenlabs', benchKind: 'dead_key', benchCause: null}}));
     expect(face.progress).toBe('ElevenLabs key missing or refused.');
   });
-  it("a blind run's hold never names its engine or provider", () => {
-    const face = attemptFace(slot({status: 'held', engine: 'hidden', identity_hidden: true}), ctx({queue: {bench: 'provider:elevenlabs',
-      benchKind: 'dead_key', benchCause: 'ElevenLabs refused the key.'}}));
+  it("a blind run's hold names no engine, provider or price, and keeps its resume live", () => {
+    const face = attemptFace(slot({status: 'held', engine: 'hidden', identity_hidden: true, committed_usd: .01}),
+      ctx({queue: {bench: 'provider:elevenlabs', benchKind: 'dead_key', benchCause: 'ElevenLabs refused the key.', reservedUsd: .01}}));
     expect(face.progress).toBe('Its engine is held.');
-    expect(JSON.stringify(face)).not.toMatch(/elevenlabs/i);
+    expect(moves(face)).toEqual([['connections', 'CONNECTIONS', true, null], ['resume-engine', 'RESUME ENGINE', false, null],
+      ['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+    expect(face.remedies.map(r => r.title)).toContain(CANCEL_TITLE.unsent);
+    expect(JSON.stringify(face)).not.toMatch(/elevenlabs|\$/i);
   });
-  it('a benched engine says why, points to Connections, and keeps the resume visible but inert with its reason (law 12)', () => {
-    const face = attemptFace(slot({status: 'held'}), ctx({queue: {bench: 'provider:voice-runner', benchKind: 'unreachable',
-      benchCause: 'The voice runner is not answering.'}}));
-    expect(face.progress).toBe('The voice runner is not answering.');
-    expect(face.remedies).toEqual([{id: 'connections', label: 'CONNECTIONS', primary: true, gated: null},
-      {id: 'resume-engine', label: 'RESUME ENGINE', primary: false, gated: RESUME_ENGINE_GATED}]);
+});
+
+describe('cancel sits last on queued, held and running faces and says what stopping means (failure case 2.7)', () => {
+  const cancel = (face: AttemptFaceVM) => face.remedies.at(-1)!;
+  it('a queued attempt is skipped, free', () => {
+    const face = attemptFace(slot({status: 'queued'}), ctx());
+    expect(moves(face)).toEqual([['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+    expect(cancel(face).title).toBe(CANCEL_TITLE.unsent);
+  });
+  it('a running local attempt asks its engine to stop, at no money', () => {
+    const face = attemptFace(slot({status: 'running'}), ctx());
+    expect(moves(face)).toEqual([['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+    expect(cancel(face).title).toBe(CANCEL_TITLE.local);
+  });
+  it('a running paid hosted attempt keeps its cell, and its charge stays unverified until the provider reports it', () => {
+    const face = attemptFace(slot({status: 'running', engine: 'elevenlabs-sfx', committed_usd: .01}), ctx());
+    expect(moves(face)).toEqual([['cancel-attempt', 'CANCEL ATTEMPT', false, null]]);
+    expect(cancel(face).title).toBe(CANCEL_TITLE.sent);
+  });
+  it('gives up on an attempt while its retry shows (law 9)', () => {
+    const waiting = attemptFace(slot({status: 'queued', engine: 'elevenlabs-tts', retry_of: 'rate_limit'}), ctx());
+    expect(waiting.retry?.label).toBe('RETRYING · ATTEMPT 2');
+    expect(cancel(waiting)).toMatchObject({id: 'cancel-attempt', label: 'GIVE UP ON THIS ATTEMPT', primary: false, title: CANCEL_TITLE.unsent});
+    const sent = attemptFace(slot({status: 'running', engine: 'elevenlabs-tts', retry_of: 'unreachable', committed_usd: .0032}), ctx());
+    expect(cancel(sent)).toMatchObject({label: 'GIVE UP ON THIS ATTEMPT', title: CANCEL_TITLE.sent});
+  });
+  it("a hidden running attempt's cancel names no lane", () => {
+    const face = attemptFace(slot({status: 'running', engine: 'hidden', identity_hidden: true, committed_usd: .01}), ctx());
+    expect(cancel(face).title).toBe(CANCEL_TITLE.hidden);
+  });
+  it('a settled attempt offers no cancel', () => {
+    for (const status of ['failed', 'skipped', 'late'])
+      expect(attemptFace(slot({status}), ctx()).remedies.map(r => r.id)).not.toContain('cancel-attempt');
   });
 });
 
@@ -157,20 +219,34 @@ describe('sharedCauses (law 1: one cause, one message)', () => {
 });
 
 describe('AttemptFace', () => {
-  it('draws one group per attempt with its words, fires live remedies and keeps gated ones inert', () => {
+  it('draws one group per attempt with its words, and every move live, the resume included', () => {
     const onRemedy = vi.fn();
     const face = attemptFace(slot({status: 'held'}), ctx({queue: {bench: 'engine:x', benchKind: 'unreachable', benchCause: 'Not answering.'}}));
     render(<AttemptFace face={face} onRemedy={onRemedy}/>);
     const group = screen.getByRole('group', {name: 'Attempt 0A · held'});
     expect(group).toHaveTextContent('HELD');
     expect(group).toHaveTextContent('waiting costs nothing');
-    fireEvent.click(screen.getByRole('button', {name: 'CONNECTIONS'}));
-    const gated = screen.getByRole('button', {name: 'RESUME ENGINE'});
-    expect(gated).toHaveAttribute('aria-disabled', 'true');
-    expect(gated).toHaveAttribute('title', RESUME_ENGINE_GATED);
-    fireEvent.click(gated);
-    expect(onRemedy).toHaveBeenCalledTimes(1);
-    expect(onRemedy).toHaveBeenCalledWith('connections');
+    const resume = screen.getByRole('button', {name: 'RESUME ENGINE'});
+    expect(resume).not.toHaveAttribute('aria-disabled');
+    expect(resume).toHaveAccessibleDescription(RESUME_TITLE);
+    for (const name of ['CONNECTIONS', 'RESUME ENGINE', 'CANCEL ATTEMPT']) fireEvent.click(screen.getByRole('button', {name}));
+    expect(onRemedy.mock.calls).toEqual([['connections'], ['resume-engine'], ['cancel-attempt']]);
+  });
+  it('puts the price on the paid resume, after the free moves, and the cancel last (law 6)', () => {
+    const face = attemptFace(slot({status: 'held', engine: 'elevenlabs-sfx', committed_usd: .01}), ctx({queue: {bench: 'engine:elevenlabs-sfx@turn:t1',
+      benchKind: 'repeat', benchCause: 'Failed twice in this run.', reservedUsd: .01}}));
+    render(<AttemptFace face={face} onRemedy={() => {}}/>);
+    const buttons = within(screen.getByRole('group', {name: 'Attempt 0A · held'})).getAllByRole('button');
+    expect(buttons.map(button => button.textContent)).toEqual(['REUSE SETUP', 'TRY ONCE MORE · UP TO $0.01', 'CANCEL ATTEMPT']);
+    expect(buttons[2]).toHaveAccessibleDescription(CANCEL_TITLE.unsent);
+  });
+  it('keeps every move inert while one is in flight', () => {
+    const onRemedy = vi.fn();
+    render(<AttemptFace face={attemptFace(slot({status: 'queued'}), ctx())} busy onRemedy={onRemedy}/>);
+    const cancel = screen.getByRole('button', {name: 'CANCEL ATTEMPT'});
+    expect(cancel).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(cancel);
+    expect(onRemedy).not.toHaveBeenCalled();
   });
   it('keeps the raw engine text behind DETAILS (law 3)', () => {
     render(<AttemptFace face={attemptFace(slot({cause: 'It failed.', detail: 'HTTP 500: boom'}), ctx())} onRemedy={() => {}}/>);

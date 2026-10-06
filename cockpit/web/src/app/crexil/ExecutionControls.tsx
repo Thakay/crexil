@@ -1,5 +1,6 @@
 // Control delivery is separate from its effect. Retrying uncertain delivery uses
 // the same command, while observed slot states determine what has actually stopped.
+// The same holds for one attempt's resume or cancel from its face.
 import {useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
@@ -8,29 +9,47 @@ import s from './Filmstrip.module.css';
 
 type Control=components['schemas']['ExecutionControlView'];
 type Request=components['schemas']['ControlExecution'];
+type Move=components['schemas']['AttemptMove'];
 // Room navigation can unmount a control while its response is missing. Keep
 // delivery identity at the control carrier, keyed by its exact scope and target,
-// shared by this panel and the attempt faces that resume from a cell.
+// shared by this panel and the attempt faces that resume from a cell; an attempt's
+// own move is keyed by the move, the slot and the attempt its face showed.
 const pendingDeliveries=new Map<string,Request>();
+const pendingMoves=new Map<string,Move>();
 const keyOf=(control:Control)=>`${control.scope}:${control.target_id}`;
 
-/** Sends one control action. An unconfirmed earlier delivery for the same scope
- *  and target is sent again as the same request, never as a new one; a definite
- *  refusal drops it. */
-export async function deliverControl(control:Control,action:Request['action']):Promise<Control>{
-  const key=keyOf(control);
-  const request=pendingDeliveries.get(key)??{...command(),revision:control.revision,action,reason:''};
-  pendingDeliveries.set(key,request);
+/** Sends one request per key. An unconfirmed earlier delivery for the same key is
+ *  sent again as the same request, never as a new one; a confirmed answer or a
+ *  definite refusal drops it. */
+async function deliver<B,T>(pending:Map<string,B>,key:string,make:()=>B,send:(body:B)=>Promise<T>):Promise<T>{
+  const body=pending.get(key)??make();
+  pending.set(key,body);
   try{
-    const saved=await result(fetchClient.POST('/api/crexil/execution/{scope}/{target_id}',{
-      params:{path:{scope:control.scope,target_id:control.target_id}},body:request,
-    }));
-    pendingDeliveries.delete(key);
+    const saved=await send(body);
+    pending.delete(key);
     return saved;
   }catch(error){
-    if(isDefiniteRefusal(error))pendingDeliveries.delete(key);
+    if(isDefiniteRefusal(error))pending.delete(key);
     throw error;
   }
+}
+
+/** Sends one control action for its scope and target. */
+export function deliverControl(control:Control,action:Request['action']):Promise<Control>{
+  return deliver(pendingDeliveries,keyOf(control),()=>({...command(),revision:control.revision,action,reason:''}),
+    body=>result(fetchClient.POST('/api/crexil/execution/{scope}/{target_id}',{
+      params:{path:{scope:control.scope,target_id:control.target_id}},body,
+    })));
+}
+
+/** Sends one participant's resume or cancel of one attempt, with the attempt number its
+ *  face shows, so a later attempt of the slot refuses as stale (laws 4 and 23). */
+export function moveAttempt(slot:{id:string;attempt:number},move:'resume'|'cancel'):Promise<components['schemas']['AttemptMoveView']>{
+  return deliver(pendingMoves,`${move}:${slot.id}:${slot.attempt}`,()=>({...command(),attempt:slot.attempt,reason:''}),body=>{
+    const init={params:{path:{sid:slot.id}},body};
+    return result(move==='resume'?fetchClient.POST('/api/crexil/attempts/{sid}/resume',init)
+      :fetchClient.POST('/api/crexil/attempts/{sid}/cancel',init));
+  });
 }
 
 export function ExecutionControls({control,slots,label,refresh,pendingWork=false}:{

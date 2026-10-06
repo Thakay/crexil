@@ -438,12 +438,15 @@
 .attemptRetry {font:9px var(--font-mono);letter-spacing:.06em;color:var(--money);}
 .attemptLine {font:9px var(--font-mono);color:var(--secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .attemptProgress {font:9px/1.3 var(--font-mono);color:var(--secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-/* Remedies wrap as whole buttons, free first; beside DETAILS they leave its corner clear. */
+/* Remedies wrap as whole buttons, free first; beside DETAILS they leave its corner clear.
+   A move that sends reserved money wears the hue of money about to move (law 6); in a
+   narrow cell its label wraps before its price, which always reads whole. */
 .attemptRemedies {display:flex;flex-wrap:wrap;align-content:flex-end;gap:3px;margin-top:auto;min-width:0;}
 .attemptRemedies.besideDetails {max-width:calc(100% - 40px);}
 .app .attemptRemedies button {font:8px var(--font-mono);letter-spacing:.05em;padding:2px 5px;white-space:nowrap;}
 .app .attemptRemedies .remedyPrimary {border-color:var(--text);color:var(--text);}
-.app .attemptRemedies .remedyGated {border-style:dashed;color:var(--muted);cursor:not-allowed;}
+.app .attemptRemedies .remedyPaid {border-color:var(--money);color:var(--money);white-space:normal;text-align:left;}
+.remedyPrice {white-space:nowrap;}
 .attemptDetails {position:absolute;right:6px;bottom:4px;font:8px var(--font-mono);color:var(--muted);}
 .attemptDetails summary {cursor:pointer;list-style:none;}
 .attemptDetails[open] {inset:0;padding:9px 10px;background:var(--raised);overflow:auto;z-index:3;}

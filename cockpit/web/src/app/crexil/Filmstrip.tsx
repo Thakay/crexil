@@ -15,7 +15,7 @@ import {hasLocalPreparation} from './usePreparationDraft';
 import {ConnectionsRoom} from './ConnectionsRoom';
 import {ProjectDetails,hasProjectEdits} from './ProjectDetails';
 import { OperationLibrary } from './OperationLibrary';
-import { deliverControl, ExecutionControls } from './ExecutionControls';
+import { deliverControl, ExecutionControls, moveAttempt } from './ExecutionControls';
 import { AttemptFace } from './AttemptFace';
 import { attemptFace, blindFace, sharedCauses, type AttemptFaceVM, type QueueFacts, type RemedyId } from './attempts';
 import { auditionTakes } from './audition';
@@ -245,10 +245,14 @@ function ProjectWorkspace({id}: {id: string}) {
   const group = groupId ? data.execution_groups.find(g=>g.id===groupId) : undefined;
   const controls = data.execution_controls ?? [];
   const queueFacts = (slot: Slot): QueueFacts | null => {
-    const held = queue.data?.held.find(row => row.id === slot.id);
+    const rows = queue.data?.held ?? [];
+    const held = rows.find(row => row.id === slot.id);
     if (!held) return null;
     const bench = queue.data?.benches.find(b => b.scope === held.bench);
-    return {bench: held.bench ?? null, benchKind: bench?.kind ?? null, benchCause: bench?.cause ?? null};
+    // A resume sends every attempt its bench holds, in any run, so its price is what they reserve (law 6).
+    const sent = held.bench ? rows.filter(row => row.bench === held.bench) : [held];
+    return {bench: held.bench ?? null, benchKind: bench?.kind ?? null, benchCause: bench?.cause ?? null,
+      reservedUsd: sent.reduce((sum, row) => sum + (row.committed_usd ?? 0), 0)};
   };
   // A blind run's held attempt is never linked to its queue row, which would name its lane.
   const faceOf = (slot: Slot): AttemptFaceVM | null => {
@@ -265,6 +269,9 @@ function ProjectWorkspace({id}: {id: string}) {
     else if (which === 'collect') void act(() => result(fetchClient.POST('/api/crexil/attempts/{sid}/collect', {params:{path:{sid:slot.id}}, body:{...command(), take:slot.attempt}})));
     else if (which === 'resume-run' && run) void act(() => deliverControl(run, 'resume'));
     else if (which === 'resume-project' && project) void act(() => deliverControl(project, 'resume'));
+    // The move names the attempt this face shows; the face changes when the server's state does.
+    else if (which === 'resume-engine') void act(() => moveAttempt(slot, 'resume'));
+    else if (which === 'cancel-attempt') void act(() => moveAttempt(slot, 'cancel'));
     else if (which === 'copy-receipt' && face.receipt) void navigator.clipboard?.writeText(face.receipt).catch(() => setError('The clipboard refused. The receipt is under DETAILS on the cell.'));
     else if (which === 'connections') location.hash = `#/connections?project=${id}`;
   };

@@ -1,7 +1,8 @@
 // The drawer against a stubbed server: an audio run's words, its blind choice, the offer to
-// budget a tariff-priced operation, what each operation sends where, a submit refused
-// because spending moved since review, which reviews once more before asking again, and
-// empty words started from the words of a section in the preparation's family.
+// budget a tariff-priced operation, what each operation sends where, whether the reviewed
+// run retries on its own, a submit refused because spending moved since review, which
+// reviews once more before asking again, and empty words started from the words of a
+// section in the preparation's family.
 // Fetch is stubbed; the client resolves globalThis.fetch lazily (api/client.ts).
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,9 +22,9 @@ const direction = (policy: 'hard_cap' | 'published_tariff') => ({id: 'd1', works
   setup: {action: 'voice-design', prompt: 'A gruff dwarf blacksmith.', references: [], controls: {}, instructions: '',
     attempt_limit: 4, spending_limit_usd: 1, spending_policy: policy, purpose: 'creative_request', blind: true,
     operations: [{operation_id: design.id, revision: 'r1', count: 1, controls: {}}]}}) as unknown as Direction;
-const review = (reserved: number, token: string) => ({direction_id: 'd1', ready: true, ready_attempts: 1, blocked_attempts: 0,
-  attempts: 1, errors: [], maximum_usd: null, reserved_usd: reserved, reserved_micro_usd: Math.round(reserved * 1e6),
-  revision: 3, token, snapshot: {}});
+const review = (reserved: number, token: string, automatic_retry?: Record<string, boolean>) => ({direction_id: 'd1', ready: true,
+  ready_attempts: 1, blocked_attempts: 0, attempts: 1, errors: [], maximum_usd: null, reserved_usd: reserved,
+  reserved_micro_usd: Math.round(reserved * 1e6), revision: 3, token, snapshot: {}, ...(automatic_retry ? {automatic_retry} : {})});
 
 type Sent = {method: string; path: string; body: unknown};
 let sent: Sent[] = [];
@@ -68,6 +69,31 @@ describe('preparing an audio run', () => {
     fireEvent.click(within(offer).getByRole('button', {name: 'Budget from published tariffs'}));
     expect(screen.getByRole('combobox', {name: 'Spending policy'})).toHaveValue('published_tariff');
     expect(screen.queryByText(/is priced by its published tariff/)).toBeNull();
+  });
+});
+
+describe("the review says whether the run retries on its own (law 9)", () => {
+  const reviewed = async (automatic_retry?: Record<string, boolean>) => {
+    reviews = [review(0.0084, 'a'.repeat(64), automatic_retry)];
+    open();
+    fireEvent.click(screen.getByRole('button', {name: 'Review run'}));
+    return screen.findByRole('region', {name: 'Run review'});
+  };
+  it('makes no automatic retries when none of its operations retries, or the review names none', async () => {
+    expect(await reviewed({[design.id]: false})).toHaveTextContent('This run makes no automatic retries.');
+    cleanup();
+    expect(await reviewed()).toHaveTextContent('This run makes no automatic retries.');
+  });
+  it('tries an attempt again on its own, visibly, when every operation retries', async () => {
+    const line = await reviewed({[design.id]: true, [local.id]: true});
+    expect(line).toHaveTextContent('An attempt whose engine asks to wait or cannot be reached is tried again on its own, '
+      + 'and the retry shows on that attempt.');
+    expect(line).not.toHaveTextContent('no automatic retries');
+  });
+  it('names the operations that retry by their catalogue labels when only some do', async () => {
+    expect(await reviewed({[design.id]: true, [local.id]: false})).toHaveTextContent('Design voice · ElevenLabs Voice Design tries an '
+      + 'attempt again on its own when the engine asks to wait or cannot be reached, and the retry shows on that attempt. '
+      + 'The other operations make no automatic retries.');
   });
 });
 

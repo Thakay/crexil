@@ -1,6 +1,6 @@
 // What an operation tells the artist before anything runs: where its request goes and what
-// goes with it, and how it is priced, in the unit its tariff counts. Words only, decided
-// without the DOM; nothing here calls an engine.
+// goes with it, how it is priced, in the unit its tariff counts, and whether its attempts
+// retry on their own. Words only, decided without the DOM; nothing here calls an engine.
 import { sentBy } from './actions';
 import { money, type Operation } from './api';
 
@@ -28,11 +28,27 @@ export function priceLine(op: Operation): string {
 export const tariffPriced = (op: Operation): boolean =>
   op.maximum_usd_per_attempt === null && (op.tariff?.micro_usd ?? op.price_usd ?? 0) > 0;
 
+/** Names as a sentence lists them: "A", "A and B", "A, B and C". */
+const spoken = (names: readonly string[]) =>
+  names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+
 /** The drawer's offer when tariff-priced operations are chosen under a hard cap. */
 export function tariffOffer(ops: readonly Operation[]): string {
-  const names = ops.map(op => op.label);
-  const list = names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-  return names.length === 1
+  const list = spoken(ops.map(op => op.label));
+  return ops.length === 1
     ? `${list} is priced by its published tariff, with no hard ceiling. A hard cap refuses it before anything is sent.`
     : `${list} are priced by their published tariffs, with no hard ceiling. A hard cap refuses them before anything is sent.`;
+}
+
+/** Whether a reviewed run's attempts retry on their own, from the review's answer per
+ *  operation (law 9): none, all, or the ones that do, named by their catalogue labels. */
+export function retriesLine(retries: Readonly<Record<string, boolean>>, ops: readonly Pick<Operation, 'id' | 'label'>[]): string {
+  const ids = Object.keys(retries);
+  const retrying = ids.filter(id => retries[id]);
+  if (retrying.length === 0) return 'This run makes no automatic retries.';
+  if (retrying.length === ids.length)
+    return 'An attempt whose engine asks to wait or cannot be reached is tried again on its own, and the retry shows on that attempt.';
+  const names = retrying.map(id => ops.find(op => op.id === id)?.label ?? id);
+  return `${spoken(names)} ${names.length === 1 ? 'tries' : 'try'} an attempt again on its own when the engine asks to wait `
+    + 'or cannot be reached, and the retry shows on that attempt. The other operations make no automatic retries.';
 }

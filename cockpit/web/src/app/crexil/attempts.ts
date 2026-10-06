@@ -4,9 +4,12 @@
 // is making says so (law 9), and failed attempts that share a cause are named once
 // (law 1). The cost and retry lines are the legacy grid's tested law functions,
 // read through a CellVM; only the remedies differ. On this surface every new
-// attempt is prepared, reviewed and priced before it runs, so no remedy on a face
-// spends money: a paid path opens a preparation, and its price sits on the Run
-// button (law 6). A blind run's face never names its engine or its cost.
+// attempt is prepared, reviewed and priced before it runs, so a paid path opens a
+// preparation and its price sits on the Run button. The one face move that sends
+// money resumes held work its run already reserved: its face carries that
+// reservation as its price and it is never primary (law 6). A queued, held or
+// running attempt offers its cancel last; stopping never spends. A blind run's face
+// never names its engine or its cost.
 import { benchWords, costLine, receipt, retryLine, waitingLine, type CellVM } from '../batch/grid';
 import { engineLabel, money, takeLabel, type Operation, type Snapshot } from './api';
 import type { Slot } from './cells';
@@ -14,18 +17,23 @@ import type { Slot } from './cells';
 export type Turn = Snapshot['turns'][number];
 export type Control = NonNullable<Snapshot['execution_controls']>[number];
 
-/** What the queue view adds about a held slot: the bench that covers it. */
-export type QueueFacts = {bench: string | null; benchKind: string | null; benchCause: string | null};
+/** What the queue view adds about a held slot: the bench that covers it, and what the
+ *  attempts that bench holds reserve, since a resume sends them together. */
+export type QueueFacts = {bench: string | null; benchKind: string | null; benchCause: string | null; reservedUsd?: number};
 
-export type RemedyId = 'collect' | 'copy-receipt' | 'resume-run' | 'resume-project' | 'reuse' | 'connections' | 'resume-engine';
+export type RemedyId = 'collect' | 'copy-receipt' | 'resume-run' | 'resume-project' | 'reuse' | 'connections'
+  | 'resume-engine' | 'cancel-attempt';
 
 export type AttemptRemedy = {
   id: RemedyId;
   label: string;
-  /** The one the eye lands on first. Never a costed move; a face holds none (law 6). */
+  /** The one the eye lands on first. Never a costed move (law 6). */
   primary: boolean;
-  /** Set when the move is shown but cannot be made here, with the reason (law 12). */
-  gated: string | null;
+  /** What the move may spend, said on its face after its label: it sends work that
+   *  reserves money (law 6). Null for a move that spends nothing. */
+  price: string | null;
+  /** What the move does, in plain words: its tooltip, else its label. */
+  title?: string;
 };
 
 export type AttemptTone = 'dead' | 'waiting' | 'info';
@@ -67,12 +75,18 @@ const COLLECTABLE = new Set(['collection', 'uncertain', 'timeout', 'restart', 'c
 const CONNECTION = new Set(['dead_key', 'unreachable', 'model_down']);
 
 const REUSE_TITLE = 'Opens a new preparation from this direction. Nothing runs or spends until you review and run it.';
-export const RESUME_ENGINE_GATED = 'Not available here yet: this surface cannot resume a held engine.';
-
-export const remedyTitle = (remedy: AttemptRemedy): string => remedy.gated ?? (remedy.id === 'reuse' ? REUSE_TITLE
-  : remedy.id === 'collect' ? 'Checks this same request again. It never generates again and never charges again.'
-  : remedy.id === 'connections' ? 'Opens Connections, where keys and runtimes are checked.'
-  : remedy.id === 'copy-receipt' ? 'Copies the receipt for this charge.' : remedy.label);
+const COLLECT_TITLE = 'Checks this same request again. It never generates again and never charges again.';
+const CONNECTIONS_TITLE = 'Opens Connections, where keys and runtimes are checked.';
+export const RESUME_TITLE = 'Sends the attempts this engine holds. Each was reserved when its run was reviewed, '
+  + 'and meets the spending limits again before it is sent.';
+/** What stopping means in each state (failure case 2.7); a blind run's names no lane. */
+export const CANCEL_TITLE = {
+  unsent: 'Skips this attempt. Nothing more is sent, and skipping costs nothing.',
+  local: 'Asks the engine to stop this attempt. Local work costs no money.',
+  sent: 'Its request is already sent, so it keeps this cell: the take still lands here if it arrives, '
+    + 'and its charge stays unverified until the provider reports it.',
+  hidden: 'Asks this attempt to stop. Whatever it still delivers lands in its own cell.',
+} as const;
 
 /** The operation a slot's engine came from: its id, or the engine an audio or mesh operation names. */
 export function operationFor(engine: string, operations: readonly Operation[]): Operation | undefined {
@@ -112,9 +126,14 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
     retry: (slot.status === 'queued' || slot.status === 'running') ? retryLine(cell, nowMs, landing(op)) : null,
     receipt: null,
   };
-  const reuse = (primary: boolean): AttemptRemedy => ({id: 'reuse', label: 'REUSE SETUP', primary, gated: null});
-  const collect = (primary: boolean): AttemptRemedy => ({id: 'collect', label: 'COLLECT FILES', primary, gated: null});
-  const connections = (primary: boolean): AttemptRemedy => ({id: 'connections', label: 'CONNECTIONS', primary, gated: null});
+  const reuse = (primary: boolean): AttemptRemedy => ({id: 'reuse', label: 'REUSE SETUP', primary, price: null, title: REUSE_TITLE});
+  const collect = (primary: boolean): AttemptRemedy => ({id: 'collect', label: 'COLLECT FILES', primary, price: null, title: COLLECT_TITLE});
+  const connections = (primary: boolean): AttemptRemedy =>
+    ({id: 'connections', label: 'CONNECTIONS', primary, price: null, title: CONNECTIONS_TITLE});
+  // Stopping comes last and never spends; while a retry shows, it gives up on the attempt.
+  const cancel: AttemptRemedy = {id: 'cancel-attempt', label: face.retry ? 'GIVE UP ON THIS ATTEMPT' : 'CANCEL ATTEMPT',
+    primary: false, price: null, title: slot.status !== 'running' ? CANCEL_TITLE.unsent
+      : hidden ? CANCEL_TITLE.hidden : paid ? CANCEL_TITLE.sent : CANCEL_TITLE.local};
 
   switch (slot.status) {
     case 'failed': {
@@ -127,7 +146,8 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
       if (slot.kind === 'charged_blank') {
         if (!hidden) face.receipt = receipt(slot, turn.prompt, label);
         face.remedies = [
-          ...(face.receipt ? [{id: 'copy-receipt', label: 'COPY RECEIPT', primary: true, gated: null} as AttemptRemedy] : []),
+          ...(face.receipt ? [{id: 'copy-receipt', label: 'COPY RECEIPT', primary: true, price: null,
+            title: 'Copies the receipt for this charge.'} as AttemptRemedy] : []),
           collect(!face.receipt), reuse(false),
         ];
       } else if (slot.kind && COLLECTABLE.has(slot.kind)) face.remedies = [collect(true), reuse(false)];
@@ -151,30 +171,36 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
       const project = controls.find(c => c.scope === 'project');
       if (run?.paused) {
         face.progress = 'This run is paused. Future requests wait here.';
-        face.remedies = [{id: 'resume-run', label: `RESUME RUN ${turn.idx}`, primary: true, gated: null}];
+        face.remedies = [{id: 'resume-run', label: `RESUME RUN ${turn.idx}`, primary: true, price: null}, cancel];
       } else if (project?.paused) {
         face.progress = 'The project is paused. Future requests wait here.';
-        face.remedies = [{id: 'resume-project', label: 'RESUME PROJECT', primary: true, gated: null}];
+        face.remedies = [{id: 'resume-project', label: 'RESUME PROJECT', primary: true, price: null}, cancel];
       } else {
-        // A9 benches an engine for this run after repeated failures: preparing again is the
-        // live move. A connection bench points to Connections. The card being held waits.
-        // The hold in plain words (law 3); a blind run's never names its engine or provider.
+        // A9 benches an engine for this run after repeated failures: preparing again leads
+        // and TRY ONCE MORE sends it as it is. A connection bench points to Connections. The
+        // hold in plain words (law 3); a blind run's never names its engine or provider.
         const kind = queue?.benchKind ?? null;
         face.progress = hidden || !queue?.bench ? 'Its engine is held.'
           : benchWords({scope: queue.bench, kind: kind ?? '', cause: queue.benchCause}, id => engineLabel({engine: id}, 'face'));
+        // A resume sends every attempt its bench holds, so it carries what they reserve (law 6);
+        // a blind run's carries no price, which would tell its engine apart.
+        const reserved = hidden ? 0 : queue?.reservedUsd ?? slot.committed_usd ?? 0;
         const resume: AttemptRemedy = {id: 'resume-engine', label: kind === 'repeat' ? 'TRY ONCE MORE' : 'RESUME ENGINE',
-          primary: false, gated: RESUME_ENGINE_GATED};
-        face.remedies = kind === 'gpu_held' ? [resume] : kind === 'repeat' ? [reuse(true), resume] : [connections(true), resume];
+          primary: false, price: reserved > 0 ? `UP TO ${money(reserved)}` : null, title: RESUME_TITLE};
+        face.remedies = kind === 'gpu_held' ? [resume, cancel]
+          : kind === 'repeat' ? [reuse(true), resume, cancel] : [connections(true), resume, cancel];
       }
       break;
     }
     case 'queued':
       face.tone = 'waiting';
       face.progress = hidden ? `${engine} · waiting its turn` : waitingLine(cell);
+      face.remedies = [cancel];
       break;
     case 'running':
       face.tone = 'waiting';
       face.progress = `${engine} · running`;
+      face.remedies = [cancel];
       break;
     default:
       break;
@@ -184,7 +210,9 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
 
 /** A blind run's attempt while the run is still in flight. Every attempt of the run wears
  *  this one face, landed or not, so which takes come first, or wait for the one GPU, cannot
- *  tell its engines apart; all its takes show together once it settles. */
+ *  tell its engines apart; all its takes show together once it settles. It offers no cancel:
+ *  one only on the unsettled attempts would say which have landed. The run's own controls
+ *  stop it. */
 export function blindFace(turn: Turn, slot: Slot): AttemptFaceVM {
   const done = turn.slots.filter(item => !['queued', 'running'].includes(item.status)).length;
   return {
