@@ -64,6 +64,15 @@ describe('attemptFace: what happened · what it cost · what to do next (laws 3,
     expect(attemptFace(slot({status: 'running', engine: 'elevenlabs-sfx'}), ctx())).toMatchObject({engine: 'ElevenLabs Sound Effects',
       progress: 'ElevenLabs Sound Effects · running'});
   });
+  it('names a hosted model without its vendor, on its head, its running line and its bench line', () => {
+    const lite = 'bytedance-seed/seedream-5-0-lite';
+    setCatalogue(catalogueFrom([{id: lite, label: 'ByteDance Seed: Seedream 5.0 Lite', provider: 'openrouter'}], []));
+    expect(attemptFace(slot({status: 'running', engine: lite}), ctx())).toMatchObject({engine: 'Seedream 5.0 Lite',
+      progress: 'Seedream 5.0 Lite · running'});
+    const queue = {bench: `engine:${lite}@turn:t1`, benchKind: 'repeat', benchCause: null};
+    expect(attemptFace(slot({status: 'held', engine: lite}), ctx({queue})).progress)
+      .toBe('Seedream 5.0 Lite benched for this run after repeated failures.');
+  });
   it('offers to collect the same request, free, for outcomes it may still hold', () => {
     for (const kind of ['collection', 'timeout', 'restart']) {
       expect(attemptFace(slot({kind}), ctx()).remedies.map(r => [r.id, r.primary])).toEqual([['collect', true], ['reuse', false]]);

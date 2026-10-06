@@ -45,6 +45,11 @@ test('imported mesh opens the real viewer and a saved reduction preserves invali
   await expect(inspection.getByRole('button',{name:'Wireframe W',exact:true})).toHaveAttribute('aria-pressed','true');
   await inspection.getByRole('button',{name:'Wireframe W',exact:true}).click();
   for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:artifact(`mesh-inspection-${width}.png`)});}
+  // the hint under the facts says what the view shows, in plain words: the file itself, then the mode last turned on
+  await expect(inspection.getByText('This is the original file, drawn at full detail.',{exact:true})).toBeVisible();
+  await inspection.getByRole('button',{name:'Clay C',exact:true}).click();
+  await expect(inspection.getByText('Clay drops the baked texture. What is left is form: the lumps and the flat spots the texture was covering.',{exact:true})).toBeVisible();
+  await inspection.getByRole('button',{name:'Clay C',exact:true}).click();
   await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Act on Study.glb',exact:true})).toBeFocused();
   await page.getByRole('button',{name:'Reduce mesh',exact:true}).click();
   const op=await chooseOperation(page,'Reduce mesh · gltfpack (meshopt)',1);await op.locator('summary').click();

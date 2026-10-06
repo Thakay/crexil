@@ -1,7 +1,7 @@
 // The Filmstrip is a client of the same typed actions exposed to agents.
 import { fetchClient } from '../../api/client';
 import type { components } from '../../generated/openapi';
-import { engineName } from './catalogue';
+import { engineFaceName, engineName } from './catalogue';
 
 export type Project = components['schemas']['ProjectView'];
 export type Direction = components['schemas']['DirectionView'];
@@ -110,12 +110,13 @@ export function engineIdentity(node: Identified, hidden = false): EngineIdentity
   if (node.engine) return {kind: 'named', name: node.engine};
   return node.material?.origin.kind === 'prepared_image' ? {kind: 'prepared'} : {kind: 'imported'};
 }
-// 'face' names the maker on a face footer; 'source' groups and heads material by origin.
-// An engine reads by its catalogue name (catalogue.ts). A blind take reads "Blind" on its
-// face and "Engine hidden" where material is grouped.
+// 'face' names the maker on a take's or an attempt's face; 'source' groups and heads material
+// by origin. An engine reads by its catalogue name (catalogue.ts), on a face by its face name:
+// a hosted model without its vendor. A blind take reads "Blind" on its face and "Engine
+// hidden" where material is grouped.
 export function engineLabel(node: Identified, variant: 'face' | 'source', hidden = false): string {
   const identity = engineIdentity(node, hidden);
-  if (identity.kind === 'named') return engineName(identity.name);
+  if (identity.kind === 'named') return variant === 'face' ? engineFaceName(identity.name) : engineName(identity.name);
   if (identity.kind === 'hidden') return variant === 'face' ? 'Blind' : 'Engine hidden';
   if (variant === 'source') return 'Imported material';
   return identity.kind === 'prepared' ? 'Prepared' : 'Imported';
