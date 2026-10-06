@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "crexil": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--script", "${CLAUDE_PROJECT_DIR}/tools/agent-door/crexil_mcp.py",
+               "--agent-name", "Claude", "--max-run-usd", "0"],
+      "env": {"CREXIL_URL": "http://127.0.0.1:8000"}
+    }
+  }
+}
