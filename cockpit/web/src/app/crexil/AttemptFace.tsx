@@ -11,7 +11,8 @@ export function AttemptFace({face, onRemedy, busy = false}: {
   face: AttemptFaceVM; onRemedy: (id: RemedyId) => void; busy?: boolean;
 }) {
   const tone = face.tone === 'dead' ? s.attemptDead : face.tone === 'waiting' ? s.attemptWaiting : s.attemptInfo;
-  return <div role="group" aria-label={`Attempt ${face.label} · ${face.title.toLowerCase()}`} className={`${s.attemptFace} ${tone}`}>
+  return <div role="group" aria-label={`Attempt ${face.label} · ${face.title.toLowerCase()}`}
+    className={`${s.attemptFace} ${tone} ${face.remedies.length > 2 ? s.attemptCrowded : ''}`}>
     <div className={s.attemptHead}><strong>{face.title}</strong><span>{face.label} · {face.engine}</span></div>
     {face.cause && <p className={s.attemptCause} title={face.cause}>{face.cause}</p>}
     {face.retry && <p className={s.attemptRetry} title={face.retry.why}>{face.retry.label}</p>}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Direction, Snapshot } from './api';
-import { gridCells, takesPerAttempt } from './cells';
+import { byGridPosition, gridCells, takesPerAttempt } from './cells';
 import { cardVerbs } from './verbCard';
 
 const slot = (id: string, attempt = 1, status = 'landed') => ({id, attempt, status, engine: 'flux', turn_id: 't1'});
@@ -100,6 +100,24 @@ describe('cardVerbs', () => {
     const allowed = [...ops, {id: 'eleven', actions: ['continue'], provider: 'elevenlabs'}] as never[];
     expect(find([image('a', terms)], 'Continue from image', allowed).live).toBe(true);
     expect(find([image('a', terms)], 'Crop, resize or arrange', ops).live).toBe(true);
+  });
+});
+
+describe('byGridPosition: material in grid order, never in landing order', () => {
+  // A blind run's takes, as a snapshot lists them in the order they landed: position 1 first.
+  const landed = [['0B', 0, 1, 0], ['0A', 0, 0, 0], ['0B.2', 0, 1, 1], ['0A.2', 0, 0, 1], ['import', null, null, 0], ['1A', 1, 0, 0]]
+    .map(([id, turn_idx, slot_pos, output_index]) => ({id, turn_idx, slot_pos, output_index, take: turn_idx === null ? null : 1}) as never);
+  it('orders takes by run, cell and output, material from no run first', () => {
+    expect(byGridPosition(landed).map(node => (node as {id: string}).id)).toEqual(['import', '0A', '0A.2', '0B', '0B.2', '1A']);
+  });
+  it("orders a retried cell's attempts by attempt", () => {
+    const retried = [{id: 'second', turn_idx: 0, slot_pos: 0, take: 2, output_index: 0}, {id: 'first', turn_idx: 0, slot_pos: 0, take: 1, output_index: 0}];
+    expect(byGridPosition(retried as never[]).map(node => (node as {id: string}).id)).toEqual(['first', 'second']);
+  });
+  it('shows a section\'s faces in grid order on the Filmstrip', () => {
+    const data = {nodes: landed, turns: [], execution_groups: []} as unknown as Snapshot;
+    const run = {node_ids: ['0B', '0A', '0B.2', '0A.2'], turn_ids: [], selection: ['0B.2', '0A']} as unknown as Direction;
+    expect(gridCells(run, data, false).map(cell => cell.key)).toEqual(['0A', '0B.2']);
   });
 });
 

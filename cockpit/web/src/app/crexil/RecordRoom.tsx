@@ -8,8 +8,9 @@
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
-import {ActionError,artist,command,engineLabel,isDefiniteRefusal,label,message,result,setArtistName,type Snapshot} from './api';
+import {ActionError,actorLine,artist,command,engineLabel,isDefiniteRefusal,label,message,result,setArtistName,type Snapshot} from './api';
 import {isWithheld,settled,withheldRuns} from './blind';
+import {byGridPosition} from './cells';
 import {MaterialThumbnail} from './MaterialThumbnail';
 import {runLine} from './faces';
 import {mediumOf} from './media';
@@ -50,7 +51,7 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
   const record=query.data;
   const records=record?.decisions??[];
   const withheld=withheldRuns(data);
-  const material=data.nodes.filter(node=>record?.material_ids.includes(node.id)&&!isWithheld(node,withheld)&&(!filtered.node_id||node.id===filtered.node_id)&&(!filtered.direction_id||data.directions.find(d=>d.id===filtered.direction_id)?.node_ids.includes(node.id))&&(!filtered.turn_id||node.turn_id===filtered.turn_id));
+  const material=byGridPosition(data.nodes).filter(node=>record?.material_ids.includes(node.id)&&!isWithheld(node,withheld)&&(!filtered.node_id||node.id===filtered.node_id)&&(!filtered.direction_id||data.directions.find(d=>d.id===filtered.direction_id)?.node_ids.includes(node.id))&&(!filtered.turn_id||node.turn_id===filtered.turn_id));
   const [artistName,setName]=useState(()=>artist().name);
   const blindLine=(turnId:string)=>{
     const run=data.blind_runs?.find(item=>item.turn_id===turnId);
@@ -111,7 +112,7 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
 export function DecisionCard({item,data,inspect,openDirection,openRun,revise}:{item:Decision;data:Snapshot;inspect:(id:string)=>void;openDirection?:(id:string)=>void;openRun?:(id:string)=>void;revise?:()=>void}) {
   const direction=data.directions.find(d=>d.id===item.direction_id);
   return <article className={s.decision} aria-label={`${kindName[item.kind]} by ${item.actor?.name??'unrecorded participant'}`}>
-    <div className={s.decisionMeta}><strong>{kindName[item.kind]}</strong><span>{item.actor?item.actor.kind==='human'&&item.actor.name==='Artist'?'Artist':`${item.actor.kind==='agent'?'Agent':'Artist'} · ${item.actor.name}`:'Participant not recorded'}</span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time></div>
+    <div className={s.decisionMeta}><strong>{kindName[item.kind]}</strong><span>{actorLine(item.actor)}</span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time></div>
     <p className={s.decisionReason}>{item.reason||'No reason supplied.'}</p>
     <div className={s.decisionLinks}>{item.node_ids.map(id=>{const node=data.nodes.find(n=>n.id===id);return node?<button key={id} onClick={()=>inspect(id)}>{label(node)}{!node.available?' · unavailable':''} ›</button>:<span key={id}>Material {id} · unavailable</span>;})}
       {direction&&openDirection&&<button onClick={()=>openDirection(direction.id)}>T{direction.row_idx} · {direction.title} ›</button>}

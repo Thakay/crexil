@@ -1,9 +1,10 @@
 // What a direction's section shows, computed without the DOM. On the Filmstrip a
-// section shows its displayed selection. In its grid room every attempt keeps its
-// place (law 8): a slot reserves room at Run for every take one attempt of its run
-// returns, then shows the takes its current attempt landed, primary first, or the
+// section shows its displayed selection, in grid order. In its grid room every attempt
+// keeps its place (law 8): a slot reserves room at Run for every take one attempt of its
+// run returns, then shows the takes its current attempt landed, primary first, or the
 // attempt itself when nothing has landed. A blind run still in flight shows no take
-// until it settles.
+// until it settles. Every list of material reads in grid order (byGridPosition), never
+// in the order takes landed, which would tell a blind run's engines apart.
 import type { Direction, Material, Snapshot } from './api';
 import { withheldRuns } from './blind';
 
@@ -25,6 +26,17 @@ export type Cell = {
   withheld: boolean;
 };
 
+/** Material in grid order: by run, cell, attempt and output; material from no run (imported
+ *  or prepared) first, in the order it arrived. */
+export function byGridPosition<T extends Pick<Material, 'turn_idx' | 'slot_pos' | 'take' | 'output_index'>>(nodes: readonly T[]): T[] {
+  const key = (node: T) => [node.turn_idx ?? -1, node.slot_pos ?? 0, node.take ?? 0, node.output_index];
+  return [...nodes].sort((a, b) => {
+    const x = key(a), y = key(b);
+    const at = x.findIndex((value, i) => value !== y[i]);
+    return at < 0 ? 0 : x[at] - y[at];
+  });
+}
+
 /** No run reserves more positions per attempt than this. */
 const MOST_TAKES = 8;
 
@@ -45,7 +57,7 @@ export function takesPerAttempt(turn: Pick<Turn, 'dials'>): number {
 }
 
 export function gridCells(direction: Direction, data: Snapshot, grid: boolean): Cell[] {
-  const material = data.nodes.filter(node => direction.node_ids.includes(node.id));
+  const material = byGridPosition(data.nodes.filter(node => direction.node_ids.includes(node.id)));
   const slots = data.turns.flatMap(turn => turn.slots);
   const materialCell = (node: Material): Cell => {
     const slot = slots.find(slot => slot.id === node.slot_id) ?? null;
@@ -55,7 +67,7 @@ export function gridCells(direction: Direction, data: Snapshot, grid: boolean): 
   const withheld = withheldRuns(data);
   const attempts = data.turns.filter(turn => direction.turn_ids.includes(turn.id)).flatMap(turn => {
     const span = takesPerAttempt(turn);
-    return turn.slots.map((slot): Cell => {
+    return [...turn.slots].sort((a, b) => a.pos - b.pos).map((slot): Cell => {
       if (withheld.has(turn.id)) return {key: slot.id, material: null, slot, group: null, takes: [], span, withheld: true};
       const current = material.filter(node => node.slot_id === slot.id && node.take === slot.attempt);
       const shown = current.find(node => isPrimary(data, slot, node)) ?? current[0];

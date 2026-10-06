@@ -6,14 +6,27 @@ import {useEffect} from 'react';
 import {$api} from '../../api/client';
 import {DecisionCard} from './RecordRoom';
 import {actionView} from './actions';
-import {isHidden,label,message,money,type Material,type Snapshot} from './api';
+import {actorLine,engineLabel,isHidden,label,message,money,type Actor,type Material,type Snapshot} from './api';
 import {recordedWords} from './family';
 import s from './Filmstrip.module.css';
 
 const WITHHELD='Withheld until the reveal';
 
+/** A control's value as the record column says it: a seed policy in words, a switch as
+ *  yes or no, anything else as recorded. */
+export function controlValue(value:unknown):string{
+  const seed=value as {mode?:unknown;value?:unknown}|null;
+  if(seed&&typeof seed==='object'&&!Array.isArray(seed)&&typeof seed.mode==='string'){
+    if(seed.mode==='random')return 'Random each time';
+    if(seed.mode==='fixed')return `A fixed sequence from ${String(seed.value)}`;
+    if(seed.mode==='locked')return `${String(seed.value)} for every attempt`;
+  }
+  if(typeof value==='boolean')return value?'Yes':'No';
+  return typeof value==='object'?JSON.stringify(value):String(value);
+}
+
 type RequestRecord={
-  actor?:{kind:string;name:string};brief?:string;project_instructions?:string;
+  actor?:Actor;brief?:string;project_instructions?:string;
   setup?:{prompt?:string;instructions?:string;references?:{node_id:string;contribution?:string;role?:string|null;strength?:number|null}[];spending_policy?:string};
   sources?:{node_id:string;sha256?:string}[];
   operation?:{label:string;revision:string;maximum_usd_per_attempt?:number|null;cost_basis?:string;limitations?:string[];applied_controls?:Record<string,unknown>};
@@ -34,13 +47,13 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
     {query.isLoading&&<p role="status">Reading the accepted request…</p>}
     {query.error&&<p role="alert">{message(query.error)}<button onClick={()=>void query.refetch()}>Read request again</button></p>}
     {hidden?<dl><dt>Operation</dt><dd>{WITHHELD}</dd>
-      <dt>Requested by</dt><dd>{request?.actor?`${request.actor.kind==='agent'?'Agent':'Artist'} · ${request.actor.name}`:'Not recorded'}</dd>
+      <dt>Requested by</dt><dd>{actorLine(request?.actor)}</dd>
       <dt>Attempt</dt><dd>{node.take} · landing time {WITHHELD.toLowerCase()}</dd>
       <dt>Seed</dt><dd>{WITHHELD}</dd>
       <dt>Charge</dt><dd>Shown after the reveal. The run's totals stay visible.</dd>
-    </dl>:node.engine&&<dl><dt>Operation</dt><dd>{operation?.label??node.engine}</dd>
+    </dl>:node.engine&&<dl><dt>Operation</dt><dd>{operation?.label??engineLabel(node,'source')}</dd>
       <dt>Operation revision</dt><dd className={s.hash}>{operation?.revision??'Not recorded'}</dd>
-      <dt>Requested by</dt><dd>{request?.actor?`${request.actor.kind==='agent'?'Agent':'Artist'} · ${request.actor.name}`:'Not recorded'}</dd>
+      <dt>Requested by</dt><dd>{actorLine(request?.actor)}</dd>
       <dt>Attempt</dt><dd>{node.take} · {new Date(node.created_at).toLocaleString()}</dd>
       <dt>Seed</dt><dd>{node.seed??(node.payload==='3d'&&node.verb!=='to_3d'?'Not used by this operation':'Not recorded')}</dd>
       <dt>Confirmed charge</dt><dd>{node.charged_usd===null?'No confirmed charge recorded':money(node.charged_usd)}</dd>
@@ -54,7 +67,7 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
       return <div key={`${ref.node_id}:${index}`} className={s.recordSource}><strong>{index+1}. {node?label(node):ref.node_id}</strong><p>{ref.contribution||'No contribution instruction supplied.'}</p>
         {ref.role&&<p>Role · {ref.role}</p>}{ref.strength!=null&&<p>Strength · {ref.strength}</p>}{node&&<button onClick={()=>navigate(id)}>Inspect source ›</button>}</div>;
     })}</>:null}
-    {Boolean(Object.keys(controls).length)&&<><h3>{operation?.applied_controls?'Controls at review':'Saved settings'}</h3><dl>{Object.entries(controls).map(([name,value])=><div key={name}><dt>{name.replaceAll('_',' ')}</dt><dd>{typeof value==='object'?JSON.stringify(value):String(value)}</dd></div>)}</dl><p>The seed above and the submitted operation identify this attempt.</p></>}
+    {Boolean(Object.keys(controls).length)&&<><h3>{operation?.applied_controls?'Controls at review':'Saved settings'}</h3><dl>{Object.entries(controls).map(([name,value])=><div key={name}><dt>{name.replaceAll('_',' ')}</dt><dd>{controlValue(value)}</dd></div>)}</dl><p>The seed above and the submitted operation identify this attempt.</p></>}
     {(request?.brief||request?.project_instructions)&&<details><summary>Project instructions at acceptance</summary>{request.brief&&<p>{request.brief}</p>}{request.project_instructions&&<p>{request.project_instructions}</p>}</details>}
     {recorded?.regions&&<details><summary>Recorded edit regions and protected area</summary><pre>{JSON.stringify(recorded.regions,null,2)}</pre></details>}
     {recorded?.submitted&&<details><summary>Submitted workflow or operation</summary><pre>{JSON.stringify(recorded.submitted,null,2)}</pre></details>}

@@ -77,19 +77,22 @@ describe('the audio plate', () => {
 });
 
 describe('the audio inspector', () => {
-  it('names the engine, voice, seed and format of a revealed take', () => {
+  it("states a revealed take's sound in words, and leaves its engine, seed and length to the record column", () => {
     render(<AudioInspector node={take('n1')}/>);
-    expect(screen.getByText('elevenlabs-v4')).toBeInTheDocument();
-    expect(screen.getByText('Designed voice · v-1')).toBeInTheDocument();
-    expect(screen.getByText('7')).toBeInTheDocument();
-    expect(screen.getByText('WAV · pcm_s16le · 24 kHz · mono')).toBeInTheDocument();
+    expect(screen.getByText('Designed voice')).toBeInTheDocument();
+    expect(screen.getByText('WAV · 16-bit PCM · 24 kHz · mono')).toBeInTheDocument();
     expect(screen.getByText('-18.0 LUFS')).toBeInTheDocument();
+    for (const said of ['elevenlabs-v4', 'v-1', '7', 'Length', 'Engine', 'Seed']) expect(screen.queryByText(said)).toBeNull();
+  });
+  it('says no voice for a sound effect', () => {
+    render(<AudioInspector node={take('n1', {verb: 'sfx', audio: facts({voice: null})})}/>);
+    expect(screen.queryByText('Voice')).toBeNull();
+    expect(screen.queryByText('Not reported')).toBeNull();
   });
   it('withholds the engine, voice and seed while the run is blind, and keeps the sound playable', async () => {
     const hidden = take('n1', {identity_hidden: true, engine: 'hidden', seed: null,
       audio: facts({voice: null, container: null, codec: null, sample_rate: null, channels: null})});
     render(<AudioInspector node={hidden}/>);
-    expect(screen.getByText('Engine hidden')).toBeInTheDocument();
     expect(screen.getAllByText('Withheld until the run is revealed')).toHaveLength(2);
     expect(screen.queryByText('Seed')).toBeNull();
     expect(screen.queryByText('elevenlabs-v4')).toBeNull();
@@ -156,10 +159,11 @@ describe('the audio inspector', () => {
     expect(levelLine(null)).toBe('As recorded · not level matched');
     expect(levelLine({gainDb: -4.14, volume: 0.6, matched: true})).toBe('Matched level · turned down 4.1 dB');
     expect(levelLine({gainDb: 0, volume: 1, matched: true})).toBe('Matched level · as recorded');
-    expect(voiceLine({kind: 'saved', voice_id: 'abc'}, false)).toBe('Saved voice · abc');
-    expect(voiceLine({kind: 'cloned', reference_node_id: 'n9'}, false)).toBe('Cloned from material n9');
+    expect(voiceLine({kind: 'saved', voice_id: 'abc'}, false)).toBe('Saved voice');
+    expect(voiceLine({kind: 'cloned', reference_node_id: 'n9'}, false)).toBe('Cloned voice');
     expect(voiceLine(null, false)).toBe('Not reported');
-    expect(formatLine(facts({channels: 2, sample_rate: 44100}), false)).toBe('WAV · pcm_s16le · 44.1 kHz · stereo');
+    expect(formatLine(facts({channels: 2, sample_rate: 44100}), false)).toBe('WAV · 16-bit PCM · 44.1 kHz · stereo');
+    expect(formatLine(facts({codec: 'alac'}), false)).toBe('WAV · alac · 24 kHz · mono');
   });
 });
 

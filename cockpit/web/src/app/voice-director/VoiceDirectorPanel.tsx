@@ -1,22 +1,20 @@
-// The voice director on the project surface: a door, and the column it opens. Closed, it is one
-// small door; open, it is a column of its own at the right of the work, from the top bar to the
-// footer, and it loads the conversation and the ElevenLabs SDK in their own chunk, so the
-// project surface never pays for them until the artist asks. While the column is open it sets
-// `--director-inset` (its width, in px) on the root element and nowhere else, and removes it on
-// close; every Filmstrip surface keeps its right edge clear of that inset, so the column never
-// covers a room's chrome or work (law 2). The closed door shows only while the Filmstrip itself
-// is in view: a grid room, the tray, the drawer, an overlay, a room over the canvas or the
-// record puts its own controls where the door floats.
+// The voice director on the project surface: a door, and the column it opens. The door sits in
+// the top bar beside the project's other doors, where no room's Esc control ever is, whatever
+// is open; the column is a column of its own at the right of the work, from the top bar to the
+// footer, drawn at the end of the page, and it loads the conversation and the ElevenLabs SDK in
+// their own chunk, so the project surface never pays for them until the artist asks. While the
+// column is open it sets `--director-inset` (its width, in px) on the root element and nowhere
+// else, and removes it on close; every Filmstrip surface keeps its right edge clear of that
+// inset, so the column never covers a room's chrome or work (law 2).
 //
 // Focus moves to the column's heading when it opens, stays in the column when a control in it
-// goes away, and returns to the door when it closes (or, while the door makes way, to where it
-// came from). Escape inside the column is the column's own and never reaches the room behind:
-// it closes an idle column, and during a session it returns focus to the work while the
-// conversation carries on, since closing ends the session.
-import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createStore, useStore, type StoreApi } from 'zustand';
+// goes away, and returns to the door when it closes. The door closes an idle column and brings
+// focus into a column in session, since closing ends the session. Escape inside the column is
+// the column's own and never reaches the room behind: it closes an idle column, and during a
+// session it returns focus to the work while the conversation carries on.
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Actor } from '../crexil/api';
-import { ViewContext, type View } from '../crexil/view';
 import type { Door } from './door';
 import css from './VoiceDirector.module.css';
 
@@ -27,18 +25,6 @@ export const COLUMN_PX = 300;
 /** The root element's property that carries the inset. */
 export const INSET = '--director-inset';
 
-type Layers = Pick<View, 'drawer' | 'room' | 'overlays' | 'panel' | 'record' | 'nestedRecord'>;
-// Outside a project room nothing opens over the work.
-const NO_ROOM = createStore<Layers>(() => ({drawer: null, room: null, overlays: [], panel: null, record: null,
-  nestedRecord: null}));
-
-/** Whether the Filmstrip itself is in view, with nothing open over it. */
-function useFilmstripInView(): boolean {
-  const room = useContext(ViewContext) as StoreApi<Layers> | null;
-  return useStore(room ?? NO_ROOM, view => view.drawer === null && view.room === null && view.overlays.length === 0
-    && view.panel === null && view.record === null && view.nestedRecord === null);
-}
-
 const connected = (element: HTMLElement | null) => element?.isConnected ? element : null;
 
 export type VoiceDirectorPanelProps = {
@@ -47,12 +33,13 @@ export type VoiceDirectorPanelProps = {
   artist?: Actor;
   /** The HTTP door; tests pass a fake. */
   door?: Door;
+  /** The door's look, from the bar that seats it; its own otherwise. */
+  doorClassName?: string;
 };
 
-export function VoiceDirectorPanel({projectId, artist, door}: VoiceDirectorPanelProps) {
+export function VoiceDirectorPanel({projectId, artist, door, doorClassName}: VoiceDirectorPanelProps) {
   const [open, setOpen] = useState(false);
   const [live, setLive] = useState(false);
-  const inView = useFilmstripInView();
   const column = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const doorButton = useRef<HTMLButtonElement>(null);
@@ -83,7 +70,7 @@ export function VoiceDirectorPanel({projectId, artist, door}: VoiceDirectorPanel
     return () => keep.disconnect();
   }, [open]);
 
-  // Focus returns to the door, or, while the door makes way, to where it came from.
+  // Focus returns to the door.
   useEffect(() => {
     if (open || !returning.current) return;
     returning.current = false;
@@ -104,14 +91,14 @@ export function VoiceDirectorPanel({projectId, artist, door}: VoiceDirectorPanel
     else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   };
 
-  if (!open) {
-    if (!inView) return null;
-    return <div className={css.dock}>
-      <button ref={doorButton} type="button" className={css.door} aria-expanded={false}
-        onClick={() => {origin.current = null; setOpen(true);}}>Voice director ›</button>
-    </div>;
-  }
-  return <aside ref={column} className={css.panel} style={{width: COLUMN_PX}} tabIndex={-1} aria-label="Voice director"
+  const doorway = <button ref={doorButton} type="button" className={doorClassName ?? css.door} aria-expanded={open}
+    onClick={() => {
+      if (!open) {origin.current = null; setOpen(true);}
+      else if (live) heading.current?.focus();
+      else close();
+    }}>Voice director ›</button>;
+  if (!open) return doorway;
+  return <>{doorway}{createPortal(<aside ref={column} className={css.panel} style={{width: COLUMN_PX}} tabIndex={-1} aria-label="Voice director"
     onFocus={event => {
       const from = event.relatedTarget;
       if (from instanceof HTMLElement && !event.currentTarget.contains(from)) origin.current = from;
@@ -135,5 +122,5 @@ export function VoiceDirectorPanel({projectId, artist, door}: VoiceDirectorPanel
     <Suspense fallback={<p className={css.loading} role="status">Opening the voice director…</p>}>
       <Director key={projectId} projectId={projectId} artist={artist} door={door} onLive={setLive}/>
     </Suspense>
-  </aside>;
+  </aside>, document.body)}</>;
 }

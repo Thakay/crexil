@@ -112,7 +112,7 @@ test('a blind voice casting runs end to end: audition from the keyboard, pick wi
   await expect(status).toHaveText('Playing 0B · 4.0 s · level matched');
   await shots(page,'d7-grid-blind-settled');
 
-  // One key picks the take just heard; the reason follows as an assessment.
+  // One key picks the take just heard; the reason that follows is the choice's own (law 23).
   await fourth.focus();
   await page.keyboard.press('s');
   const reason=page.getByRole('textbox',{name:'Why 0B? Optional',exact:true});
@@ -161,7 +161,9 @@ test('a blind voice casting runs end to end: audition from the keyboard, pick wi
   const selection=lines.find(record=>record.kind==='selection');
   expect(selection).toMatchObject({blind:true,chosen:[chosenTake.id],author:{kind:'human',name:'Artist'}});
   expect(selection.candidates).toHaveLength(6);
-  expect(lines.find(record=>record.kind==='assessment')).toMatchObject({reason:'Warmest of the six; the grit sits under the words.'});
+  // the reason travels with the choice itself, never as a separate assessment
+  expect(lines.find(record=>record.kind==='selection'&&record.reason==='Warmest of the six; the grit sits under the words.')).toBeDefined();
+  expect(lines.some(record=>record.kind==='assessment')).toBe(false);
   expect(JSON.stringify(lines)).not.toMatch(/base64|\.wav|\/audio/);
 });
 

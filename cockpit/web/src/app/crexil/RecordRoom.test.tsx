@@ -10,7 +10,7 @@ vi.mock('../../api/client', () => ({
     refetch: vi.fn(), isLoading: false, error: null})},
   fetchClient: {},
 }));
-const { RecordRoom } = await import('./RecordRoom');
+const { DecisionCard, RecordRoom } = await import('./RecordRoom');
 
 const node = (id: string, turn_id: string, extra: Record<string, unknown> = {}) => ({id, turn_id, payload: 'audio', engine: 'qwen3-tts',
   identity_hidden: null, available: true, set_aside: false, turn_idx: 0, slot_pos: 0, output_index: 0, material: null,
@@ -57,5 +57,20 @@ describe('the record room', () => {
     expect(name).toHaveValue('Artist');
     fireEvent.change(name, {target: {value: 'Kay'}});
     expect(artist()).toEqual({kind: 'human', name: 'Kay'});
+  });
+});
+
+describe('a decision card', () => {
+  afterEach(cleanup);
+  const decision = (event_id: string, reason: string, extra: Record<string, unknown> = {}) => ({id: 'root', event_id, seq: 1,
+    created_at: '2026-10-06T10:00:00Z', kind: 'selection', actor: {kind: 'human', name: 'Artist'}, reason, node_ids: [],
+    direction_id: null, turn_id: null, sequence_id: null, previous_id: null, revised_by: null, historical: false, ...extra}) as never;
+  it('names the participant with the one author line (law 23)', () => {
+    render(<DecisionCard item={decision('e4', 'Picked.', {actor: {kind: 'agent', name: 'voice-director'}})} data={data} inspect={() => {}}/>);
+    expect(screen.getByText('Agent · voice-director')).toBeInTheDocument();
+    cleanup();
+    render(<DecisionCard item={decision('e5', 'Picked.')} data={data} inspect={() => {}}/>);
+    expect(screen.getByText('Artist')).toBeInTheDocument();
+    expect(screen.queryByText('Artist · Artist')).toBeNull();
   });
 });

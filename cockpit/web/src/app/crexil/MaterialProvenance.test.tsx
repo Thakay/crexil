@@ -1,6 +1,6 @@
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {MaterialProvenance,TakeWords} from './MaterialProvenance';
+import {MaterialProvenance,TakeWords,controlValue} from './MaterialProvenance';
 import type {Material,Snapshot} from './api';
 
 const fixtures=vi.hoisted(()=>({record:{request:null,controls:{},submitted:null,regions:null} as Record<string,unknown>,refetch:vi.fn()}));
@@ -32,6 +32,25 @@ describe('frozen provenance facts',()=>{
     expect(screen.queryByText('Spending bound')).not.toBeInTheDocument();
     expect(screen.queryByText('saved-revision')).not.toBeInTheDocument();
     expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
+  });
+});
+
+describe('controls at review, in words',()=>{
+  afterEach(cleanup);
+  it('says a seed policy, a switch and a plain value without raw records',()=>{
+    expect(controlValue({mode:'random'})).toBe('Random each time');
+    expect(controlValue({mode:'fixed',value:41})).toBe('A fixed sequence from 41');
+    expect(controlValue({mode:'locked',value:7})).toBe('7 for every attempt');
+    expect(controlValue(false)).toBe('No');
+    expect(controlValue(2)).toBe('2');
+    expect(controlValue('English')).toBe('English');
+  });
+  it('names who requested a take with the one author line',()=>{
+    fixtures.record={controls:{seed:{mode:'random'}},submitted:null,regions:null,request:{actor:{kind:'human',name:'Artist'},operation:{label:'Local fixture',revision:'r',maximum_usd_per_attempt:0,applied_controls:{seed:{mode:'random'}}}}};
+    render(<MaterialProvenance node={node} data={data} navigate={()=>{}} openRecord={()=>{}}/>);
+    expect(screen.getByText('Requested by').nextElementSibling).toHaveTextContent(/^Artist$/);
+    expect(screen.getByText('Random each time')).toBeInTheDocument();
+    expect(screen.queryByText('{"mode":"random"}')).toBeNull();
   });
 });
 

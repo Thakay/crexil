@@ -60,7 +60,7 @@ describe('moveAttempt', () => {
   it.each([
     [403, "Resuming paid work is the artist's act: this would send held attempts that reserve money."],
     [409, 'This attempt is not held, so there is nothing to resume. Refresh it.'],
-    [422, 'This attempt waits for a spending limit. Raise the limit to send it, or cancel it.'],
+    [422, "Project spending limit is $1; charged and reserved spending totals $1.004. Raise the project's limit in its settings to send it, or cancel it."],
   ])('drops a %i refusal, keeping its plain words for the error line (law 3)', async (status, detail) => {
     answers = [() => Response.json({detail}, {status}), moved('resume', 1)];
     const slot = {id: `s-refused-${status}`, attempt: 1};

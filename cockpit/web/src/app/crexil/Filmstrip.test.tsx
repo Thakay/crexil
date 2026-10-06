@@ -60,6 +60,7 @@ beforeEach(() => {
     if (path === '/api/crexil/projects/p1') return Response.json(snapshot());
     if (path === '/api/queue') return Response.json(queue());
     if (path === '/api/crexil/operations') return Response.json([sfx]);
+    if (path === '/api/engines') return Response.json({updated: '', external: {}, engines: [{id: 'elevenlabs-sfx', name: 'ElevenLabs Sound Effects', lane: 'external'}]});
     if (path === '/api/costs') return Response.json({today_usd: 0, month_usd: 0, day: '2026-10-06', month: '2026-10'});
     if (path === '/api/health') return Response.json({build: {id: 'test'}});
     throw new Error(`unstubbed fetch: ${input.method} ${path}`);

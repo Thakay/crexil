@@ -10,6 +10,9 @@ type SourceRole = {medium: Payload; role?: string};
 export type ActionView = {
   /** Title of a new direction started with this action. */
   title: string;
+  /** The word its section's starter shows for the kind of start: "Words", "Image",
+   *  "Voice design". */
+  start: string;
   /** Name in the drawer's action list; an unlisted action is never offered there. */
   label: string;
   listed: boolean;
@@ -26,30 +29,34 @@ export type ActionView = {
 };
 
 export const ACTIONS: {readonly [K in Action]?: ActionView} = {
-  generate: {title: 'New direction', label: 'Generate from words', listed: true, produces: 'image', sends: 'the prompt'},
-  continue: {title: 'Continue from an image', label: 'Continue from one source', listed: true, produces: 'image'},
-  combine: {title: 'Combined sources', label: 'Combine sources', listed: true, produces: 'image'},
-  region: {title: 'Region study', label: 'Edit a region', listed: true, produces: 'image'},
-  custom: {title: 'Custom operation', label: 'Custom operation', listed: true, produces: 'image'},
-  mesh: {title: 'Generate 3D', label: 'Generate 3D from image', listed: true, produces: '3d',
+  generate: {title: 'New direction', start: 'Words', label: 'Generate from words', listed: true, produces: 'image', sends: 'the prompt'},
+  continue: {title: 'Continue from an image', start: 'Image', label: 'Continue from one source', listed: true, produces: 'image'},
+  combine: {title: 'Combined sources', start: 'Combined', label: 'Combine sources', listed: true, produces: 'image'},
+  region: {title: 'Region study', start: 'Region edit', label: 'Edit a region', listed: true, produces: 'image'},
+  custom: {title: 'Custom operation', start: 'Custom', label: 'Custom operation', listed: true, produces: 'image'},
+  mesh: {title: 'Generate 3D', start: 'Generate 3D', label: 'Generate 3D from image', listed: true, produces: '3d',
     sources: [{medium: 'image'}], recordedDescription: true},
-  decimate: {title: 'Reduce mesh', label: 'Reduce mesh', listed: true, produces: '3d',
+  decimate: {title: 'Reduce mesh', start: 'Reduce mesh', label: 'Reduce mesh', listed: true, produces: '3d',
     sources: [{medium: '3d', role: 'Shape'}], recordedDescription: true},
-  texture: {title: 'Texture mesh', label: 'Texture mesh from image', listed: true, produces: '3d',
+  texture: {title: 'Texture mesh', start: 'Texture mesh', label: 'Texture mesh from image', listed: true, produces: '3d',
     sources: [{medium: '3d', role: 'Shape'}, {medium: 'image', role: 'Appearance'}], recordedDescription: true},
-  prepare: {title: 'Prepared image', label: 'Crop, resize or arrange', listed: true, produces: 'image'},
-  'voice-design': {title: 'Voice design', label: 'Design a voice', listed: true, produces: 'audio',
+  prepare: {title: 'Prepared image', start: 'Prepared image', label: 'Crop, resize or arrange', listed: true, produces: 'image'},
+  'voice-design': {title: 'Voice design', start: 'Voice design', label: 'Design a voice', listed: true, produces: 'audio',
     words: 'Voice description', sends: 'the voice description and its preview line'},
-  speak: {title: 'Spoken line', label: 'Speak a line', listed: true, produces: 'audio',
+  speak: {title: 'Spoken line', start: 'Spoken line', label: 'Speak a line', listed: true, produces: 'audio',
     sources: [{medium: 'audio', role: 'Voice'}], words: 'Line to speak', sends: 'the line and its voice'},
-  sfx: {title: 'Sound effect', label: 'Make a sound', listed: true, produces: 'audio',
+  sfx: {title: 'Sound effect', start: 'Sound effect', label: 'Make a sound', listed: true, produces: 'audio',
     words: 'Sound description', sends: 'the sound description'},
-  import: {title: 'Imported material', label: 'Import material', listed: false, produces: 'image'},
+  import: {title: 'Imported material', start: 'Import', label: 'Import material', listed: false, produces: 'image'},
 };
 
 /** The action's view, or none for an action this client does not describe yet. */
 export const actionView = (action: string | null | undefined): ActionView | undefined =>
   action && Object.hasOwn(ACTIONS, action) ? ACTIONS[action as Action] : undefined;
+
+/** A section starter's word for an action's kind of start; an action this client does not
+ *  describe yet says its own name. */
+export const startWord = (action: string | null | undefined): string => actionView(action)?.start ?? action ?? 'Words';
 
 /** The medium a frozen or saved action produces; an unknown action produces an image. */
 export const producedBy = (action: string | null | undefined): Payload => actionView(action)?.produces ?? 'image';

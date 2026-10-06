@@ -1,20 +1,17 @@
-/* The voice director's door and column. The closed door floats at the top right of the
-   Filmstrip. The open column docks at the window's right edge, from the top bar to the footer,
-   in the tray's and the record column's frame; its width comes from VoiceDirectorPanel.tsx,
-   and every Filmstrip surface keeps clear of it, so it sits above them and covers nothing.
-   Its head is the panel head every room wears, 44 px, so it lines up with a room's head beside
-   it. Values come from tokens.css; gold marks money about to move, the accent marks a door.
-   Selectors name the element as well as the class, so the surface's own button and input rules
-   never restyle the column. */
+/* The voice director's door and column. The door is one of the top bar's doors, which gives
+   it the bar's look; this is its own look anywhere else. The open column docks at the window's
+   right edge, from the top bar to the footer, in the tray's and the record column's frame; its
+   width comes from VoiceDirectorPanel.tsx, and every Filmstrip surface keeps clear of it, so it
+   sits above them and covers nothing. Its head is the panel head every room wears, 44 px, so it
+   lines up with a room's head beside it. Values come from tokens.css; gold marks money about to
+   move, the accent marks a door. Selectors name the element as well as the class, so the
+   surface's own button and input rules never restyle the column. */
 
-.dock { position: fixed; top: 56px; right: 16px; z-index: 45; }
-.dock .door {
+button.door {
   font: 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
-  color: var(--accent); background: var(--panel); border: 1px solid var(--border-strong);
-  border-radius: var(--r-panel); padding: 7px 12px; cursor: pointer; box-shadow: var(--shadow-menu);
+  color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer;
 }
-.dock .door:hover { background: var(--raised); }
-.dock .door:focus-visible, aside.panel button:focus-visible, aside.panel input:focus-visible,
+button.door:focus-visible, aside.panel button:focus-visible, aside.panel input:focus-visible,
 aside.panel .title:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
 aside.panel:focus-visible { outline: var(--focus-outline); outline-offset: -2px; }
 

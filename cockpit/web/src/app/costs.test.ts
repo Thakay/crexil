@@ -19,3 +19,13 @@ test("month word and money spelling", () => {
   expect(usd(0.004 + 0.0001)).toBe("$0.0041");
   expect(usd(-0.0025)).toBe("-$0.0025");
 });
+
+test("money above a cent is never rounded down to the cent (laws 5 and 6)", () => {
+  expect(usd(0.012)).toBe("$0.012"); // three two-second sound effects
+  expect(usd(0.0336)).toBe("$0.0336"); // four voice design previews
+  expect(usd(1)).toBe("$1.00");
+  expect(usd(1.5)).toBe("$1.50");
+  expect(usd(12.345678)).toBe("$12.345678");
+  expect(usd(0.1 + 0.2)).toBe("$0.30"); // float noise past the micro-dollar is not money
+  expect(usd(0.0000004)).toBe("$0.0000004");
+});

@@ -51,6 +51,6 @@ describe('a blind take wherever it is named', () => {
     fireEvent.click(within(room).getByRole('button', {name: /^Material/}));
     expect(within(room).getByText('Engine hidden')).toBeInTheDocument();
     fireEvent.click(within(room).getByRole('button', {name: /^Runs|^Attempts/}));
-    expect(within(room).getByText('Engine hidden · failed / Engine hidden · landed')).toBeInTheDocument();
+    expect(within(room).getByText('Engine hidden · Failed / Engine hidden · Landed')).toBeInTheDocument();
   });
 });

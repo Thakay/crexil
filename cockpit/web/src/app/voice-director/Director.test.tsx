@@ -125,7 +125,10 @@ test('a session cannot start until the budget allows one, and the panel says why
   await opened(fakeDoor({usage: async () => usage({ready: false, cap_seconds: 0, left_seconds: 0,
     reasons: ['The voice minutes budget is zero. Set CREXIL_VOICE_MINUTES_CAP in .env, then restart.']})}));
   expect(screen.getByText(/The voice minutes budget is zero/)).toBeInTheDocument();
-  expect(screen.getByRole('button', {name: /Start · up to/})).toBeDisabled();
+  // a session that cannot start carries no price and no money gold
+  const start = screen.getByRole('button', {name: 'Start'});
+  expect(start).toBeDisabled();
+  expect(start.className).not.toMatch(/paid/);
 });
 
 test('starting asks the server for a token and hands it only to the SDK, with the six tools', async () => {
