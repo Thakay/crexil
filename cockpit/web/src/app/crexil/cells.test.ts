@@ -74,7 +74,7 @@ describe('cardVerbs', () => {
   });
   it('keeps every verb in the card: a wrong medium drops to its own group with the reason (law 12)', () => {
     const verbs = cardVerbs([image('a')]);
-    expect(verbs).toHaveLength(10);
+    expect(verbs).toHaveLength(11);
     expect(find([image('a')], 'Speak with this voice · L')).toMatchObject({live: false, tier: 'notForThis', reason: 'Works on audio; this is an image.'});
     expect(find([image('a')], 'Reduce mesh')).toMatchObject({live: false, tier: 'notForThis', reason: 'Works on meshes; this is an image.'});
     expect(find([mesh('m')], 'Edit regions')).toMatchObject({live: false, tier: 'notForThis', reason: 'Works on images; this is a mesh.'});
@@ -158,6 +158,15 @@ describe('the audio verb on the action card', () => {
     const eleven = voice('e', {material: {origin: {terms: ELEVEN}}});
     expect(verb([eleven])).toMatchObject({live: false, reason: ELEVEN.reason});
     expect(verb([eleven], [...speakers, {id: 'audio:speak:elevenlabs-v4', actions: ['speak'], provider: 'elevenlabs'}] as never[]).live).toBe(true);
+  });
+  it('speaks the same line in each of several voices: one line read per voice, each said on the verb', () => {
+    const each = cardVerbs([voice('v1'), voice('v2')], speakers).find(item => item.label === 'Speak with each voice')!;
+    expect(each).toMatchObject({live: true, action: 'speak', each: true, tier: 'main'});
+    expect(each.parents.map(parent => (parent as {id: string}).id)).toEqual(['v1', 'v2']);
+    const one = cardVerbs([voice('v1')], speakers).find(item => item.label === 'Speak with each voice')!;
+    expect(one).toMatchObject({live: false, tier: 'main', reason: 'Needs two or more sources; one is selected.'});
+    expect(cardVerbs([voice('v1'), voice('s', {audio: {voice: null}})], speakers).find(item => item.label === 'Speak with each voice')!.reason)
+      .toBe('This take records no voice to speak with.');
   });
   it("starts nothing from a blind run's take before the reveal, and names no provider", () => {
     const hidden = voice('h', {identity_hidden: true, audio: {voice: null}, material: {origin: {terms: ELEVEN}}});

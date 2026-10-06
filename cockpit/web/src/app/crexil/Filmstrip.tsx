@@ -28,9 +28,10 @@ import { BackupRoom } from './BackupRoom';
 import { ReturnedWork } from './ReturnedWork';
 import { ReuseRoom } from './ReuseRoom';
 import { RecordRoom } from './RecordRoom';
-import { MaterialProvenance } from './MaterialProvenance';
+import { MaterialProvenance, TakeWords } from './MaterialProvenance';
 import { LineageCanvas } from './LineageCanvas';
 import { ancestors, sourceBindings } from './lineage';
+import { continuationRow } from './family';
 import { initialImagePreparation } from './ImagePreparationFields';
 import { ACTIONS, type Action } from './actions';
 import { blankPreparation, command, engineIdentity, engineLabel, imageUrl, importFile, label, message, money, preparation,
@@ -188,10 +189,12 @@ function ProjectWorkspace({id}: {id: string}) {
     catch(err) {const failed = message(err); setError(failed); return failed;}
     finally {setBusy(false); working.current -= 1;}
   };
+  // Words open a row of their own, or join the row they are added to; a continuation
+  // lands on the row after its sources, beside the family's other continuations (family.ts).
   const newDirection = async (row?: number, action: Action = 'generate', parents: Material[] = []) => {
     await act(async () => {
       const made = await result(fetchClient.POST('/api/crexil/projects/{wid}/directions', {params:{path:{wid:id}}, body:{...command(),
-        title:ACTIONS[action]?.title ?? 'New direction', row_idx:row,
+        title:ACTIONS[action]?.title ?? 'New direction', row_idx:row ?? continuationRow(parents, directions),
         setup:{...blankPreparation(), action, references:parents.map(n => ({node_id:n.id, contribution:''})), ...(action==='prepare'?{image_preparation:initialImagePreparation(parents)}:{})}}}));
       store.getState().prepared(made.id);
     });
@@ -386,7 +389,7 @@ function ProjectWorkspace({id}: {id: string}) {
       <button onClick={fromHere(store.getState().deliverActing)}>Deliver selected material</button>
       <button onClick={fromHere(store.getState().returnActing)}>Return edited material</button>
     </section>}
-    {activeDraft && <DraftDrawer key={activeDraft.id} direction={activeDraft} nodes={nodes} operations={operations.data ?? []} onSaved={refresh} onCopied={id=>{refresh();openDrawer(id);}} onClose={() => {store.getState().closeDrawer();if(record)requestAnimationFrame(()=>recordOrigin().current?.focus());}}/>}
+    {activeDraft && <DraftDrawer key={activeDraft.id} direction={activeDraft} directions={directions} nodes={nodes} operations={operations.data ?? []} onSaved={refresh} onCopied={id=>{refresh();openDrawer(id);}} onClose={() => {store.getState().closeDrawer();if(record)requestAnimationFrame(()=>recordOrigin().current?.focus());}}/>}
     {inspect && <Inspection key={inspect.id} node={inspect} data={data} close={closeLayer} navigate={inspectNode} openGroup={id=>store.getState().openGroup(id)} openRecord={()=>store.getState().openRecord({node_id:inspect.id},inspect.id)} returnLabel={record?'Record':'Project'}/>}
     {group&&<OutputGroup group={group} close={()=>store.getState().closeGroup()} refresh={refresh} inspect={id=>{store.getState().closeGroup();inspectNode(id);}}/>}
     {data.execution_controls?.find(control=>control.scope==='project')&&<ExecutionControls
@@ -444,7 +447,7 @@ export function Inspection({node,data,close,navigate,openGroup,openRecord,return
     <header className={s.roomHead}><strong>Inspect · {label(node)}</strong><span className={s.hint}>{engineLabel(node,'source')}</span><button autoFocus onClick={close}>Esc · {returnLabel}</button></header>
     <div className={s.inspectBody}><div className={s[medium.inspectFrame]}>{node.available ? <medium.Inspect node={node}/>:<p>This material is unavailable. Its record remains.</p>}</div>
       <aside className={s.record}><h2>The record</h2>
-        {node.prompt&&<><h3>{medium.recordedDescription||!generated?'Recorded description':'Instructions used'}</h3><p className={s.recordPrompt}>{node.prompt}</p></>}
+        {medium.recordedDescription||!generated?node.prompt&&<><h3>Recorded description</h3><p className={s.recordPrompt}>{node.prompt}</p></>:<TakeWords node={node}/>}
         {origin&&<><h3>Source information</h3><p>{origin.kind==='execution'?'Collected from this execution. Its related files retain their own identities.':origin.kind==='prepared_image'?'Prepared from these sources by Crexil. Its pixel transform and source hashes were recorded.':origin.kind==='project_reuse'?'Imported from another project with an independent copy and its recorded origin.':origin.kind==='reported_external'?'Returned external work. Relationships were reported by a participant.':'Imported original. No generation was observed by Crexil.'}</p>{origin.tool&&<p>Tool · {String(origin.tool)}</p>}{origin.explanation&&<p>{String(origin.explanation)}</p>}{origin.kind==='prepared_image'&&<details><summary>Preparation recipe and source hashes</summary><pre>{JSON.stringify(origin.transform,null,2)}</pre></details>}</>}
         {origin?.kind==='project_reuse'&&<><h3>Original project</h3><a href={`${projectHref(String((origin.source as {project_id:string}).project_id))}?material=${encodeURIComponent(String((origin.source as {node_id:string}).node_id))}`}>{String((origin.source as {project_name:string}).project_name)} ›</a><p className={s.hash}>Source {String((origin.source as {node_id:string}).node_id)}</p><details><summary>Recorded source provenance</summary><pre>{JSON.stringify(origin.source_record,null,2)}</pre></details></>}
         {Boolean(node.retained_files?.length)&&<><h3>Retained related files</h3>{node.retained_files!.map(file=><div key={file.id}><strong>{file.filename}</strong><p>{file.role}{file.required?' · Required':''}</p>{file.available?<a href={`/api/crexil/material/${node.id}/files/${file.id}`} download>Download {file.filename}</a>:<p>{file.error??'File unavailable; its record remains.'}</p>}</div>)}</>}

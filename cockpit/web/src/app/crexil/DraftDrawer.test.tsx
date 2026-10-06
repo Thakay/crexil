@@ -1,6 +1,7 @@
 // The drawer against a stubbed server: an audio run's words, its blind choice, the offer to
-// budget a tariff-priced operation, what each operation sends where, and a submit refused
-// because spending moved since review, which reviews once more before asking again.
+// budget a tariff-priced operation, what each operation sends where, a submit refused
+// because spending moved since review, which reviews once more before asking again, and
+// empty words started from the words of a section in the preparation's family.
 // Fetch is stubbed; the client resolves globalThis.fetch lazily (api/client.ts).
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -46,8 +47,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const open = (policy: 'hard_cap' | 'published_tariff' = 'published_tariff') => render(<DraftDrawer direction={direction(policy)} nodes={[]}
-  operations={[design, local]} onSaved={() => {}} onClose={() => {}} onCopied={() => {}}/>);
+const open = (policy: 'hard_cap' | 'published_tariff' = 'published_tariff', directions: Direction[] = []) => render(<DraftDrawer
+  direction={direction(policy)} directions={directions} nodes={[]} operations={[design, local]} onSaved={() => {}} onClose={() => {}} onCopied={() => {}}/>);
 
 describe('preparing an audio run', () => {
   it("names the action's words, offers a blind run and says it is on", () => {
@@ -96,5 +97,47 @@ describe('a submit refused because spending moved', () => {
     fireEvent.click(await screen.findByRole('button', {name: 'Run 1 attempt · reserves $0.0084'}));
     await waitFor(() => expect(screen.getByRole('region', {name: 'Preparation conflict'})).toBeInTheDocument());
     expect(sent.filter(item => item.path.endsWith('/review'))).toHaveLength(1);
+  });
+});
+
+const BRIEF = 'A stout dwarf blacksmith, braided copper beard, soot-dark leather apron.';
+const section = (id: string, row: number, action: string, prompt: string, title: string, node_ids: string[] = []) => ({id, workspace_id: 'p1',
+  title, state: 'submitted', revision: 1, row_idx: row, selection: [], node_ids, turn_ids: [], set_aside: false, sequence_template: false,
+  setup: {action, prompt}}) as unknown as Direction;
+const family = [section('image', 0, 'generate', BRIEF, 'Dwarf blacksmith'), section('voice', 0, 'voice-design', 'Gruff, warm and low.', 'Blacksmith voice', ['preview']),
+  section('line-a', 1, 'speak', 'Bring me the ore.', 'Spoken line')];
+const lineRead = (setup: Record<string, unknown> = {}) => {
+  const base = direction('hard_cap');
+  return {...base, id: 'line-b', title: 'Spoken line', row_idx: 1, setup: {...base.setup, action: 'speak', prompt: '', blind: false, operations: [],
+    references: [{node_id: 'preview', contribution: ''}], ...setup}} as unknown as Direction;
+};
+const openLine = (draft: Direction) => render(<DraftDrawer direction={draft} directions={[...family, draft]} nodes={[]} operations={[design, local]}
+  onSaved={() => {}} onClose={() => {}} onCopied={() => {}}/>);
+
+describe('starting from words already in the family', () => {
+  it("offers a line read its row's lines, then the words of its voice's row, and copies the one chosen to edit", async () => {
+    openLine(lineRead());
+    const offer = screen.getByRole('group', {name: 'Start from the words of'});
+    expect(within(offer).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual([
+      'Start from the words of Spoken line', 'Start from the words of Dwarf blacksmith', 'Start from the words of Blacksmith voice']);
+    expect(within(offer).getByRole('button', {name: 'Start from the words of Dwarf blacksmith'})).toHaveAccessibleDescription(BRIEF);
+    fireEvent.click(within(offer).getByRole('button', {name: 'Start from the words of Spoken line'}));
+    expect(screen.getByRole('textbox', {name: 'Line to speak'})).toHaveValue('Bring me the ore.');
+    expect(screen.queryByRole('group', {name: 'Start from the words of'})).toBeNull();
+    await waitFor(() => expect(sent.find(item => item.method === 'PATCH')?.body).toMatchObject({setup: {prompt: 'Bring me the ore.'}}));
+  });
+  it('offers nothing over words already written, or for a description kept only for the record', () => {
+    openLine(lineRead({prompt: 'Mind the anvil.'}));
+    expect(screen.queryByRole('group', {name: 'Start from the words of'})).toBeNull();
+    cleanup();
+    openLine(lineRead({action: 'mesh', references: []}));
+    expect(screen.queryByRole('group', {name: 'Start from the words of'})).toBeNull();
+  });
+  it("never offers the preparation's own saved words once they are cleared", () => {
+    open('published_tariff', [direction('published_tariff'), section('image', 0, 'generate', BRIEF, 'Dwarf blacksmith')]);
+    expect(screen.queryByRole('group', {name: 'Start from the words of'})).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', {name: 'Voice description'}), {target: {value: ''}});
+    const offer = screen.getByRole('group', {name: 'Start from the words of'});
+    expect(within(offer).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Start from the words of Dwarf blacksmith']);
   });
 });

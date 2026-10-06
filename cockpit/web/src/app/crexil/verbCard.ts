@@ -48,6 +48,10 @@ type Entry = {
 /** The verb the L key starts: speak a line in the acting take's voice. */
 export const SPEAK_VERB = 'Speak with this voice · L';
 
+/** A voice take a line can be spoken with: its audio is on disk and it records a voice. */
+const voiced = (nodes: Material[]) => !nodes.every(node => node.available) ? "This take's audio is unavailable. Its record remains."
+  : nodes.every(node => node.audio?.voice) ? null : 'This take records no voice to speak with.';
+
 const one = (n: number) => n === 1 ? null : `Acts on one source; ${n} are selected.`;
 const several = (n: number) => n > 1 ? null : 'Needs two or more sources; one is selected.';
 const any = () => null;
@@ -67,9 +71,9 @@ const ENTRIES: Entry[] = [
       ? null : 'Needs one mesh and one image together.',
     order: nodes => [...nodes.filter(node => node.payload === '3d'), ...nodes.filter(node => node.payload === 'image')]},
   {label: 'Continue each separately', action: 'continue', accepts: ['image'], count: several, each: true, operation: true, feedsModel: true},
-  {label: SPEAK_VERB, action: 'speak', accepts: ['audio'], count: one, operation: true, feedsModel: true,
-    fits: nodes => !nodes.every(node => node.available) ? "This take's audio is unavailable. Its record remains."
-      : nodes.every(node => node.audio?.voice) ? null : 'This take records no voice to speak with.'},
+  {label: SPEAK_VERB, action: 'speak', accepts: ['audio'], count: one, operation: true, feedsModel: true, fits: voiced},
+  {label: 'Speak with each voice', action: 'speak', accepts: ['audio'], count: several, each: true, operation: true, feedsModel: true,
+    fits: voiced},
 ];
 
 const PLURAL: Record<string, string> = {image: 'images', mesh: 'meshes', audio: 'audio'};

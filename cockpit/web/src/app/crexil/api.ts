@@ -67,8 +67,16 @@ export async function result<T>(request: Promise<{data?: T; error?: unknown; res
 }
 
 export const imageUrl = (id: string, full = false) => `/api/nodes/${id}/${full ? 'image' : 'thumb'}`;
+/** The grid's name for a cell or a take: the run's index, the cell's letters from A, and
+ *  `.n` for a later output of the same cell ("3B", "3B.2"). Cells past Z continue as
+ *  spreadsheet columns do ("3AA", "3AB"), as the server's run view and package names spell them. */
+export function takeLabel(run: number, pos: number, output = 0): string {
+  let letters = '';
+  for (let rest = pos + 1; rest > 0; rest = Math.floor((rest - 1) / 26)) letters = String.fromCharCode(65 + (rest - 1) % 26) + letters;
+  return `${run}${letters}${output > 0 ? `.${output + 1}` : ''}`;
+}
 export const label = (node: Material) => node.turn_idx === null ? (node.material?.filename ?? 'Imported image')
-  : `${node.turn_idx}${String.fromCharCode(65 + (node.slot_pos ?? 0))}${node.output_index>0?`.${node.output_index+1}`:''}`;
+  : takeLabel(node.turn_idx, node.slot_pos ?? 0, node.output_index);
 // The project surface spells money as every surface does (costs.ts): money that moved
 // never reads as $0.00 (law 5).
 export { usd as money } from '../costs';
