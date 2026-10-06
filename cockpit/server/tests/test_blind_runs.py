@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from app import blind, config, preferences
+from app import blind, config, decisions
 from fakes import FakeAudioExecutor
 from test_api_v4 import store
 from test_audio_contract import PREVIEW, booted_audio, free_design_row, operation, submit
@@ -230,7 +230,7 @@ async def test_the_decision_record_is_attributed_and_holds_no_audio(tmp_path, mo
                                   json=command(node_ids=[takes[0]['id']], reason='Too bright'))).status_code == 201
 
         exported = (await client.get(f"/api/crexil/projects/{p['id']}/decisions")).json()
-        assert exported['purpose'] == preferences.PURPOSE and exported['project_id'] == p['id']
+        assert exported['purpose'] == decisions.PURPOSE and exported['project_id'] == p['id']
         selection, assessment = exported['records']
         assert set(selection) == {'decision_id', 'kind', 'project_id', 'run_id', 'direction_id', 'verb', 'brief', 'candidates',
                                   'chosen', 'reason', 'author', 'blind', 'decided_at'}

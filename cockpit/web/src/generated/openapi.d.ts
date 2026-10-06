@@ -687,49 +687,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/crexil/projects/{wid}/preferences": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Decision Record Old Address
-         * @deprecated
-         * @description The decision record at its former address, kept while the command-line client
-         *     still reads it. Use `/projects/{wid}/decisions`.
-         */
-        get: operations["decision_record_old_address_api_crexil_projects__wid__preferences_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/crexil/projects/{wid}/preferences.jsonl": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Decision Lines Old Address
-         * @deprecated
-         * @description The decision record's lines at their former address. Use `/projects/{wid}/decisions.jsonl`.
-         */
-        get: operations["decision_lines_old_address_api_crexil_projects__wid__preferences_jsonl_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/crexil/projects/{wid}/record": {
         parameters: {
             query?: never;
@@ -7146,68 +7103,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decision_record_old_address_api_crexil_projects__wid__preferences_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                wid: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DecisionExport"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decision_lines_old_address_api_crexil_projects__wid__preferences_jsonl_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                wid: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description one DecisionRecord per line */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/x-ndjson": unknown;
                 };
             };
             /** @description Validation Error */

@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, Response
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
-from . import agent_door, audio, blind, config, preferences, wiring
+from . import agent_door, audio, blind, config, decisions, wiring
 from .crexil_schemas import (CollectExecution, ExecutionGroupView, CreateDirection, CreateProject, DirectionState,
     DirectionView, DisplaySelection, ImportMaterial, ImportResult, OperationView,
     ExecutionReview, SubmitDirection, SubmittedDirection,
@@ -63,7 +63,7 @@ def refused(exc: Exception) -> HTTPException:
     in the `X-Crexil-Conflict` header so a client or agent can act on it."""
     if isinstance(exc, DEFECTS):
         raise exc
-    if isinstance(exc, (blind.NotBuilt, preferences.NotBuilt)):
+    if isinstance(exc, (blind.NotBuilt, decisions.NotBuilt)):
         return HTTPException(501, str(exc))
     if isinstance(exc, Conflict):
         kind = getattr(exc, 'code', None)
@@ -242,7 +242,7 @@ async def reveal_run(tid: str, body: RevealRun):
 
 async def _decision_record(wid: str) -> dict:
     try:
-        return await preferences.export(store().db, wid)
+        return await decisions.export(store().db, wid)
     except (LookupError, ValueError) as exc:
         raise refused(exc) from exc
 
@@ -265,19 +265,6 @@ async def decision_record(wid: str):
 
 @router.get('/projects/{wid}/decisions.jsonl', response_class=Response, responses=_LINES)
 async def decision_lines(wid: str):
-    return await _decision_lines(wid)
-
-
-@router.get('/projects/{wid}/preferences', response_model=DecisionExport, deprecated=True)
-async def decision_record_old_address(wid: str):
-    """The decision record at its former address, kept while the command-line client
-    still reads it. Use `/projects/{wid}/decisions`."""
-    return await _decision_record(wid)
-
-
-@router.get('/projects/{wid}/preferences.jsonl', response_class=Response, responses=_LINES, deprecated=True)
-async def decision_lines_old_address(wid: str):
-    """The decision record's lines at their former address. Use `/projects/{wid}/decisions.jsonl`."""
     return await _decision_lines(wid)
 
 

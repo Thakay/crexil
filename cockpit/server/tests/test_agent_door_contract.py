@@ -159,14 +159,13 @@ async def test_the_decision_record_names_each_decisions_kind(tmp_path, monkeypat
                           json=command(node_ids=[takes[1]['id']], reason='Too bright'))
         records = (await client.get(f"/api/crexil/projects/{p['id']}/decisions")).json()['records']
         lines = (await client.get(f"/api/crexil/projects/{p['id']}/decisions.jsonl")).text.splitlines()
-        old = (await client.get(f"/api/crexil/projects/{p['id']}/preferences")).json()['records']
-        old_lines = (await client.get(f"/api/crexil/projects/{p['id']}/preferences.jsonl")).text.splitlines()
+        gone = (await client.get(f"/api/crexil/projects/{p['id']}/preferences")).status_code
     assert [r['kind'] for r in records] == ['selection', 'assessment']
     assert [json.loads(line)['kind'] for line in lines] == ['selection', 'assessment']
     assert records[1]['chosen'] == []
-    assert old == records and old_lines == lines                  # the former address, kept for the CLI
+    assert gone == 404                                            # the record is a decision record, never "preferences"
     paths = main.app.openapi()['paths']
-    assert all(paths[f'/api/crexil/projects/{{wid}}/{name}']['get'].get('deprecated') for name in ('preferences', 'preferences.jsonl'))
+    assert not any(name.endswith(('/preferences', '/preferences.jsonl')) for name in paths)
     assert not any(paths[f'/api/crexil/projects/{{wid}}/{name}']['get'].get('deprecated') for name in ('decisions', 'decisions.jsonl'))
 
 

@@ -27,7 +27,7 @@ Examples:
   crexil.py get projects/PROJECT/deliveries.csv
   crexil.py backup PROJECT project.crexil.zip
   crexil.py restore project.crexil.zip --name "Restored project"
-  crexil.py export PROJECT                      # the decision record, one JSON line per decision
+  crexil.py decisions PROJECT                   # the decision record, one JSON line per decision
   crexil.py --actor human:Kay reveal RUN --reason "Done listening"
 """
 
@@ -114,7 +114,7 @@ def main() -> int:
     restore = actions.add_parser('restore')
     restore.add_argument('file', type=Path)
     restore.add_argument('--name')
-    exporter = actions.add_parser('export', help="Print the project's decision record")
+    exporter = actions.add_parser('decisions', help="Print the project's decision record")
     exporter.add_argument('project')
     exporter.add_argument('--json', action='store_true', help='One JSON document instead of JSON lines')
     revealer = actions.add_parser('reveal', help="Reveal a blind run's engines to every reader")
@@ -125,7 +125,7 @@ def main() -> int:
     if url.scheme != 'http' or url.hostname not in ('localhost', '127.0.0.1', '::1') or url.username:
         parser.error('Use the local Crexil HTTP address.')
     # Reads and side-effect-free reviews need no participant; every change names one (law 23).
-    reads = args.action in ('get', 'export') or (args.action == 'post' and urlparse(args.path).path.endswith('/review'))
+    reads = args.action in ('get', 'decisions') or (args.action == 'post' and urlparse(args.path).path.endswith('/review'))
     kind, separator, name = (args.actor or '').partition(':')
     if not reads and (not separator or kind not in ('human', 'agent') or not name.strip()):
         parser.error('Name the participant with --actor or CREXIL_ACTOR as human:NAME or agent:NAME.')
@@ -133,10 +133,10 @@ def main() -> int:
     try:
         if args.action in ('backup', 'restore'):
             return archive_action(args, {'kind': kind, 'name': name})
-        if args.action == 'export':
+        if args.action == 'decisions':
             if not args.project.isalnum():
                 parser.error('Use the project identity from its URL.')
-            path, method = f"projects/{args.project}/preferences{'' if args.json else '.jsonl'}", 'GET'
+            path, method = f"projects/{args.project}/decisions{'' if args.json else '.jsonl'}", 'GET'
         elif args.action == 'reveal':
             if not args.run.isalnum():
                 parser.error('Use the run identity from the project.')

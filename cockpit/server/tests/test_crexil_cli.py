@@ -88,11 +88,11 @@ def test_a_review_reads_without_a_participant(monkeypatch):
     assert 'actor' not in json.loads(requests[0].data)
 
 
-def test_export_prints_the_decision_record_as_lines(monkeypatch, capsys):
+def test_decisions_prints_the_decision_record_as_lines(monkeypatch, capsys):
     requests = transport(monkeypatch, b'{"decision_id":"a"}\n', 'application/x-ndjson')
-    monkeypatch.setattr(sys, 'argv', ['crexil.py', 'export', 'p1'])
+    monkeypatch.setattr(sys, 'argv', ['crexil.py', 'decisions', 'p1'])
     assert cli.main() == 0
-    assert requests[0].full_url == 'http://127.0.0.1:8000/api/crexil/projects/p1/preferences.jsonl'
+    assert requests[0].full_url == 'http://127.0.0.1:8000/api/crexil/projects/p1/decisions.jsonl'
     assert capsys.readouterr().out == '{"decision_id":"a"}\n'
 
 
