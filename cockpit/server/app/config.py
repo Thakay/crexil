@@ -87,6 +87,13 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 ELEVENLABS_URL = os.environ.get("ELEVENLABS_URL", "https://api.elevenlabs.io").rstrip("/")
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()
 VOICE_RUNNER_URL = os.environ.get("VOICE_RUNNER_URL", "http://127.0.0.1:8190").rstrip("/")
+# The voice director: an ElevenLabs Agents conversation the server opens with
+# the key and hands to the browser as a short-lived token. Its minutes are
+# capped here (law 22): a zero cap starts no session, and one session runs at
+# most VOICE_SESSION_MAX_S, the same bound the agent's own configuration sets.
+ELEVENLABS_VOICE_AGENT_ID = os.environ.get("ELEVENLABS_VOICE_AGENT_ID", "").strip()
+VOICE_MINUTES_CAP = float(os.environ.get("CREXIL_VOICE_MINUTES_CAP", "0") or 0)
+VOICE_SESSION_MAX_S = int(os.environ.get("CREXIL_VOICE_SESSION_MAX_S", "300") or 300)
 
 # Build stamp: baked at image build (scripts/deploy.sh passes git rev +
 # UTC time as build args). "dev" = uncontainerized run; "unknown" = image
@@ -149,5 +156,7 @@ if CREXIL_PREVIEW:
     STATIC_DIR = _preview / "static"
     PROMOTE_DIR = (_preview / "promote").resolve()
     PROMOTE_ROOTS = [PROMOTE_DIR]
-    OPENROUTER_API_KEY = ""
+    OPENROUTER_API_KEY = ELEVENLABS_API_KEY = ELEVENLABS_VOICE_AGENT_ID = ""
+    VOICE_MINUTES_CAP = 0
     COMFYUI_URL = THREED_URL = OPENROUTER_URL = "http://127.0.0.1:9"
+    ELEVENLABS_URL = VOICE_RUNNER_URL = "http://127.0.0.1:9"

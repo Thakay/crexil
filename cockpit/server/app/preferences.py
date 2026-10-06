@@ -62,7 +62,7 @@ def _frozen_position(node: dict) -> tuple:
 
 
 async def export(db, workspace_id: str) -> dict:
-    """A `PreferenceExport` for one project, one record per decision event."""
+    """A `DecisionExport` for one project, one record per decision event."""
     async with db._locked():
         await CreativeStore(db).project(workspace_id)
         nodes = {node['id']: node for node in await db.list_nodes(workspace_id, include_purged=True)}
@@ -84,7 +84,7 @@ async def export(db, workspace_id: str) -> dict:
             run_id = next(iter(runs)) if len(runs) == 1 else None
             verbs = {node['verb'] for node in considered}
             records.append({
-                'decision_id': item['event_id'], 'project_id': workspace_id, 'run_id': run_id,
+                'decision_id': item['event_id'], 'kind': item['kind'], 'project_id': workspace_id, 'run_id': run_id,
                 'direction_id': item['direction_id'], 'verb': verbs.pop() if len(verbs) == 1 else None,
                 'brief': (turns[run_id]['prompt'] if run_id else next(
                     (node['prompt'] for node in considered if node['prompt']), None)) or '',

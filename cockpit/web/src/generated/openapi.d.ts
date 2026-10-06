@@ -231,6 +231,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/crexil/directions/{did}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run View
+         * @description One run, compact and blind-safe: what agents read instead of the project snapshot.
+         */
+        get: operations["run_view_api_crexil_directions__did__run_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/crexil/directions/{did}/selection": {
         parameters: {
             query?: never;
@@ -492,6 +512,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/crexil/projects/{wid}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Decision Record
+         * @description The artist's decision record: never a dataset, and it holds no audio.
+         */
+        get: operations["decision_record_api_crexil_projects__wid__decisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/decisions.jsonl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Decision Lines */
+        get: operations["decision_lines_api_crexil_projects__wid__decisions_jsonl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/crexil/projects/{wid}/deliveries": {
         parameters: {
             query?: never;
@@ -638,10 +695,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Preference Export
-         * @description The decision record: never a dataset, and it holds no audio.
+         * Decision Record Old Address
+         * @deprecated
+         * @description The decision record at its former address, kept while the command-line client
+         *     still reads it. Use `/projects/{wid}/decisions`.
          */
-        get: operations["preference_export_api_crexil_projects__wid__preferences_get"];
+        get: operations["decision_record_old_address_api_crexil_projects__wid__preferences_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -657,8 +716,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Preference Lines */
-        get: operations["preference_lines_api_crexil_projects__wid__preferences_jsonl_get"];
+        /**
+         * Decision Lines Old Address
+         * @deprecated
+         * @description The decision record's lines at their former address. Use `/projects/{wid}/decisions.jsonl`.
+         */
+        get: operations["decision_lines_old_address_api_crexil_projects__wid__preferences_jsonl_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -936,9 +999,71 @@ export interface paths {
         put?: never;
         /**
          * Reveal Run
-         * @description Reveal a blind run's engines to every reader; an authored event (law 23).
+         * @description Reveal a blind run's engines to every reader; an authored event (law 23). Only
+         *     the artist reveals: an agent revealing would end the artist's blind comparison.
          */
         post: operations["reveal_run_api_crexil_turns__tid__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/voice-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Voice Session
+         * @description Start one voice director conversation for the artist. The ElevenLabs key stays
+         *     on the server (law 18); the minutes cap is checked before ElevenLabs is asked (law 22).
+         */
+        post: operations["start_voice_session_api_crexil_voice_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/voice-sessions/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Usage
+         * @description The voice director's minutes against the installation's cap.
+         */
+        get: operations["voice_usage_api_crexil_voice_sessions_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/voice-sessions/{sid}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End Voice Session
+         * @description Record how long a session ran, as the panel observed it (law 17).
+         */
+        post: operations["end_voice_session_api_crexil_voice_sessions__sid__end_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2094,6 +2219,75 @@ export interface components {
                 [key: string]: string[];
             };
         };
+        /**
+         * DecisionCandidate
+         * @description One take the decision was made among, as the record states it.
+         */
+        DecisionCandidate: {
+            /** Cost Micro Usd */
+            cost_micro_usd: number | null;
+            /** Engine */
+            engine: string;
+            /** Model */
+            model: string | null;
+            /** Node Id */
+            node_id: string;
+            /** Position */
+            position: number;
+            /** Provider */
+            provider: string | null;
+            /** Seed */
+            seed: number | null;
+        };
+        /**
+         * DecisionExport
+         * @description The artist's decision record: never a training or evaluation dataset,
+         *     and it holds no audio.
+         */
+        DecisionExport: {
+            /** Generated At */
+            generated_at: string;
+            /** Project Id */
+            project_id: string;
+            /** Purpose */
+            purpose: string;
+            /** Records */
+            records: components["schemas"]["DecisionRecord"][];
+        };
+        /**
+         * DecisionRecord
+         * @description One decision, derived from a selection or an assessment event.
+         */
+        DecisionRecord: {
+            author: components["schemas"]["Actor"] | null;
+            /** Blind */
+            blind: boolean;
+            /** Brief */
+            brief: string;
+            /** Candidates */
+            candidates: components["schemas"]["DecisionCandidate"][];
+            /** Chosen */
+            chosen: string[];
+            /** Decided At */
+            decided_at: string;
+            /** Decision Id */
+            decision_id: string;
+            /** Direction Id */
+            direction_id: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "selection" | "sequence_choice" | "assessment";
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Verb */
+            verb: string | null;
+        };
         /** DecisionView */
         DecisionView: {
             actor: components["schemas"]["Actor"] | null;
@@ -2343,6 +2537,16 @@ export interface components {
             request_id: string;
             /** Revision */
             revision: number;
+        };
+        /** EndVoiceSession */
+        EndVoiceSession: {
+            actor: components["schemas"]["Actor"];
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Elapsed S */
+            elapsed_s: number;
+            /** Request Id */
+            request_id: string;
         };
         /**
          * Engine
@@ -3714,70 +3918,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /**
-         * PreferenceCandidate
-         * @description One take the decision was made among, as the record states it.
-         */
-        PreferenceCandidate: {
-            /** Cost Micro Usd */
-            cost_micro_usd: number | null;
-            /** Engine */
-            engine: string;
-            /** Model */
-            model: string | null;
-            /** Node Id */
-            node_id: string;
-            /** Position */
-            position: number;
-            /** Provider */
-            provider: string | null;
-            /** Seed */
-            seed: number | null;
-        };
-        /**
-         * PreferenceExport
-         * @description The artist's decision record: never a training or evaluation dataset,
-         *     and it holds no audio.
-         */
-        PreferenceExport: {
-            /** Generated At */
-            generated_at: string;
-            /** Project Id */
-            project_id: string;
-            /** Purpose */
-            purpose: string;
-            /** Records */
-            records: components["schemas"]["PreferenceRecord"][];
-        };
-        /**
-         * PreferenceRecord
-         * @description One decision, derived from a selection or an assessment event.
-         */
-        PreferenceRecord: {
-            author: components["schemas"]["Actor"] | null;
-            /** Blind */
-            blind: boolean;
-            /** Brief */
-            brief: string;
-            /** Candidates */
-            candidates: components["schemas"]["PreferenceCandidate"][];
-            /** Chosen */
-            chosen: string[];
-            /** Decided At */
-            decided_at: string;
-            /** Decision Id */
-            decision_id: string;
-            /** Direction Id */
-            direction_id: string | null;
-            /** Project Id */
-            project_id: string;
-            /** Reason */
-            reason: string | null;
-            /** Run Id */
-            run_id: string | null;
-            /** Verb */
-            verb: string | null;
-        };
         /** Preparation */
         Preparation: {
             /**
@@ -4686,11 +4826,158 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * RunAudio
+         * @description What an agent may know of an audio take: measured facts and the spoken words,
+         *     never its bytes or an address to fetch them. ElevenLabs' terms forbid its audio
+         *     as input to any machine learning, and an agent's language model is one.
+         */
+        RunAudio: {
+            /** Duration S */
+            duration_s: number;
+            /** Loudness Lufs */
+            loudness_lufs: number | null;
+            /** Text */
+            text: string | null;
+            /** Voice */
+            voice: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * RunCell
+         * @description One grid cell, an attempt, in its frozen position (law 8). A blind run's
+         *     cell reads engine `hidden` with seed, per-take cost and timing withheld.
+         */
+        RunCell: {
+            /** Attempt */
+            attempt: number;
+            /** Cause */
+            cause: string | null;
+            /** Charged Usd */
+            charged_usd: number | null;
+            /** Collectable */
+            collectable: boolean;
+            /** Committed Usd */
+            committed_usd: number | null;
+            /** Detail */
+            detail: string | null;
+            /** Elapsed Ms */
+            elapsed_ms: number | null;
+            /** Engine */
+            engine: string;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
+            /** Kind */
+            kind: string | null;
+            /** Label */
+            label: string;
+            /** Position */
+            position: number;
+            /** Retrying */
+            retrying: boolean;
+            /** Seed */
+            seed: number | null;
+            /** Slot Id */
+            slot_id: string;
+            /** State */
+            state: string;
+            /** Takes */
+            takes: components["schemas"]["RunTake"][];
+            /** Turn Id */
+            turn_id: string;
+        };
         /** RunResult */
         RunResult: {
             /** Seq */
             seq: number;
             turn: components["schemas"]["Turn"];
+        };
+        /**
+         * RunSubmission
+         * @description One submission of a run and its execution control; the control revision is
+         *     what a pause, resume or cancel must echo.
+         */
+        RunSubmission: {
+            /** Blind */
+            blind: boolean;
+            control: components["schemas"]["ExecutionControlView"];
+            /** Created At */
+            created_at: string;
+            /** Idx */
+            idx: number;
+            /** Revealed */
+            revealed: boolean;
+            /** Turn Id */
+            turn_id: string;
+        };
+        /**
+         * RunTake
+         * @description One landed take of a run, named the way the grid names it. Facts, ids and
+         *     labels only: no bytes and no file address.
+         */
+        RunTake: {
+            audio?: components["schemas"]["RunAudio"] | null;
+            /** Available */
+            available: boolean;
+            /** Chosen */
+            chosen: boolean;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
+            /** Label */
+            label: string;
+            /** Node Id */
+            node_id: string;
+            /**
+             * Payload
+             * @enum {string}
+             */
+            payload: "image" | "3d" | "audio";
+            /** Set Aside */
+            set_aside: boolean;
+            /** Verb */
+            verb: string;
+        };
+        /**
+         * RunView
+         * @description One run, compact and blind-safe, for agents and other light readers; never
+         *     the project snapshot. Run totals and the cap stay visible (law 22).
+         */
+        RunView: {
+            /** Action */
+            action: string;
+            /** Blind */
+            blind: boolean;
+            /** Cap Usd */
+            cap_usd: number;
+            /** Cells */
+            cells: components["schemas"]["RunCell"][];
+            /** Charged Usd */
+            charged_usd: number;
+            /** Decisions */
+            decisions: components["schemas"]["DecisionView"][];
+            /** Event Seq */
+            event_seq: number;
+            /** Project Id */
+            project_id: string;
+            /** Prompt */
+            prompt: string;
+            /** Reserved Usd */
+            reserved_usd: number;
+            /** Revision */
+            revision: number;
+            /** Run Id */
+            run_id: string;
+            /** Selection */
+            selection: string[];
+            /** State */
+            state: string;
+            /** Submissions */
+            submissions: components["schemas"]["RunSubmission"][];
+            /** Summary */
+            summary: string;
+            /** Title */
+            title: string;
         };
         /** SaveMask */
         SaveMask: {
@@ -5021,6 +5308,20 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /** StartVoiceSession */
+        StartVoiceSession: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Connection
+             * @default webrtc
+             * @enum {string}
+             */
+            connection: "webrtc" | "websocket";
+            /** Project Id */
+            project_id?: string | null;
+            /** Request Id */
+            request_id: string;
+        };
         /** SubmitDirection */
         SubmitDirection: {
             actor: components["schemas"]["Actor"];
@@ -5286,6 +5587,71 @@ export interface components {
             viewport?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * VoiceSessionStarted
+         * @description What the browser needs to start one conversation. The ElevenLabs key never
+         *     leaves the server (law 18); the short-lived token or signed URL is handed over
+         *     once and never stored.
+         */
+        VoiceSessionStarted: {
+            /** Conversation Token */
+            conversation_token: string | null;
+            session: components["schemas"]["VoiceSessionView"];
+            /** Signed Url */
+            signed_url: string | null;
+            usage: components["schemas"]["VoiceUsage"];
+        };
+        /** VoiceSessionView */
+        VoiceSessionView: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Connection
+             * @enum {string}
+             */
+            connection: "webrtc" | "websocket";
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Elapsed S */
+            elapsed_s: number | null;
+            /** Ended At */
+            ended_at: string | null;
+            ended_by: components["schemas"]["Actor"] | null;
+            /** Max Seconds */
+            max_seconds: number;
+            /** Project Id */
+            project_id: string | null;
+            /** Session Id */
+            session_id: string;
+            /** Started At */
+            started_at: string;
+        };
+        /**
+         * VoiceUsage
+         * @description The voice director's minutes against the installation's cap. An open session
+         *     counts its whole maximum until it ends (law 22); ended sessions count what the
+         *     panel observed (law 17). The price is ElevenLabs' published list price per
+         *     minute, an estimate; model use is billed on top.
+         */
+        VoiceUsage: {
+            /** Cap Seconds */
+            cap_seconds: number;
+            /** Left Seconds */
+            left_seconds: number;
+            /** Open Sessions */
+            open_sessions: components["schemas"]["VoiceSessionView"][];
+            /** Ready */
+            ready: boolean;
+            /** Reasons */
+            reasons: string[];
+            /** Reserved Seconds */
+            reserved_seconds: number;
+            /** Session Max Seconds */
+            session_max_seconds: number;
+            /** Usd Per Minute */
+            usd_per_minute: number;
+            /** Used Seconds */
+            used_seconds: number;
         };
         /** Workspace */
         Workspace: {
@@ -5786,6 +6152,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExecutionReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_view_api_crexil_directions__did__run_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
                 };
             };
             /** @description Validation Error */
@@ -6370,6 +6767,68 @@ export interface operations {
             };
         };
     };
+    decision_record_api_crexil_projects__wid__decisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionExport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decision_lines_api_crexil_projects__wid__decisions_jsonl_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description one DecisionRecord per line */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_deliveries_api_crexil_projects__wid__deliveries_get: {
         parameters: {
             query?: never;
@@ -6700,7 +7159,7 @@ export interface operations {
             };
         };
     };
-    preference_export_api_crexil_projects__wid__preferences_get: {
+    decision_record_old_address_api_crexil_projects__wid__preferences_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6717,7 +7176,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PreferenceExport"];
+                    "application/json": components["schemas"]["DecisionExport"];
                 };
             };
             /** @description Validation Error */
@@ -6731,7 +7190,7 @@ export interface operations {
             };
         };
     };
-    preference_lines_api_crexil_projects__wid__preferences_jsonl_get: {
+    decision_lines_old_address_api_crexil_projects__wid__preferences_jsonl_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -6742,7 +7201,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description one PreferenceRecord per line */
+            /** @description one DecisionRecord per line */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7371,6 +7830,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BlindRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_voice_session_api_crexil_voice_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartVoiceSession"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceSessionStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    voice_usage_api_crexil_voice_sessions_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceUsage"];
+                };
+            };
+        };
+    };
+    end_voice_session_api_crexil_voice_sessions__sid__end_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EndVoiceSession"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceSessionView"];
                 };
             };
             /** @description Validation Error */

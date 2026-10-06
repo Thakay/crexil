@@ -141,7 +141,7 @@ async def test_a_blind_run_names_no_engine_on_any_read_until_its_authored_reveal
         chosen = await client.put(f"/api/crexil/directions/{direction['id']}/selection", json=command(
             revision=await revision_of(client, p['id'], direction['id']), node_ids=[some], reason='Warmest growl'))
         assert chosen.status_code == 200, chosen.text
-        exported = (await client.get(f"/api/crexil/projects/{p['id']}/preferences")).json()
+        exported = (await client.get(f"/api/crexil/projects/{p['id']}/decisions")).json()
         assert not leaks(exported, terms)
         line = exported['records'][-1]
         assert line['blind'] is True and line['chosen'] == [some] and len(line['candidates']) == 6
@@ -163,7 +163,7 @@ async def test_a_blind_run_names_no_engine_on_any_read_until_its_authored_reveal
         shown = [n for n in after['nodes'] if n['id'] in hidden]
         assert {n['engine'] for n in shown} == {LOCAL, HOSTED} and not any(n['identity_hidden'] for n in shown)
         assert (await client.get(f'/api/crexil/material/{some}/record')).json()['request'] is not None
-        line = (await client.get(f"/api/crexil/projects/{p['id']}/preferences")).json()['records'][-1]
+        line = (await client.get(f"/api/crexil/projects/{p['id']}/decisions")).json()['records'][-1]
         assert line['blind'] is True                       # it was decided blind; that stays true
         assert {c['engine'] for c in line['candidates']} == {LOCAL, HOSTED}
         assert {c['provider'] for c in line['candidates']} == {'voice-runner', 'elevenlabs'}
@@ -187,9 +187,9 @@ async def test_reveal_names_its_author_and_refuses_runs_that_are_not_blind(tmp_p
             answer = await client.post(f'/api/crexil/turns/{tid}/reveal', json=command())
             assert answer.status_code == 404 and answer.json()['detail'] == 'This run is not a blind run in this project.'
         _, turn, _ = await cast(client, p['id'], engines=(LOCAL,))
-        agent = {'kind': 'agent', 'name': 'Scout'}
-        view = (await client.post(f"/api/crexil/turns/{turn['id']}/reveal", json=command(actor=agent))).json()
-        assert view['revealed_by'] == agent and view['turn_id'] == turn['id']
+        artist = {'kind': 'human', 'name': 'Ada'}
+        view = (await client.post(f"/api/crexil/turns/{turn['id']}/reveal", json=command(actor=artist))).json()
+        assert view['revealed_by'] == artist and view['turn_id'] == turn['id']
 
 
 async def test_choices_and_assessments_made_while_blind_record_it(tmp_path, monkeypatch):
@@ -229,10 +229,10 @@ async def test_the_decision_record_is_attributed_and_holds_no_audio(tmp_path, mo
         assert (await client.post(f"/api/crexil/projects/{p['id']}/assessments",
                                   json=command(node_ids=[takes[0]['id']], reason='Too bright'))).status_code == 201
 
-        exported = (await client.get(f"/api/crexil/projects/{p['id']}/preferences")).json()
+        exported = (await client.get(f"/api/crexil/projects/{p['id']}/decisions")).json()
         assert exported['purpose'] == preferences.PURPOSE and exported['project_id'] == p['id']
         selection, assessment = exported['records']
-        assert set(selection) == {'decision_id', 'project_id', 'run_id', 'direction_id', 'verb', 'brief', 'candidates',
+        assert set(selection) == {'decision_id', 'kind', 'project_id', 'run_id', 'direction_id', 'verb', 'brief', 'candidates',
                                   'chosen', 'reason', 'author', 'blind', 'decided_at'}
         assert selection['author'] == agent and selection['reason'] == 'Warmest growl' and selection['blind'] is False
         assert selection['chosen'] == [takes[2]['id']] and selection['run_id'] == turn['id']
@@ -247,10 +247,10 @@ async def test_the_decision_record_is_attributed_and_holds_no_audio(tmp_path, mo
         text = json.dumps(exported)
         assert str(tmp_path) not in text and '.wav' not in text and 'base64' not in text and 'output_path' not in text
 
-        lines = await client.get(f"/api/crexil/projects/{p['id']}/preferences.jsonl")
+        lines = await client.get(f"/api/crexil/projects/{p['id']}/decisions.jsonl")
         assert lines.status_code == 200 and lines.headers['content-type'].startswith('application/x-ndjson')
         assert [json.loads(line) for line in lines.text.splitlines()] == exported['records']
-        assert (await client.get('/api/crexil/projects/missing/preferences')).status_code == 404
+        assert (await client.get('/api/crexil/projects/missing/decisions')).status_code == 404
 
 
 async def test_record_search_matches_words_never_key_names(tmp_path, monkeypatch):
