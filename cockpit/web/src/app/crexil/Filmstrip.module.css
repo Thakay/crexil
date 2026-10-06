@@ -1,4 +1,11 @@
 .app { height:100%; display:flex; flex-direction:column; background:var(--bg-canvas); color:var(--text); }
+/* While the voice director's column is open it sets --director-inset (its width and the gap)
+   on the root element. Every surface between the top bar and the footer ends left of it: the
+   workspace, the drawer, inspection and the queue line, so the column never covers a room's
+   chrome or its work (law 2). */
+.workspace {flex:1;min-height:0;display:flex;flex-direction:column;margin-right:var(--director-inset,0px);}
+/* The work area under a room's head and working line; the verb card floats inside it. */
+.stage {flex:1;min-height:0;position:relative;display:flex;flex-direction:column;}
 .workspacePane {display:flex;flex:1;min-height:0;flex-direction:column;}
 .workspacePane[hidden] {display:none;}
 .recordRoom {display:flex;flex:1;min-height:0;flex-direction:column;}
@@ -15,11 +22,11 @@
 .decision p {white-space:pre-wrap;line-height:1.6;}
 .decisionMeta {display:flex;align-items:center;gap:16px;color:var(--secondary);font:10px var(--font-mono);}
 .decisionMeta strong {font-weight:400;text-transform:uppercase;color:var(--text);}
-.decisionMeta time {margin-left:auto;color:var(--muted);font-size:9px;}
+.decisionMeta time {margin-left:auto;color:var(--secondary);font-size:9px;}
 .decisionReason {font-size:15px;margin:14px 0;}
 .decisionLinks {display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
 .decisionLinks button {font-size:11px;border:0;padding:4px 0;margin-right:14px;color:var(--accent);}
-.decisionFoot {display:flex;gap:12px;align-items:center;margin-top:12px;font-size:10px;color:var(--muted);}
+.decisionFoot {display:flex;gap:12px;align-items:center;margin-top:12px;font-size:10px;color:var(--secondary);}
 .decisionFoot button {margin-left:auto;font-size:10px;}
 .assessmentEditor {border:1px solid var(--border);background:var(--panel);padding:20px;margin-bottom:20px;}
 .assessmentEditor textarea {min-height:90px;}
@@ -27,7 +34,7 @@
 .recordMaterials {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;}
 .app .recordMaterial {display:flex;min-width:0;flex-direction:column;text-align:left;gap:8px;padding:12px;overflow-wrap:anywhere;}
 .recordMaterial img {height:140px;width:100%;object-fit:contain;background:var(--panel);}
-.recordMaterial span {color:var(--muted);font-size:10px;}
+.recordMaterial span {color:var(--secondary);font-size:10px;}
 .recordEmpty {padding:48px 0;color:var(--secondary);}
 .recordEmpty h2 {font-size:20px;font-weight:400;}
 .recordSource {margin-bottom:18px;}
@@ -45,20 +52,20 @@
 .app label { display:flex; flex-direction:column; gap:6px; color:var(--secondary); font-size:11px; }
 .app h3,.mono,.micro,.eyebrow,.door,.footer,.queue,.money,.sectionFoot,.pickerFoot,.projectMeta,.roomHead button { font-family:var(--font-mono); text-transform:uppercase; }
 .mono { font-size:10px; letter-spacing:.12em; }
-.micro { font-size:9px; letter-spacing:.07em; color:var(--muted); }
+.micro { font-size:9px; letter-spacing:.07em; color:var(--secondary); }
 .app h3 { font-size:10px; font-weight:400; letter-spacing:.1em; color:var(--secondary); margin:0 0 12px; }
 .topbar { flex:none; height:44px; border-bottom:1px solid var(--hairline); background:var(--bg-frame); padding:0 12px; display:flex; align-items:center; gap:14px; }
 .topbar .back { border:1px solid var(--border); color:var(--secondary); border-radius:3px; width:30px; height:25px; text-align:center; font-size:24px; line-height:20px; text-decoration:none; }
 .topbar button { border:0; font-size:10px; }
 .topbar .projectTitle { max-width:min(24vw,280px); min-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); font-size:17px; font-weight:600; padding:0; }
 .brand { font-size:17px; letter-spacing:-.02em; padding-right:12px; border-right:1px solid var(--border); }
-.quiet { font:9px var(--font-mono); letter-spacing:.1em; color:var(--muted); text-transform:uppercase; text-decoration:none; }
+.quiet { font:9px var(--font-mono); letter-spacing:.1em; color:var(--secondary); text-transform:uppercase; text-decoration:none; }
 .spacer { flex:1; }
 .money { font-size:9px; color:var(--secondary); letter-spacing:.08em; border-left:1px solid var(--hairline); padding-left:12px; }
 .app .door { border:0; background:none; color:var(--accent); padding:0; font-size:9px; letter-spacing:.08em; }
-.footer { height:26px; flex:none; display:flex; justify-content:space-between; align-items:center; gap:24px; padding:0 24px; border-top:1px solid var(--hairline); font-size:8.5px; color:var(--muted); letter-spacing:.08em; }
-.queue { height:36px; flex:none; padding:0 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-top:1px solid var(--hairline); background:var(--panel-alt); font-size:9px; color:var(--secondary); letter-spacing:.1em; }
-.queue span:last-child {color:var(--muted);font-size:8px;}
+.footer { height:26px; flex:none; display:flex; justify-content:space-between; align-items:center; gap:24px; padding:0 24px; border-top:1px solid var(--hairline); font-size:8.5px; color:var(--secondary); letter-spacing:.08em; }
+.queue { height:36px; flex:none; margin-right:var(--director-inset,0px); padding:0 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-top:1px solid var(--hairline); background:var(--panel-alt); font-size:9px; color:var(--secondary); letter-spacing:.1em; }
+.queue span:last-child {color:var(--secondary);font-size:8px;}
 .projects { flex:1; overflow:auto; padding:58px 64px; }
 .pageHeading { display:flex; align-items:flex-end; justify-content:space-between; margin:0 auto 40px; max-width:1200px; }
 .eyebrow { font-size:10px; letter-spacing:.14em; color:var(--secondary); }
@@ -72,7 +79,7 @@
 .projectGlyph {display:flex;gap:5px;height:23px;}
 .projectGlyph span {display:block;width:34px;border:1px solid var(--border);border-radius:2px;}
 .projectGlyph span:first-child {width:21px;border-color:var(--accent);opacity:.65;}
-.projectMeta {display:flex;justify-content:space-between;border-top:1px solid var(--hairline);padding-top:12px;font-size:8px;color:var(--muted);}
+.projectMeta {display:flex;justify-content:space-between;border-top:1px solid var(--hairline);padding-top:12px;font-size:8px;color:var(--secondary);}
 .newProject {max-width:1200px;margin:0 auto 28px;padding:24px;background:var(--panel);border:1px solid var(--border);border-radius:var(--r-panel);display:grid;grid-template-columns:1fr 2fr;gap:20px;}
 .newProject .actions {grid-column:1/-1;justify-content:flex-end;}
 .actions {display:flex;align-items:center;gap:12px;}
@@ -90,38 +97,44 @@
 .lineageLines {position:absolute;left:0;top:0;z-index:2;pointer-events:none;overflow:hidden;}
 .lineageRows {position:relative;}
 .starterColumn {width:123px;flex:none;}
-.sourceBinding {font:8px/1.6 var(--font-mono);color:var(--muted);margin-top:8px;overflow-wrap:anywhere;}
+.sourceBinding {font:8px/1.6 var(--font-mono);color:var(--secondary);margin-top:8px;overflow-wrap:anywhere;}
 .sourceBinding summary {cursor:pointer;}
 .sourceBinding button {display:block;font:9px/1.5 var(--font-mono);padding:5px 2px;border:0;text-align:left;}
 .recordedStarter {border:1px solid var(--border);border-radius:var(--r-control);padding:8px;background:var(--card);margin:12px 0 6px;}
 .recordedStarter span {display:block;}
 .recordedStarter span:first-child {color:var(--secondary);margin-bottom:6px;}
 .app .ancestor {border-color:var(--accent);}
-.gutter {flex:none;width:128px;display:flex;flex-direction:column;gap:8px;font:8.5px var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:2px;}
+.gutter {flex:none;width:128px;display:flex;flex-direction:column;gap:8px;font:8.5px var(--font-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--secondary);padding-top:2px;}
 .gutter>div {color:var(--secondary);margin-bottom:3px;display:flex;gap:8px;align-items:center;}
 .app .gutterDecision {text-align:left;border:0;padding:0;display:flex;flex-direction:column;gap:6px;}
 .gutterDecision>span {font:11px/1.45 var(--font-sans);color:var(--secondary);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-.gutterDecision small {font:8px/1.5 var(--font-mono);color:var(--muted);overflow-wrap:anywhere;}
+.gutterDecision small {font:8px/1.5 var(--font-mono);color:var(--secondary);overflow-wrap:anywhere;}
 .sections {display:flex;gap:14px;align-items:center;overflow-x:auto;min-width:0;padding:0 3px 5px;}
+/* A row whose sections run past the work area fades at its right edge; its gutter's door says how
+   many sections lie beyond and scrolls to them. */
+.moreBeyond {mask-image:linear-gradient(to right,#000 calc(100% - 72px),transparent);}
 .section {flex:none;min-width:185px;border:1px solid var(--hairline);border-radius:var(--r-panel);background:var(--bg-frame);padding:12px;}
 .sectionBody {display:flex;gap:14px;align-items:flex-start;min-height:132px;}
 .app .starter {width:123px;padding:0;overflow:hidden;text-align:left;background:var(--card);border-color:var(--border);}
 .starter>div {height:58px;overflow:hidden;padding:6px 9px;font-size:11px;line-height:1.35;}
 .starter>div:has(img) {padding:0;}
 .starter img {height:100%;width:100%;object-fit:cover;}
-.starter footer {border-top:1px solid var(--hairline);padding:3px 8px;font:8px var(--font-mono);text-transform:uppercase;display:flex;justify-content:space-between;color:var(--muted);}
+.starter footer {border-top:1px solid var(--hairline);padding:3px 8px;font:8px var(--font-mono);text-transform:uppercase;display:flex;justify-content:space-between;gap:6px;color:var(--secondary);}
+.starter footer span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 .app .face {width:158px;height:132px;padding:0;position:relative;overflow:hidden;background:var(--card);text-align:left;border-radius:4px;}
-.plate {height:103px;display:flex;align-items:center;justify-content:center;position:relative;background:var(--panel);color:var(--muted);font-size:10px;}
+.plate {height:103px;display:flex;align-items:center;justify-content:center;position:relative;background:var(--panel);color:var(--secondary);font-size:10px;}
 .plate img {width:100%;height:100%;object-fit:contain;}
 .face footer {height:27px;border-top:1px solid var(--hairline);font:8px var(--font-mono);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 8px;color:var(--secondary);}
-.face footer span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.face footer span:last-child {flex:none;color:var(--muted);font-size:7.5px;}
+.face footer>span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.face footer>span:last-child {flex:none;color:var(--secondary);font-size:7.5px;}
+/* Words for a screen reader only: in the accessibility tree, out of the picture. */
+.srOnly {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
 .app .acting {border-color:var(--accent);box-shadow:0 0 0 3px rgba(127,178,255,.14);}
 .actingMark {position:absolute;top:7px;left:7px;font:8px var(--font-mono);text-transform:uppercase;color:var(--bg-canvas);padding:3px 6px;background:var(--accent);border-radius:2px;}
 .promoted {position:absolute;bottom:5px;left:7px;font:8px var(--font-mono);color:var(--good);text-transform:uppercase;}
-.sectionFoot {display:flex;justify-content:space-between;gap:18px;align-items:center;margin-top:6px;height:14px;font-size:7.5px;color:var(--muted);letter-spacing:.03em;}
-.app .addSection {flex:none;width:88px;height:88px;border:1px dashed var(--hairline);font:9px var(--font-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
-.app .newRow {margin-left:144px;font:9px var(--font-mono);text-transform:uppercase;color:var(--muted);border-style:dashed;}
+.sectionFoot {display:flex;justify-content:space-between;gap:18px;align-items:center;margin-top:6px;height:14px;font-size:7.5px;color:var(--secondary);letter-spacing:.03em;}
+.app .addSection {flex:none;width:88px;height:88px;border:1px dashed var(--hairline);font:9px var(--font-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--secondary);}
+.app .newRow {margin-left:144px;font:9px var(--font-mono);text-transform:uppercase;color:var(--secondary);border-style:dashed;}
 .error {background:var(--tint-danger);border-bottom:1px solid var(--danger);padding:10px 16px;color:var(--danger);display:flex;align-items:center;gap:16px;}
 .error button {margin-left:auto;flex:none;}
 .hint {font-size:11px;line-height:1.5;color:var(--secondary);font-weight:400;}
@@ -149,9 +162,13 @@
 .deliveryChoices {display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;max-height:290px;overflow:auto;padding:2px;}
 .app .deliveryChoice {display:flex;flex-direction:row;align-items:center;gap:12px;border:1px solid var(--border);border-radius:var(--r-control);padding:10px;min-width:0;}
 .app .deliveryChoice input {width:16px;flex:none;}
-.deliveryChoice img {width:56px;height:56px;object-fit:contain;}
-.deliveryChoice span {overflow-wrap:anywhere;min-width:0;}
-.deliveryChoice small {display:block;color:var(--muted);margin-top:6px;}
+/* Every medium's plate at one thumb size, so a waveform never squeezes the label. */
+.deliveryPlate {width:56px;height:56px;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:3px;background:var(--panel);}
+.deliveryPlate img {width:100%;height:100%;object-fit:contain;}
+.deliveryPlate>span {font-size:9px;text-align:center;}
+.deliveryChoice>span:last-child {overflow-wrap:anywhere;min-width:0;}
+.deliveryChoice strong {display:block;font:11px var(--font-mono);font-weight:400;}
+.deliveryChoice small {display:block;color:var(--secondary);margin-top:4px;font-size:10px;}
 .deliveryPath {font:11px/1.6 var(--font-mono);overflow-wrap:anywhere;color:var(--secondary);}
 .returnFile {margin:20px 0;max-width:600px;}
 .sequenceLayout {flex:1;min-height:0;display:grid;grid-template-columns:230px minmax(0,1fr);}
@@ -160,7 +177,7 @@
 .sequenceNav button[aria-current] {border-color:var(--accent);background:var(--tint-accent);}
 .sequenceNav strong,.sequenceNav span {display:block;overflow-wrap:anywhere;}
 .sequenceNav strong {font-weight:500;}
-.sequenceNav span {font:9px var(--font-mono);text-transform:uppercase;color:var(--muted);margin-top:7px;}
+.sequenceNav span {font:9px var(--font-mono);text-transform:uppercase;color:var(--secondary);margin-top:7px;}
 .sequenceMain {overflow:auto;padding:32px 40px 60px;}
 .sequenceMain h1 {font-size:28px;font-weight:400;letter-spacing:-.025em;margin:10px 0 16px;overflow-wrap:anywhere;}
 .sequenceMain h2 {font-size:16px;font-weight:500;margin:0 0 5px;overflow-wrap:anywhere;}
@@ -213,9 +230,10 @@
 .reason input {padding:5px 8px;}
 .pickerActions {border-top:1px solid var(--hairline);display:flex;justify-content:space-between;padding:8px;gap:6px;}
 .pickerActions button {font-size:9px;}
-.verbCard {position:fixed;right:24px;top:70px;width:285px;z-index:25;background:var(--raised);border:1px solid var(--border);border-radius:var(--r-panel);box-shadow:var(--shadow-menu);padding-bottom:8px;}
-.verbCard>button {display:block;border:0;border-radius:0;text-align:left;width:100%;padding:10px 14px;}
-.drawer {position:fixed;z-index:40;bottom:26px;left:0;right:0;max-height:65vh;display:flex;flex-direction:column;background:var(--panel-alt);border-top:1px solid var(--border-strong);box-shadow:0 -12px 35px rgba(0,0,0,.28);}
+/* Placed beside its take by VerbCard.tsx, inside the stage: never over a room's head. */
+.verbCard {position:absolute;width:285px;max-height:calc(100% - 24px);overflow:auto;z-index:25;background:var(--raised);border:1px solid var(--border);border-radius:var(--r-panel);box-shadow:var(--shadow-menu);padding-bottom:8px;}
+.verbCard>button {display:block;border:0;border-radius:0;text-align:left;width:100%;padding:10px 14px;color:var(--text);}
+.drawer {position:fixed;z-index:40;bottom:26px;left:0;right:var(--director-inset,0px);max-height:65vh;display:flex;flex-direction:column;background:var(--panel-alt);border-top:1px solid var(--border-strong);box-shadow:0 -12px 35px rgba(0,0,0,.28);}
 .drawerHead {display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--hairline);}
 .drawerHead button {margin-left:auto;font-size:10px;}
 .localPreparation {display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border);color:var(--secondary);font-size:11px;}
@@ -276,13 +294,17 @@
 .operation {display:flex;align-items:center;flex-wrap:wrap;gap:10px;border-bottom:1px solid var(--hairline);padding:10px 0;}
 .operation>div {flex:1;display:flex;flex-direction:column;gap:4px;}
 .operation>div>span:first-child {font-size:12px;}
+/* The price an operation carries beside its name before it is chosen (law 6), as the
+   board's roster draws it; "price unknown" counts as over every cap (law 22). */
+.operationName {display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;}
+.priceTag {font:9px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--secondary);white-space:nowrap;}
 .operation .hint {margin:0;flex-basis:100%;}
 .operation details {width:100%;color:var(--secondary);font-size:10px;}
-.operation summary {cursor:pointer;color:var(--muted);}
+.operation summary {cursor:pointer;color:var(--secondary);}
 .count {flex-direction:row!important;align-items:center;font:8px var(--font-mono)!important;text-transform:uppercase;}
 .count input {width:48px;padding:3px 4px;}
 .drawerFoot {display:flex;justify-content:space-between;gap:16px;padding:10px 16px;border-top:1px solid var(--hairline);color:var(--secondary);font-size:11px;}
-.inspection {position:fixed;inset:44px 0 26px;z-index:50;background:var(--bg-canvas);display:flex;flex-direction:column;}
+.inspection {position:fixed;inset:44px var(--director-inset,0px) 26px 0;z-index:50;background:var(--bg-canvas);display:flex;flex-direction:column;}
 .inspectBody {display:flex;min-height:0;flex:1;}
 .fullImage {flex:1;min-width:0;padding:32px;display:flex;align-items:center;justify-content:center;background:var(--bg-canvas);}
 .fullImage>img {max-width:100%;max-height:100%;object-fit:contain;background-color:var(--panel);background-image:conic-gradient(var(--border) 25%,transparent 0 50%,var(--border) 0 75%,transparent 0);background-size:16px 16px;}
@@ -290,7 +312,7 @@
 .record h2 {font-size:17px;font-weight:500;margin:0 0 24px;}
 .record h3 {margin-top:28px;}
 .record p,.record dd {font-size:12px;color:var(--secondary);}
-.record dt {font:9px var(--font-mono);text-transform:uppercase;color:var(--muted);margin-top:16px;}
+.record dt {font:9px var(--font-mono);text-transform:uppercase;color:var(--secondary);margin-top:16px;}
 .record dd {margin:5px 0;}
 .record button {display:block;margin-bottom:8px;}
 .hash {overflow-wrap:anywhere;font:10px var(--font-mono)!important;}
@@ -311,7 +333,7 @@
 .drawerFoot {align-items:center;}
 
 .slotBox {width:158px;flex:none;}
-.slotFoot {height:26px;display:flex;justify-content:space-between;align-items:center;font:9px var(--font-mono);color:var(--muted);}
+.slotFoot {height:26px;display:flex;justify-content:space-between;align-items:center;font:9px var(--font-mono);color:var(--secondary);}
 .slotFoot button {font-size:10px;padding:2px 4px;}
 .attempt {overflow:hidden;}
 .attempt p {display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
@@ -324,7 +346,7 @@
 .outputPreview img {max-width:100%;max-height:100%;object-fit:contain;}
 .outputList h3 {margin:0;font-size:14px;font-weight:500;overflow-wrap:anywhere;}
 .outputList p {font-size:12px;color:var(--secondary);}
-.outputList details {margin-top:12px;font-size:11px;color:var(--muted);}
+.outputList details {margin-top:12px;font-size:11px;color:var(--secondary);}
 .outputList pre {overflow:auto;max-width:640px;max-height:200px;}
 
 .recordPrompt {white-space:pre-wrap;overflow-wrap:anywhere;}
@@ -335,7 +357,7 @@
 .libraryList {padding:28px 18px;overflow:auto;border-right:1px solid var(--hairline);background:var(--panel-alt);}
 .libraryList>button {display:flex;width:100%;flex-direction:column;text-align:left;gap:7px;margin-bottom:8px;padding:12px;}
 .libraryList strong {font-size:12px;font-weight:500;overflow-wrap:anywhere;}
-.libraryList span {font:9px var(--font-mono);color:var(--muted);}
+.libraryList span {font:9px var(--font-mono);color:var(--secondary);}
 .libraryList>label {margin-top:32px;}
 .libraryList p {font-size:12px;line-height:1.6;color:var(--secondary);}
 .app .activeRegistration {border-color:var(--accent);background:var(--tint-accent);}
@@ -351,7 +373,7 @@
 .registrationForm h3 {margin-top:24px;}
 .registrationForm label {margin:10px 0;}
 .registrationHeading {display:flex;align-items:center;justify-content:space-between;gap:24px;}
-.registrationHeading>span {font:10px var(--font-mono);color:var(--muted);}
+.registrationHeading>span {font:10px var(--font-mono);color:var(--secondary);}
 .registrationForm .codeInput {width:100%;min-height:220px;max-height:520px;font:11px/1.6 var(--font-mono);}
 .registrationForm details {margin:18px 0;font-size:12px;color:var(--secondary);}
 .registrationForm summary {cursor:pointer;line-height:1.6;}
@@ -365,7 +387,7 @@
 .checkRow label,.registrationForm .checkLabel {flex-direction:row;align-items:center;gap:8px;min-width:auto;}
 .runtimeReport {border-left:2px solid var(--border-strong);padding:8px 18px;margin:18px 0;background:var(--panel);}
 .registrationFoot {position:sticky;bottom:-36px;padding:16px 0;display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--bg-canvas);border-top:1px solid var(--border);}
-.registrationFoot>span {font:10px var(--font-mono);color:var(--muted);flex:1;}
+.registrationFoot>span {font:10px var(--font-mono);color:var(--secondary);flex:1;}
 .registrationFoot a,.registrationForm section a {color:var(--accent);font-size:12px;}
 @media(max-width:1100px) {.operationLibrary{grid-template-columns:220px minmax(0,1fr);}.libraryContent{padding:28px 24px;}.registrationFoot{bottom:-28px;}.mappingRow{gap:10px;}.mappingRow>label{min-width:110px;}}
 
@@ -386,7 +408,7 @@
 .imageReview strong,.imageReview p{grid-column:1;margin:0;max-width:460px}
 .imageReview img{grid-column:2;grid-row:1/4;max-width:100%;width:100%;height:190px;margin:0;justify-self:end}
 @media(max-width:850px){.imagePreparation{grid-template-columns:1fr;gap:20px}.preparationSource{grid-template-columns:100px minmax(0,1fr)}.preparationSource>img{width:100px;height:100px}}
-.regionRoom{position:fixed;inset:44px 0 26px;z-index:65;background:var(--bg-canvas);display:flex;flex-direction:column}
+.regionRoom{position:fixed;inset:44px var(--director-inset,0px) 26px 0;z-index:65;background:var(--bg-canvas);display:flex;flex-direction:column}
 .regionRoom .drawerHead{flex:none;height:42px}
 .regionBody{display:flex;flex:1;min-height:0}
 .regionDrawing{flex:1;min-width:0;display:flex;flex-direction:column;padding:16px;gap:12px}
@@ -407,7 +429,7 @@
 
 .regionReview{max-height:min(40vh,360px)}
 
-.operationUnavailable>div>span:first-child {color:var(--muted);}
+.operationUnavailable>div>span:first-child {color:var(--secondary);}
 .fullMesh {flex:1;min-width:0;min-height:0;display:flex;}
 .meshInspection {display:flex;flex:1;min-width:0;min-height:0;flex-direction:column;}
 .meshStage {position:relative;flex:1;min-height:200px;}
@@ -422,7 +444,7 @@
 /* An attempt's face: what happened · what it cost · what to do next, one line each,
    inside the cell's frozen 158×132 footprint (laws 3, 4, 5, 8). Red needs you, gold
    waits without you, grey-blue informs. DETAILS opens over the face, never past it. */
-.attemptFace {position:relative;height:132px;width:158px;padding:9px 10px;background:var(--panel);border:1px dashed var(--border);display:flex;flex-direction:column;gap:3px;overflow:hidden;font-size:10.5px;line-height:1.35;}
+.attemptFace {position:relative;height:132px;width:158px;padding:7px 10px;background:var(--panel);border:1px dashed var(--border);display:flex;flex-direction:column;gap:3px;overflow:hidden;font-size:10.5px;line-height:1.35;}
 .attemptDead {border-color:var(--danger);background:var(--tint-danger);}
 .attemptWaiting {border-color:var(--money);border-style:solid;background:var(--tint-money);}
 .attemptInfo {border-color:var(--border-strong);}
@@ -433,34 +455,41 @@
 .attemptHead strong {font-weight:600;}
 .attemptDead .attemptHead strong {color:var(--danger);}
 .attemptWaiting .attemptHead strong {color:var(--money);}
-.attemptHead span {color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.attemptHead span {color:var(--secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 .attemptCause {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--text);}
 .attemptRetry {font:9px var(--font-mono);letter-spacing:.06em;color:var(--money);}
-.attemptLine {font:9px var(--font-mono);color:var(--secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* The cost line reads whole: it wraps to a second line rather than cut its words (law 5). */
+.attemptLine {font:9px/1.3 var(--font-mono);color:var(--secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .attemptProgress {font:9px/1.3 var(--font-mono);color:var(--secondary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+/* Three moves need the room of a second progress line; the whole line stays in its tooltip. */
+.attemptCrowded .attemptProgress {-webkit-line-clamp:1;}
 /* Remedies wrap as whole buttons, free first; beside DETAILS they leave its corner clear.
    A move that sends reserved money wears the hue of money about to move (law 6); in a
-   narrow cell its label wraps before its price, which always reads whole. */
-.attemptRemedies {display:flex;flex-wrap:wrap;align-content:flex-end;gap:3px;margin-top:auto;min-width:0;}
+   narrow cell its label wraps before its price, which always reads whole. Each move is
+   20 px tall with 4 px between rows, so a 24 px circle on one never meets another
+   (WCAG 2.5.8). */
+.attemptRemedies {display:flex;flex-wrap:wrap;align-content:flex-end;gap:4px 6px;margin-top:auto;min-width:0;}
 .attemptRemedies.besideDetails {max-width:calc(100% - 40px);}
-.app .attemptRemedies button {font:8px var(--font-mono);letter-spacing:.05em;padding:2px 5px;white-space:nowrap;}
+.app .attemptRemedies button {font:8px/1.2 var(--font-mono);letter-spacing:.05em;min-height:20px;padding:2px 6px;white-space:nowrap;}
 .app .attemptRemedies .remedyPrimary {border-color:var(--text);color:var(--text);}
 .app .attemptRemedies .remedyPaid {border-color:var(--money);color:var(--money);white-space:normal;text-align:left;}
 .remedyPrice {white-space:nowrap;}
-.attemptDetails {position:absolute;right:6px;bottom:4px;font:8px var(--font-mono);color:var(--muted);}
-.attemptDetails summary {cursor:pointer;list-style:none;}
+.attemptDetails {position:absolute;right:6px;bottom:4px;font:8px var(--font-mono);color:var(--secondary);}
+.attemptDetails summary {cursor:pointer;list-style:none;min-height:20px;display:flex;align-items:center;}
 .attemptDetails[open] {inset:0;padding:9px 10px;background:var(--raised);overflow:auto;z-index:3;}
 .attemptDetails pre {white-space:pre-wrap;overflow-wrap:anywhere;font:9px var(--font-mono);color:var(--secondary);margin:6px 0 0;}
 /* Law 1: the run names a shared cause once. The line is always there, so a failure never moves a cell. */
 .sharedCauses {min-height:16px;max-height:32px;overflow:hidden;font-size:10px;color:var(--danger);}
 .sharedCauses p {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0;}
 .sharedCauses strong {font:9px var(--font-mono);letter-spacing:.06em;margin-right:6px;}
-/* Law 12: a verb that cannot start here stays visible, de-emphasised, with its reason. */
-.app .verbCard .verbInert {display:block;border:0;border-radius:0;text-align:left;width:100%;padding:8px 14px;color:var(--muted);cursor:not-allowed;}
-.app .verbCard .verbInert:hover {background:transparent;color:var(--muted);}
-.verbInert small {display:block;font-size:10px;line-height:1.4;color:var(--muted);margin-top:2px;}
+/* Law 12: a verb that cannot start here stays visible, de-emphasised beside the live verbs'
+   full ink, with its reason. Every word that carries meaning keeps at least 4.5:1 on its ground
+   (--secondary); --muted stays for decoration. */
+.app .verbCard .verbInert {display:block;border:0;border-radius:0;text-align:left;width:100%;padding:8px 14px;color:var(--secondary);cursor:not-allowed;}
+.app .verbCard .verbInert:hover {background:transparent;color:var(--secondary);}
+.verbInert small {display:block;font-size:10px;line-height:1.4;color:var(--secondary);margin-top:2px;}
 .notForThis {border-top:1px solid var(--hairline);margin-top:4px;}
-.notForThis summary {padding:8px 14px;font:9px var(--font-mono);letter-spacing:.07em;color:var(--muted);cursor:pointer;}
+.notForThis summary {padding:8px 14px;font:9px var(--font-mono);letter-spacing:.07em;color:var(--secondary);cursor:pointer;}
 /* Law 6: a Run that spends money wears the hue of money about to move, never the default frame. */
 .app .paidRun {border-color:var(--money);color:var(--money);background:var(--tint-money);}
 /* A slot of a run whose attempts return several takes holds room for all of them from Run (law 8);
@@ -468,14 +497,17 @@
 .takeRow {display:flex;gap:8px;}
 .slotBox>.attemptFace {width:100%;}
 /* The grid room's working line, the second line of its head: the audition keys, the take that plays,
-   the reason for a take just selected, each blind run's reveal. One line high, so it never moves a cell. */
-.roomLine {min-height:34px;flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;padding:4px 24px;background:var(--panel-alt);border-bottom:1px solid var(--hairline);font-size:11px;color:var(--secondary);}
+   the reason for a take just selected, each blind run's reveal. Exactly one line high, whatever it
+   says, so it never moves a cell (law 8); what does not fit ends in an ellipsis. */
+.roomLine {height:34px;flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:18px;padding:0 24px;overflow:hidden;background:var(--panel-alt);border-bottom:1px solid var(--hairline);font-size:11px;color:var(--secondary);}
 .keyHint {font:9px var(--font-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--secondary);white-space:nowrap;}
-.roomSaid {color:var(--secondary);min-width:0;}
-.pickReason,.blindRun {display:flex;align-items:center;gap:10px;min-width:0;}
+.roomSaid {color:var(--secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.roomSaid:focus {outline:none;}
+.roomSaid:focus-visible {outline:var(--focus-outline);outline-offset:var(--focus-offset);}
+.pickReason,.blindRun {display:flex;align-items:center;gap:10px;min-width:0;flex:0 1 auto;}
 .pickReason strong,.blindRun strong {font:9px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;font-weight:400;color:var(--text);white-space:nowrap;}
-.app .pickReason input,.app .blindRun input {width:260px;padding:4px 8px;font-size:11px;}
-.app .pickReason button,.app .blindRun button {font:9px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;white-space:nowrap;}
+.app .pickReason input,.app .blindRun input {flex:0 1 240px;width:240px;min-width:120px;height:24px;padding:2px 8px;font-size:11px;}
+.app .pickReason button,.app .blindRun button {font:9px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;height:24px;padding:0 8px;white-space:nowrap;flex:none;}
 .app .quietButton {border-style:dashed;}
 /* The drawer's blind choice, the route line every operation states, and the tariff offer. */
 .app label.blindChoice {flex-direction:row;align-items:center;gap:8px;color:var(--text);font-size:12px;}

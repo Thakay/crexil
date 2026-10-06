@@ -5,7 +5,7 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // same tokens and return to their entry point, one Escape layer at a time. Which
 // rooms and layers are open lives in the project view store (view.ts); media
 // differences live in the registry (media.tsx).
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { $api, fetchClient } from '../../api/client';
 import { player } from '../audio/player';
@@ -19,7 +19,7 @@ import { deliverControl, ExecutionControls, moveAttempt } from './ExecutionContr
 import { AttemptFace } from './AttemptFace';
 import { attemptFace, blindFace, sharedCauses, type AttemptFaceVM, type QueueFacts, type RemedyId } from './attempts';
 import { auditionTakes } from './audition';
-import { isWithheld, withheldRuns } from './blind';
+import { hiddenRuns, isWithheld, withheldRuns } from './blind';
 import { RoomLine, useFastPick, useRoomAudition } from './GridRoom';
 import { VoiceDirectorPanel } from '../voice-director';
 import { SequenceRoom } from './SequenceRoom';
@@ -33,14 +33,16 @@ import { LineageCanvas } from './LineageCanvas';
 import { ancestors, sourceBindings } from './lineage';
 import { continuationRow } from './family';
 import { initialImagePreparation } from './ImagePreparationFields';
-import { ACTIONS, type Action } from './actions';
-import { blankPreparation, command, engineIdentity, engineLabel, imageUrl, importFile, label, message, money, preparation,
+import { ACTIONS, startWord, type Action } from './actions';
+import { actorLine, blankPreparation, command, engineIdentity, engineLabel, imageUrl, importFile, label, message, money, preparation,
   projectHref, result, type Direction, type Material, type Snapshot } from './api';
-import { gridCells, type Slot } from './cells';
-import { faceCost, pickerGroups } from './faces';
+import { useCatalogue } from './catalogue';
+import { byGridPosition, gridCells, type Slot } from './cells';
+import { faceCost, pickerGroups, sectionFoot, statusWord } from './faces';
 import { AUDIO_FACE, useCommandKey, useEscapeBase, useEscapeKey } from './keys';
 import { faceName, IMPORT_ACCEPT, mediumOf } from './media';
-import { cardVerbs, SPEAK_VERB, type CardVerb } from './verbCard';
+import { cardVerbs, SPEAK_VERB } from './verbCard';
+import { VerbCard } from './VerbCard';
 import { covered, createViewStore, overlay, useView, useViewStore, ViewContext, type FocusReturn, type Overlay, type View } from './view';
 import s from './Filmstrip.module.css';
 
@@ -50,6 +52,10 @@ function roomTakes(data: Snapshot | undefined, room: View['room']): (Material | 
   return auditionTakes(data.directions.filter(direction => direction.state !== 'discarded' && direction.row_idx === room)
     .flatMap(direction => gridCells(direction, data, true)));
 }
+
+/** The voice director column's width while it is open (`--director-inset` on the root
+ *  element), which the picker keeps clear of, as every surface does (law 2). */
+const directorInset = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--director-inset')) || 0;
 
 /** A slot holding several takes keeps room for all of them from Run (law 8). */
 const SPAN_GAP = 8;
@@ -149,6 +155,8 @@ function ProjectRoom({id}: {id: string}) {
 function ProjectWorkspace({id}: {id: string}) {
   const query = $api.useQuery('get', '/api/crexil/projects/{wid}', {params:{path:{wid:id}}}, {refetchInterval:3000});
   const operations = $api.useQuery('get', '/api/crexil/operations');
+  // Engines read by their catalogue names and lanes on every surface of the project.
+  const catalogue = useCatalogue(operations.data);
   const costs = $api.useQuery('get', '/api/costs', {params:{query:{tz:-new Date().getTimezoneOffset()}}}, {refetchInterval:10000});
   const gridOpen = useView(state => state.room !== null && state.room !== 'tray');
   // A held attempt's covering bench comes from the queue view, read only while a grid room is open.
@@ -180,6 +188,14 @@ function ProjectWorkspace({id}: {id: string}) {
     if (target) requestAnimationFrame(() => target.current?.focus());
   }, []);
   const closeLayer = useCallback(() => restoreFocus(store.getState().closeTop()), [store, restoreFocus]);
+  // A face acts on its take (shift adds or removes it from the set) and inspects it on a
+  // double click; both read the view at the moment of the click, so the faces stay memoized.
+  const actOn = useCallback((id: string, shift: boolean, element: HTMLElement) => {
+    focusOrigin.current = element;
+    const {acting: now, act} = store.getState();
+    act(shift ? now.includes(id) ? now.filter(n => n !== id) : [...now, id] : [id]);
+  }, [store]);
+  const inspectTake = useCallback((id: string) => store.getState().inspect(id), [store]);
   useEscapeBase(closeLayer);
   const {inspect: inspectNode, openDrawer} = store.getState();
   // Runs one action; resolves to its failure message, or null when it succeeded.
@@ -237,6 +253,10 @@ function ProjectWorkspace({id}: {id: string}) {
     const direction=directions.find(d=>d.turn_ids.includes(id));if(direction)store.getState().showFromRecord(direction.row_idx);
   };
   const fromHere = (open: () => void) => (event: {currentTarget: HTMLElement}) => {focusOrigin.current = event.currentTarget; open();};
+  // Focus after the drawer is where the next move is: a sent run's row door, to watch it
+  // land, else the section the preparation belongs to.
+  const focusAfterDrawer = (direction: Direction, ran: boolean) => requestAnimationFrame(() => document.querySelector<HTMLElement>(
+    ran ? `#row-${direction.row_idx} [data-grid-door]` : `[data-direction="${direction.id}"] [data-starter]`)?.focus());
   const turns = data.turns;
   const bindings = visible.flatMap(direction=>sourceBindings(direction,data));
   const ancestry = ancestors(nodes,acting);
@@ -247,17 +267,18 @@ function ProjectWorkspace({id}: {id: string}) {
   const queueFacts = (slot: Slot): QueueFacts | null => {
     const rows = queue.data?.held ?? [];
     const held = rows.find(row => row.id === slot.id);
-    if (!held) return null;
+    const retry = queue.data?.retries.find(wait => wait.slot_id === slot.id) ?? null;
+    if (!held) return retry ? {bench: null, benchKind: null, benchCause: null, retry} : null;
     const bench = queue.data?.benches.find(b => b.scope === held.bench);
     // A resume sends every attempt its bench holds, in any run, so its price is what they reserve (law 6).
     const sent = held.bench ? rows.filter(row => row.bench === held.bench) : [held];
     return {bench: held.bench ?? null, benchKind: bench?.kind ?? null, benchCause: bench?.cause ?? null,
-      reservedUsd: sent.reduce((sum, row) => sum + (row.committed_usd ?? 0), 0)};
+      reservedUsd: sent.reduce((sum, row) => sum + (row.committed_usd ?? 0), 0), retry};
   };
   // A blind run's held attempt is never linked to its queue row, which would name its lane.
   const faceOf = (slot: Slot): AttemptFaceVM | null => {
     const turn = turns.find(t => t.id === slot.turn_id);
-    return turn ? attemptFace(slot, {turn, operations: operations.data ?? [], controls,
+    return turn ? attemptFace(slot, {turn, operations: operations.data ?? [], controls, projectSlots: turns.flatMap(t => t.slots),
       queue: slot.identity_hidden === true ? null : queueFacts(slot)}) : null;
   };
   const withheld = withheldRuns(data);
@@ -291,6 +312,7 @@ function ProjectWorkspace({id}: {id: string}) {
     </header>
     <input hidden ref={file} type="file" multiple accept={IMPORT_ACCEPT}
       onChange={e => {const files = Array.from(e.target.files ?? []); e.target.value=''; void act(async () => {for (const item of files) await importFile(id,item);store.getState().closeImport();});}}/>
+    <div className={s.workspace}>
     {error && <div className={s.error} role="alert">{error}<button onClick={() => setError('')}>Dismiss</button></div>}
     {!editingProject&&hasProjectEdits(id)&&<p className={s.localPreparation}>Project edits remain in this tab. <button onClick={()=>store.getState().openProjectEdit()}>Recover project edits</button></p>}
     {editingProject && <ProjectDetails project={data.project} accounting={data.accounting??{}} onSaved={() => {refresh(); store.getState().closeProjectEdit();}}/>}
@@ -311,7 +333,7 @@ function ProjectWorkspace({id}: {id: string}) {
       :panel?.kind==='delivery'?<DeliveryRoom data={data} initial={panel.ids} close={closeLayer} refresh={refresh}/>
       :panel?.kind==='returned'?<ReturnedWork wid={id} nodes={nodes} initial={panel.ids} close={closeLayer} refresh={refresh} inspect={node=>store.getState().inspectFromPanel(node)}/>
       :panel?.kind==='sequences'?<SequenceRoom data={data} inactive={Boolean(activeDraft)} initialId={sequenceReturn} refresh={refresh} close={closeLayer} edit={openDrawer} inspect={inspectNode} openRun={(id,sid)=>{const direction=directions.find(item=>item.turn_ids.includes(id));if(direction)store.getState().showRunFromSequence(direction.row_idx,sid);}}/>
-      :<main className={s.canvas} onDragOver={e => e.preventDefault()} onDrop={e => {e.preventDefault(); const files=Array.from(e.dataTransfer.files); void act(async () => {for(const item of files) await importFile(id,item);});}}>
+      :<div className={s.stage}><main className={s.canvas} onDragOver={e => e.preventDefault()} onDrop={e => {e.preventDefault(); const files=Array.from(e.dataTransfer.files); void act(async () => {for(const item of files) await importFile(id,item);});}}>
       <LineageCanvas bindings={bindings} nodes={nodes} acting={acting} enabled={room===null}>
       {rows.length === 0 && <div className={s.emptyProject}><span className={s.eyebrow}>{room === 'tray' ? 'Nothing set aside' : 'A place for the next idea'}</span>
         <h1>{room === 'tray' ? 'Your directions are on the project.' : 'Start with words or material.'}</h1>
@@ -319,29 +341,28 @@ function ProjectWorkspace({id}: {id: string}) {
         {room !== 'tray' && <div className={s.actions}><button className={s.primary} onClick={() => void newDirection()}>+ New direction · N</button><button onClick={fromHere(store.getState().showImport)}>Import material</button></div>}
       </div>}
       {rows.filter(row => room === null || room === 'tray' || room === row).map(row => <div className={s.row} id={`row-${row}`} key={row} data-lineage-row={row} style={{marginBottom:`var(--lineage-gap-${row},26px)`}}>
-        <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} onClick={() => store.getState().openGrid(row)}>Grid ›</button></div>
+        <RowStrip count={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => store.getState().openGrid(row)}>Grid ›</button></div>
           {visible.filter(d=>d.row_idx===row&&d.latest_decision).map(direction=><button key={direction.id} className={s.gutterDecision} onClick={fromHere(()=>store.getState().openRecord({direction_id:direction.id}))} title={`Latest decision for ${direction.title}`}>
-            <span>{direction.latest_decision?.reason||'No reason supplied'}</span><small>{direction.latest_decision?.actor?`${direction.latest_decision.actor.kind==='agent'?'Agent':'Artist'} · ${direction.latest_decision.actor.name}`:'Participant not recorded'} ›</small>
+            <span>{direction.latest_decision?.reason||'No reason supplied'}</span><small>{actorLine(direction.latest_decision?.actor)} ›</small>
           </button>)}
           <span>{visible.filter(d => d.row_idx === row).reduce((sum,d) => sum+d.selection.length,0)} selected</span>
           <span>{visible.filter(d => d.row_idx === row).reduce((sum,d) => sum+d.node_ids.length,0)} outputs</span>
-        </aside>
-        <div className={s.sections} data-lineage-strip>{visible.filter(d => d.row_idx === row).map(direction => {
-          const material = nodes.filter(n => direction.node_ids.includes(n.id));
+          {more}
+        </aside>}>{visible.filter(d => d.row_idx === row).map(direction => {
           const cells = gridCells(direction, data, room === row);
           const prep = preparation(direction);
           const sources = bindings.filter(binding=>binding.direction===direction.id);
           const firstSource = nodes.find(n => n.id === (sources[0]?.parents[0]??prep.references?.[0]?.node_id));
-          return <section className={s.section} key={direction.id} aria-label={direction.title}>
+          return <section className={s.section} key={direction.id} aria-label={direction.title} data-direction={direction.id}>
             {room===row&&turns.filter(turn=>direction.turn_ids.includes(turn.id)).map(turn=>{
               const control=data.execution_controls?.find(control=>control.scope==='run'&&control.target_id===turn.id);
               return control?<ExecutionControls key={turn.id} control={control} slots={turn.slots} label={`Run ${turn.idx}`} refresh={refresh}/>:null;
             })}
             <div className={s.sectionBody}>
               <div className={s.starterColumn} style={{marginLeft:Math.max(0,sources.length-1)*5}}>
-              <button data-lineage-start={sources[0]?.id} className={`${s.starter} ${sources[0]?.outputs.some(id=>ancestry.has(id))?s.ancestor:''}`} aria-label={`${direction.state === 'draft' ? 'Open preparation' : 'Reuse setup'}: ${direction.title}`} onClick={() => direction.state === 'draft' ? openDrawer(direction.id) : void stateAction(direction,'reuse')} title={direction.state === 'draft' ? 'Open preparation' : 'Reuse this setup'}>
+              <button data-starter data-lineage-start={sources[0]?.id} className={`${s.starter} ${sources[0]?.outputs.some(id=>ancestry.has(id))?s.ancestor:''}`} aria-label={`${direction.state === 'draft' ? 'Open preparation' : 'Reuse setup'}: ${direction.title}`} onClick={() => direction.state === 'draft' ? openDrawer(direction.id) : void stateAction(direction,'reuse')} title={direction.state === 'draft' ? 'Open preparation' : 'Reuse this setup'}>
                 <div>{firstSource?.available ? <MaterialThumbnail key={firstSource.id} node={firstSource} decorative/> : <span>{prep.prompt || direction.title}</span>}</div>
-                <footer>{prep.action === 'generate' ? 'Words' : prep.action} <span aria-hidden="true">▤</span></footer>
+                <footer><span>{startWord(prep.action)}</span> <span aria-hidden="true">▤</span></footer>
               </button>
               {sources.map((binding,index)=><div key={binding.id} className={s.sourceBinding}>
                 {index>0&&<div className={`${s.recordedStarter} ${binding.outputs.some(id=>ancestry.has(id))?s.ancestor:''}`} data-lineage-start={binding.id}><span>{binding.title}</span><span>{binding.parents.map(id=>nodes.find(node=>node.id===id)).filter((node):node is Material=>Boolean(node)).map(label).join(' · ')}</span></div>}
@@ -357,54 +378,90 @@ function ProjectWorkspace({id}: {id: string}) {
                 const wide = room===row && cell.span > 1;
                 return <div key={cell.key} className={room===row?s.slotBox:undefined} style={wide?{width:spanWidth(cell.span)}:undefined}>
                   {face ? <AttemptFace face={face} busy={busy} onRemedy={remedy(direction, slot!, face)}/> : cell.takes.length > 0 &&
-                    <div className={s.takeRow}>{cell.takes.map(take => <button key={take.id} data-lineage-node={take.id} data-take={take.id} {...(take.payload === 'audio' ? {[AUDIO_FACE]: ''} : {})}
-                      aria-label={faceName(take)} className={`${s.face} ${acting.includes(take.id) ? s.acting : room===row&&direction.selection.includes(take.id) ? s.selected : ancestry.has(take.id)?s.ancestor:''}`} aria-pressed={acting.includes(take.id)} onDoubleClick={() => inspectNode(take.id)}
-                      onClick={e => {focusOrigin.current=e.currentTarget; store.getState().act(e.shiftKey ? acting.includes(take.id) ? acting.filter(n => n !== take.id) : [...acting,take.id] : [take.id]);}}>
-                      <div className={s.plate}><MaterialThumbnail key={take.id} node={take}/>{acting.includes(take.id) && <span className={s.actingMark}>Acting on</span>}{take.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
-                      <footer><span>{label(take)} · {engineLabel(take,'face')}</span><span>{faceCost(take)}</span></footer>
-                    </button>)}</div>}
-                  {room===row&&slot&&<div className={s.slotFoot}><span>{node&&!cell.withheld?slot.status:''}</span>{cell.group&&<button onClick={fromHere(()=>store.getState().openGroup(cell.group!.id))}>{cell.group.outputs.length} {cell.group.outputs.length===1?'file':'files'} ›</button>}</div>}
+                    <div className={s.takeRow}>{cell.takes.map(take => <TakeFace key={take.id} take={take} catalogue={catalogue}
+                      mark={acting.includes(take.id) ? 'acting' : room===row&&direction.selection.includes(take.id) ? 'selected' : ancestry.has(take.id) ? 'ancestor' : null}
+                      selected={room===row&&direction.selection.includes(take.id)} onAct={actOn} onInspect={inspectTake}/>)}</div>}
+                  {room===row&&slot&&<div className={s.slotFoot}><span>{node&&!cell.withheld?statusWord(slot.status):''}</span>{cell.group&&cell.group.outputs.length>0&&<button onClick={fromHere(()=>store.getState().openGroup(cell.group!.id))}>{cell.group.outputs.length} {cell.group.outputs.length===1?'file':'files'} ›</button>}</div>}
                 </div>;
               })}
             </div>
             {room===row&&<SharedCauses faces={cells.flatMap(cell=>!cell.material&&cell.slot&&!cell.withheld?[faceOf(cell.slot)]:[]).filter((face):face is AttemptFaceVM=>face!==null)}/>}
-            <div className={s.sectionFoot}><span>{direction.selection.length} of {material.length} selected{direction.state === 'draft' ? ' · Preparation' : ''}</span>
-              <span className={s.actions}>{direction.sequence_id&&<button className={s.door} onClick={fromHere(()=>store.getState().showSequence(direction.sequence_id!))}>Sequence ›</button>}<button className={s.door} onClick={e => {focusOrigin.current=e.currentTarget; const box=e.currentTarget.closest('section')!.getBoundingClientRect(); store.getState().openPicker(direction.id,Math.min(box.left,window.innerWidth-530),Math.min(box.top,window.innerHeight-440));}}>Strip ›</button></span></div>
+            <div className={s.sectionFoot}><span>{sectionFoot(direction, turns, hiddenRuns(data))}</span>
+              <span className={s.actions}>{direction.sequence_id&&<button className={s.door} onClick={fromHere(()=>store.getState().showSequence(direction.sequence_id!))}>Sequence ›</button>}<button className={s.door} onClick={e => {focusOrigin.current=e.currentTarget; const box=e.currentTarget.closest('section')!.getBoundingClientRect(); store.getState().openPicker(direction.id,Math.min(box.left,window.innerWidth-directorInset()-530),Math.min(box.top,window.innerHeight-440));}}>Strip ›</button></span></div>
           </section>;
-        })}<button className={s.addSection} disabled={busy} onClick={() => void newDirection(row)}>+ Section</button></div>
+        })}<button className={s.addSection} disabled={busy} onClick={() => void newDirection(row)}>+ Section</button></RowStrip>
       </div>)}
       {rows.length > 0 && room === null && <button className={s.newRow} disabled={busy} onClick={() => void newDirection()}>+ New direction · N</button>}
       </LineageCanvas>
-    </main>}
+    </main>
+    {actingNodes.length > 0 && !drawer && !inspected && <VerbCard nodes={actingNodes} operations={operations.data}
+      onInspect={() => inspectNode(actingNodes[0].id)} onClose={() => store.getState().clearActing()}
+      onStart={verb => void (verb.each ? act(async () => {for (const node of verb.parents) await newDirection(undefined, verb.action, [node]);})
+        : newDirection(undefined, verb.action, verb.parents))}>
+      <button onClick={fromHere(store.getState().deliverActing)}>Deliver selected material</button>
+      <button onClick={fromHere(store.getState().returnActing)}>Return edited material</button>
+    </VerbCard>}
+    </div>}
+    </div>
+    {data.execution_controls?.find(control=>control.scope==='project')&&<ExecutionControls
+      control={data.execution_controls.find(control=>control.scope==='project')!} slots={turns.flatMap(turn=>turn.slots)} label="Project" refresh={refresh} pendingWork={data.sequences?.some(sequence=>sequence.state==='active'&&sequence.steps.some(step=>step.state!=='complete'))}/>}
     </div>
     {picker && directions.some(d => d.id === picker.direction) && <Picker key={picker.direction} state={picker} nodes={nodes}
       current={directions.find(d => d.id === picker.direction)!} withheld={withheld}
       close={closeLayer} saved={refresh} onInspect={inspectNode} stateAction={stateAction}/>}
-    {actingNodes.length > 0 && !drawer && !inspected && <section className={s.verbCard} aria-label="Actions on material">
-      <div className={s.drawerHead}><span className={s.mono}>Acting on · {actingNodes.length}</span><button onClick={() => store.getState().clearActing()}>Esc</button></div>
-      <button onClick={() => inspectNode(actingNodes[0].id)}>Inspect · V</button>
-      {(() => {
-        const verbs = cardVerbs(actingNodes, operations.data);
-        const start = (verb: CardVerb) => void (verb.each ? act(async () => {for (const node of verb.parents) await newDirection(undefined,verb.action,[node]);}) : newDirection(undefined,verb.action,verb.parents));
-        const draw = (verb: CardVerb) => verb.live ? <button key={verb.label} onClick={() => start(verb)}>{verb.label}</button>
-          : <button key={verb.label} className={s.verbInert} aria-disabled="true" aria-label={verb.label} aria-describedby={`why-${verb.label.replace(/\W+/g,'-')}`}>{verb.label}
-            <small id={`why-${verb.label.replace(/\W+/g,'-')}`}>{verb.reason}</small></button>;
-        const other = verbs.filter(verb => verb.tier === 'notForThis');
-        return <>{verbs.filter(verb => verb.tier === 'main').map(draw)}
-          {other.length > 0 && <details className={s.notForThis}><summary>Not for this material · {other.length}</summary>{other.map(draw)}</details>}</>;
-      })()}
-      <button onClick={fromHere(store.getState().deliverActing)}>Deliver selected material</button>
-      <button onClick={fromHere(store.getState().returnActing)}>Return edited material</button>
-    </section>}
-    {activeDraft && <DraftDrawer key={activeDraft.id} direction={activeDraft} directions={directions} nodes={nodes} operations={operations.data ?? []} onSaved={refresh} onCopied={id=>{refresh();openDrawer(id);}} onClose={() => {store.getState().closeDrawer();if(record)requestAnimationFrame(()=>recordOrigin().current?.focus());}}/>}
+    {activeDraft && <DraftDrawer key={activeDraft.id} direction={activeDraft} directions={directions} nodes={byGridPosition(nodes.filter(n => !isWithheld(n, withheld)))} operations={operations.data ?? []} onSaved={refresh} onCopied={id=>{refresh();openDrawer(id);}}
+      onClose={ran => {store.getState().closeDrawer(); if (record) requestAnimationFrame(() => recordOrigin().current?.focus()); else focusAfterDrawer(activeDraft, ran);}}/>}
     {inspect && <Inspection key={inspect.id} node={inspect} data={data} close={closeLayer} navigate={inspectNode} openGroup={id=>store.getState().openGroup(id)} openRecord={()=>store.getState().openRecord({node_id:inspect.id},inspect.id)} returnLabel={record?'Record':'Project'}/>}
     {group&&<OutputGroup group={group} close={()=>store.getState().closeGroup()} refresh={refresh} inspect={id=>{store.getState().closeGroup();inspectNode(id);}}/>}
-    {data.execution_controls?.find(control=>control.scope==='project')&&<ExecutionControls
-      control={data.execution_controls.find(control=>control.scope==='project')!} slots={turns.flatMap(turn=>turn.slots)} label="Project" refresh={refresh} pendingWork={data.sequences?.some(sequence=>sequence.state==='active'&&sequence.steps.some(step=>step.state!=='complete'))}/>}
     <VoiceDirectorPanel projectId={id}/>
     <div className={s.queue}><span>{activeSlots.length} active or unresolved · Local engines take turns on one GPU</span><span>{busy ? 'Saving work…' : 'Changes stay in this project'}</span></div>
   </>;
 }
+
+/** A row's sections, which scroll sideways past the work area's width (the board's "past a
+ *  row's span the row scrolls sideways"). While sections lie beyond the right edge, that edge
+ *  fades, and a door at the foot of the row's gutter says how many and scrolls to them; it
+ *  never covers the work. Focus scrolls them into view too. */
+function RowStrip({count, gutter, children}: {count: number; gutter: (more: ReactNode) => ReactNode; children: ReactNode}) {
+  const strip = useRef<HTMLDivElement>(null);
+  const [beyond, setBeyond] = useState(0);
+  useLayoutEffect(() => {
+    const element = strip.current;
+    if (!element) return;
+    const measure = () => {
+      const edge = element.getBoundingClientRect().right;
+      setBeyond([...element.querySelectorAll(':scope > section')].filter(section => section.getBoundingClientRect().right > edge + 1).length);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    element.querySelectorAll(':scope > section').forEach(section => observer.observe(section));
+    element.addEventListener('scroll', measure);
+    return () => {observer.disconnect(); element.removeEventListener('scroll', measure);};
+  }, [count]);
+  const more = beyond > 0 ? <button className={s.door} aria-label={`Show ${beyond} more ${beyond === 1 ? 'section' : 'sections'} of this row`}
+    onClick={() => strip.current?.scrollBy({left: strip.current.clientWidth * .8, behavior: 'smooth'})}>{beyond} more ›</button> : null;
+  return <>{gutter(more)}<div ref={strip} className={`${s.sections} ${beyond ? s.moreBeyond : ''}`} data-lineage-strip>{children}</div></>;
+}
+
+/** One take's face (BIBLE: face): its plate, its label and engine, and at the right its money.
+ *  Its name says the take and its medium; its description is the footer, and says the take is
+ *  selected where the grid room draws that border. Memoized, so a change of the acting set
+ *  redraws only the faces it touches. */
+const TakeFace = memo(function TakeFace({take, mark, selected, onAct, onInspect}: {
+  take: Material; mark: 'acting' | 'selected' | 'ancestor' | null; selected: boolean;
+  /** The catalogue the footer names its engine from; a new one redraws the face. */
+  catalogue: ReturnType<typeof useCatalogue>;
+  onAct: (id: string, shift: boolean, element: HTMLElement) => void; onInspect: (id: string) => void;
+}) {
+  const foot = `take-foot-${take.id}`;
+  return <button data-lineage-node={take.id} data-take={take.id} {...(take.payload === 'audio' ? {[AUDIO_FACE]: ''} : {})}
+    aria-label={faceName(take)} aria-describedby={foot} aria-pressed={mark === 'acting'} className={`${s.face} ${mark ? s[mark] : ''}`}
+    onDoubleClick={() => onInspect(take.id)} onClick={event => onAct(take.id, event.shiftKey, event.currentTarget)}>
+    <div className={s.plate}><MaterialThumbnail node={take}/>{mark === 'acting' && <span className={s.actingMark}>Acting on</span>}{take.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
+    <footer id={foot}><span title={`${label(take)} · ${engineLabel(take, 'face')}`}>{label(take)} · {engineLabel(take, 'face')}{selected && <span className={s.srOnly}>, selected</span>}</span><span>{faceCost(take)}</span></footer>
+  </button>;
+});
 
 // The picker reads the live direction while takes land; its choice applies to the revision
 // it opened on, so a change made meanwhile elsewhere is refused, never overwritten. A blind
@@ -420,7 +477,7 @@ function Picker({state,nodes,current,withheld,close,saved,onInspect,stateAction}
   const [busy,setBusy]=useState(false);
   const pending=useRef<ReturnType<typeof command> | null>(null);
   const arrived=nodes.filter(n=>current.node_ids.includes(n.id));
-  const material=arrived.filter(n=>!isWithheld(n,withheld));
+  const material=byGridPosition(arrived.filter(n=>!isWithheld(n,withheld)));
   const groups=pickerGroups(material);
   // A direction action closes the picker only when it succeeded; a failure stays here with its words.
   const settle=async(done:Promise<string|null>)=>{const failed=await done;if(failed)setError(failed);else close();};
