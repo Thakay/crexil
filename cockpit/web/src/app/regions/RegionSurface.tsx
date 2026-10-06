@@ -1,34 +1,14 @@
-// The region surface (draw, then fan out): EDIT REGION on one image take.
-// Overlays the canvas region exactly like the turn grid: a place, never a
-// modal (law 2); the canvas stays mounted beneath, Esc closes and the
-// drafts stay (regions/store.ts, per take, this session).
-//
-// Konva does the drawing (react-konva, no hand-rolled brush engine). The
-// whole Stage runs in NATURAL image coordinates behind one stage-level
-// scale, so committed ink never depends on the fit the surface happened to
-// open at. The in-progress stroke draws imperatively into a ref'd live
-// layer (no setState per pointer-move, the performance budget); pointer-up
-// commits one stroke, rasterised into the draft's ONE bitmap
-// (model.rasterize), and each region renders as a
-// single tinted Konva.Image, so same-region strokes can never stack
-// toward opaque and an erase truly removes.
-//
-// The run half: the mask-capable roster with a takes stepper per
-// engine (dashed 0 + reason for the incapable — law 12), FAN OUT
-// posting the drawn regions to the region-turns route, the attempt panes
-// rendering that turn's slots side by side, and the commit
-// bar — CONTINUE HERE hands the picked winners to the canvas as the
-// acting-on selection; nothing here deletes anything (law 7).
-import Konva from "konva";
+// Legacy region controls, session drafts, submission and attempt comparison.
+// MaskCanvas owns the shared Konva drawing surface; this parent rasterizes
+// committed ink through the existing store and keeps the run/selection behavior.
+// Closing preserves drafts. Keyboard actions remain on the legacy surface.
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ComponentRef,
 } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Image as KonvaImage, Layer, Stage } from "react-konva";
 import { useQueryClient } from "@tanstack/react-query";
 import { $api } from "../../api/client";
 import type { Passes, SlotStatus } from "../../types";
@@ -62,22 +42,18 @@ import {
   actionLine,
   DRAFTS_LINE,
   DRAW_HINT,
-  fitScale,
   hasInk,
-  layerOrder,
   maskCapabilityLine,
   promptlessLine,
   regionLabel,
-  tintCanvas,
   UNCLAIMED_LINE,
   PRECEDENCE_LINE,
   SAME_REGIONS_LINE,
   type DrawTool,
-  type Ink,
   type RegionAction,
-  type RegionDraft,
 } from "./model";
 import { useRegions } from "./store";
+import { MaskCanvas, useLoadedImage } from "./MaskCanvas";
 import s from "./Regions.module.css";
 
 const TOOLS: readonly { id: DrawTool; glyph: string; word: string }[] = [
@@ -86,72 +62,6 @@ const TOOLS: readonly { id: DrawTool; glyph: string; word: string }[] = [
   { id: "lasso", glyph: "◠", word: "LASSO" },
   { id: "erase", glyph: "⌫", word: "ERASE" },
 ];
-
-/** The take's full-res pixels — the lightbox's URL, natural size read off
- *  the loaded element. "error" = the artefact route refused (a corrupt or
- *  missing file 404s in plain words). */
-function useLoadedImage(url: string | null): HTMLImageElement | "error" | null {
-  const [img, setImg] = useState<HTMLImageElement | "error" | null>(null);
-  useEffect(() => {
-    if (url === null) {
-      setImg(null);
-      return;
-    }
-    const el = new window.Image();
-    el.onload = () => setImg(el);
-    el.onerror = () => setImg("error");
-    el.src = url;
-    return () => setImg(null);
-  }, [url]);
-  return img;
-}
-
-/** The stage area's box, re-measured on window resize — a state write per
- *  resize event, never per pointer frame. */
-function useAreaSize(ref: React.RefObject<HTMLDivElement | null>) {
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  useEffect(() => {
-    const measure = () => {
-      const el = ref.current;
-      // The 80px floor keeps the fit scale positive however short the
-      // window gets — the area itself has a min-height and scrolls.
-      if (el !== null)
-        setSize({
-          w: Math.max(el.clientWidth - 24, 80),
-          h: Math.max(el.clientHeight - 24, 80),
-        });
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [ref]);
-  return size;
-}
-
-/** One region's whole ink as one tinted image:
- *  the bitmap recoloured per commit — `inkRev` keys the memo because the
- *  canvas mutates in place. */
-function RegionTint({ draft }: { draft: RegionDraft }) {
-  const tinted = useMemo(
-    () =>
-      draft.mask === null
-        ? null
-        : tintCanvas(draft.mask, ACTION_COLORS[draft.action]),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- inkRev IS the mask's version
-    [draft.mask, draft.inkRev, draft.action],
-  );
-  if (tinted === null) return null;
-  return <KonvaImage image={tinted} width={tinted.width} height={tinted.height} />;
-}
-
-/** The live in-progress stroke, held outside React: created at pointer-
- *  down, grown per move via batchDraw, destroyed at commit. */
-type LiveStroke = {
-  tool: DrawTool;
-  node: Konva.Line | Konva.Rect;
-  points: number[]; // natural coords
-  origin: { x: number; y: number };
-};
 
 // A stable snapshot for a node with no drafts yet — `?? []` in a selector
 // would make a fresh array per store read and loop the render.
@@ -274,8 +184,6 @@ export function RegionSurface({
   const queueQ = $api.useQuery("get", "/api/queue");
 
   const image = useLoadedImage(`/api/nodes/${nodeId}/image`);
-  const areaRef = useRef<HTMLDivElement>(null);
-  const area = useAreaSize(areaRef);
   const natural = useMemo(
     () =>
       image === null || image === "error"
@@ -283,11 +191,8 @@ export function RegionSurface({
         : { w: image.naturalWidth, h: image.naturalHeight },
     [image],
   );
-  const scale =
-    natural !== null && area !== null ? fitScale(natural, area) : null;
 
   const active = drafts.find((d) => d.key === activeKey) ?? null;
-  const painted = layerOrder(drafts).filter((d) => d.visible);
 
   // --- the fan-out roster -------------------------------------------------
   const roster = useMemo(
@@ -426,104 +331,6 @@ export function RegionSurface({
     .map((id) => cells.find((c) => c.nodeId === id))
     .filter((c): c is CellVM => c !== undefined);
 
-  // --- drawing (imperative between down and up) ---------------------------
-  const liveLayerRef = useRef<ComponentRef<typeof Layer>>(null);
-  const live = useRef<LiveStroke | null>(null);
-
-  const pointerNatural = (stage: Konva.Stage | null) => {
-    if (stage === null || scale === null) return null;
-    const p = stage.getPointerPosition();
-    return p === null ? null : { x: p.x / scale, y: p.y / scale };
-  };
-
-  const strokeColor = (t: DrawTool, action: RegionAction) =>
-    // A live erase can't punch the region layer it isn't on — it previews
-    // as a faint white path and lands as destination-out at commit.
-    t === "erase" ? "rgba(228,232,235,0.35)" : ACTION_COLORS[action];
-
-  const down = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    const layer = liveLayerRef.current;
-    const pos = pointerNatural(e.target.getStage());
-    if (layer === null || pos === null || scale === null) return;
-    // DRAW A REGION, THEN DECLARE WHAT IT MEANS: inking with no region
-    // starts one (modify, the mildest generative action) and makes it live.
-    if (active === null) addDraft(nodeId);
-    const color = strokeColor(tool, active?.action ?? "modify");
-    let node_: Konva.Line | Konva.Rect;
-    if (tool === "rect") {
-      node_ = new Konva.Rect({
-        x: pos.x,
-        y: pos.y,
-        width: 0,
-        height: 0,
-        fill: color,
-        opacity: 0.55,
-      });
-    } else {
-      node_ = new Konva.Line({
-        points: [pos.x, pos.y],
-        stroke: color,
-        strokeWidth: tool === "lasso" ? 2 / scale : brushSize / scale,
-        lineCap: "round",
-        lineJoin: "round",
-        opacity: tool === "erase" ? 1 : 0.55,
-        ...(tool === "lasso" ? { closed: true, fill: color } : {}),
-      });
-    }
-    layer.add(node_);
-    layer.batchDraw();
-    live.current = { tool, node: node_, points: [pos.x, pos.y], origin: pos };
-  };
-
-  const move = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    const st = live.current;
-    const pos = pointerNatural(e.target.getStage());
-    if (st === null || pos === null) return;
-    if (st.tool === "rect") {
-      (st.node as Konva.Rect).setAttrs({
-        x: Math.min(st.origin.x, pos.x),
-        y: Math.min(st.origin.y, pos.y),
-        width: Math.abs(pos.x - st.origin.x),
-        height: Math.abs(pos.y - st.origin.y),
-      });
-    } else {
-      st.points.push(pos.x, pos.y);
-      (st.node as Konva.Line).points(st.points);
-    }
-    liveLayerRef.current?.batchDraw();
-  };
-
-  const up = () => {
-    const st = live.current;
-    if (st === null || scale === null || natural === null) return;
-    live.current = null;
-    const key = useRegions.getState().activeKey[nodeId];
-    st.node.destroy();
-    liveLayerRef.current?.batchDraw();
-    if (key === null || key === undefined) return;
-    let ink: Ink | null = null;
-    if (st.tool === "rect") {
-      const r = st.node as Konva.Rect;
-      if (r.width() >= 2 && r.height() >= 2)
-        ink = {
-          tool: "rect",
-          x: r.x(),
-          y: r.y(),
-          w: r.width(),
-          h: r.height(),
-        };
-    } else if (st.tool === "lasso") {
-      if (st.points.length >= 6) ink = { tool: "lasso", points: st.points };
-    } else {
-      ink = {
-        tool: st.tool === "erase" ? "erase" : "brush",
-        points: st.points,
-        size: brushSize / scale,
-      };
-    }
-    if (ink !== null) commitInk(nodeId, key, ink, natural);
-  };
-
   const paneFace = (cell: CellVM): string => {
     const st: SlotStatus = cell.status;
     if (st === "running") {
@@ -606,52 +413,18 @@ export function RegionSurface({
             )}
           </div>
 
-          <div className={s.stageArea} ref={areaRef}>
-            {image !== null &&
-            image !== "error" &&
-            natural !== null &&
-            scale !== null ? (
-              <Stage
-                width={Math.round(natural.w * scale)}
-                height={Math.round(natural.h * scale)}
-                scaleX={scale}
-                scaleY={scale}
-                className={s.stage}
-                style={{ cursor: "crosshair" }}
-                onMouseDown={down}
-                onMouseMove={move}
-                onMouseUp={up}
-                onMouseLeave={up}
-              >
-                <Layer listening={false}>
-                  <KonvaImage
-                    image={image}
-                    width={natural.w}
-                    height={natural.h}
-                  />
-                </Layer>
-                {painted.map((d) => (
-                  <Layer
-                    key={d.key}
-                    listening={false}
-                    opacity={d.key === activeKey ? 0.55 : 0.35}
-                  >
-                    <RegionTint draft={d} />
-                  </Layer>
-                ))}
-                <Layer ref={liveLayerRef} listening={false} />
-              </Stage>
-            ) : (
-              <p className={`mono-label ${s.loading}`}>
-                {image === "error"
-                  ? "The take's pixels can't be read — the file is missing or unreadable. The record row still stands."
-                  : nodesQ.isError ||
-                      (nodesQ.data !== undefined && node === undefined)
-                    ? "This take isn't in the record any more."
-                    : "LOADING THE TAKE"}
-              </p>
-            )}
-          </div>
+          <MaskCanvas
+            sourceUrl={`/api/nodes/${nodeId}/image`}
+            drafts={drafts}
+            activeKey={activeKey}
+            tool={tool}
+            brushSize={brushSize}
+            onCreateRegion={() => addDraft(nodeId)}
+            onInk={(key, ink, size) => commitInk(nodeId, key, ink, size)}
+            loadingMessage={nodesQ.isError || (nodesQ.data !== undefined && node === undefined)
+              ? "This take isn't in the record any more." : "LOADING THE TAKE"}
+            errorMessage="The take's pixels can't be read — the file is missing or unreadable. The record row still stands."
+          />
         </div>
 
         <aside className={s.side} aria-label="Regions">

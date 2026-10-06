@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The static checks and the suites as one command.
-#   scripts/check.sh           ruff · pytest · vitest · tsc -b   (about 40 s)
+#   scripts/check.sh           ruff · pytest · vitest · tsc -b   (about 100 s)
 #   scripts/check.sh ruff …    ruff over the Python tree, args forwarded (`--fix`, `--statistics`)
 #
 # Ruff rules: cockpit/server/pyproject.toml [tool.ruff], passed explicitly so

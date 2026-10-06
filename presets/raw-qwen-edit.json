@@ -1,4 +1,15 @@
 {
+  "execution_cost": {
+    "maximum_usd_per_attempt": 0,
+    "workflow_sha256": {
+      "img2img": "3db1ebc5a0528077ce4254564aaf64a56781f09b6378f898d52ef17f185c1ac3",
+      "inpaint_modify": "3db1ebc5a0528077ce4254564aaf64a56781f09b6378f898d52ef17f185c1ac3",
+      "inpaint_replace": "3db1ebc5a0528077ce4254564aaf64a56781f09b6378f898d52ef17f185c1ac3",
+      "remove": "0b248e6f37320f999b1521e380d602d5b74e8dccdca259148add879e09270ca4",
+      "combine2": "beda60fec6849c8a3fca314897e74b0288a7c991a892ac31ddbbf7874a895030",
+      "combine3": "6e6396f0cadc6fbf02775f3790d78203332229cdb9873bf0beb646fe579c995e"
+    }
+  },
   "id": "raw-qwen-edit",
   "display_name": "Raw · Qwen Edit 2511",
   "description": "Max-retention instruction editing on Qwen-Image-Edit 2511: un-instructed content stays near-pixel-faithful. Edit-only — this engine always needs a source image.",
@@ -8,7 +19,9 @@
     "img2img": "qwen-edit-2511@v1",
     "inpaint_modify": "qwen-edit-2511@v1",
     "inpaint_replace": "qwen-edit-2511@v1",
-    "remove": "lama-remove@v1"
+    "remove": "lama-remove@v1",
+    "combine2": "qwen-edit-2511-2source@v1",
+    "combine3": "qwen-edit-2511-3source@v1"
   },
   "default_candidates": 1,
   "defaults_note": "Deliberate tier: ~1–2 min per edit warm (measured). Recipe: 20 steps, cfg 4, shift 3.1. Retention comes from the source reference itself: there is no denoise strength to set. The output frame follows width/height (the engine works near 1024² total pixels internally).",
@@ -75,5 +88,16 @@
       "step": 64,
       "target": { "node_title": "latent_size", "field": "height" }
     }
-  ]
+  ],
+  "source_ports": {
+    "combine2": [
+      { "node_title": "source_image", "field": "image", "label": "Source 1 (image1)" },
+      { "node_title": "source_image_2", "field": "image", "label": "Source 2 (image2)" }
+    ],
+    "combine3": [
+      { "node_title": "source_image", "field": "image", "label": "Source 1 (image1)" },
+      { "node_title": "source_image_2", "field": "image", "label": "Source 2 (image2)" },
+      { "node_title": "source_image_3", "field": "image", "label": "Source 3 (image3)" }
+    ]
+  }
 }

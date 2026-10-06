@@ -243,10 +243,29 @@ def test_apply_keep_restores_original_pixels_exactly():
     assert out.getpixel((7, 7)) == (200, 100, 50)  # rest: the generated result
 
 
-def test_apply_keep_tolerates_size_mismatch():
+def test_apply_keep_refuses_implicit_source_resize():
     original = Image.new("RGB", (4, 4), (10, 20, 30))
+    result = Image.new("RGB", SIZE, (200, 100, 50))
+    with pytest.raises(regions.RegionError, match="match the source image size"):
+        regions.apply_keep(png(result), png(original),
+                           png(rect_mask((0, 0, 4, 8))))
+
+
+def test_apply_keep_restores_rgba_and_preserves_source_alpha_everywhere():
+    original = Image.new("RGBA", SIZE)
+    original.putdata([(x * 20, y * 30, x + y, x * y * 4)
+                      for y in range(8) for x in range(8)])
     result = Image.new("RGB", SIZE, (200, 100, 50))
     out = Image.open(io.BytesIO(regions.apply_keep(
         png(result), png(original), png(rect_mask((0, 0, 4, 8))))))
-    assert out.size == SIZE
-    assert out.getpixel((0, 0)) == (10, 20, 30)  # uniform original survives resize
+    assert out.mode == "RGBA"
+    assert out.crop((0, 0, 4, 8)).tobytes() == original.crop((0, 0, 4, 8)).tobytes()
+    assert out.getchannel("A").tobytes() == original.getchannel("A").tobytes()
+    assert out.getpixel((7, 7)) == (200, 100, 50, original.getpixel((7, 7))[3])
+
+
+def test_apply_keep_refuses_implicit_mask_resize():
+    source = Image.new("RGBA", SIZE, (10, 20, 30, 77))
+    with pytest.raises(regions.RegionError, match="protected mask must match"):
+        regions.apply_keep(png(source), png(source),
+                           png(Image.new("L", (4, 4), 255)))

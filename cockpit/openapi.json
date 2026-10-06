@@ -1,6 +1,30 @@
 {
   "components": {
     "schemas": {
+      "Actor": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "human",
+              "agent"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "Actor",
+        "type": "object"
+      },
       "Anchor": {
         "properties": {
           "x": {
@@ -17,6 +41,95 @@
           "y"
         ],
         "title": "Anchor",
+        "type": "object"
+      },
+      "ArchiveRestoreResult": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "unavailable_files": {
+            "title": "Unavailable Files",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "unavailable_files"
+        ],
+        "title": "ArchiveRestoreResult",
+        "type": "object"
+      },
+      "ArchiveUpload": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "review": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "waiting",
+              "ready"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "size_bytes",
+          "actor",
+          "created_at",
+          "state",
+          "sha256",
+          "review"
+        ],
+        "title": "ArchiveUpload",
         "type": "object"
       },
       "BackfillRefusal": {
@@ -179,6 +292,94 @@
         "title": "Capability",
         "type": "string"
       },
+      "CollectExecution": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "take": {
+            "minimum": 1.0,
+            "title": "Take",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "take"
+        ],
+        "title": "CollectExecution",
+        "type": "object"
+      },
+      "Command": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor"
+        ],
+        "title": "Command",
+        "type": "object"
+      },
+      "ControlExecution": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "pause",
+              "resume",
+              "cancel"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "action"
+        ],
+        "title": "ControlExecution",
+        "type": "object"
+      },
       "Costs": {
         "description": "The corner: today and this month, CHARGED only — summed\nfrom the events ledger across every workspace; a quote that hasn't\nbeen billed never counts. Both windows run on the artist's own clock\n(the browser sends its UTC offset in `tz`), so the day turns over at\ntheir midnight, not the server's.",
         "properties": {
@@ -213,6 +414,209 @@
         "title": "Costs",
         "type": "object"
       },
+      "CreateDelivery": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "destination": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Destination",
+            "type": "string"
+          },
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "review_token": {
+            "title": "Review Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_ids",
+          "request_id",
+          "actor",
+          "review_token"
+        ],
+        "title": "CreateDelivery",
+        "type": "object"
+      },
+      "CreateDirection": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "row_idx": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row Idx"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/Preparation"
+          },
+          "title": {
+            "default": "New direction",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor"
+        ],
+        "title": "CreateDirection",
+        "type": "object"
+      },
+      "CreateProject": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "brief": {
+            "default": "",
+            "maxLength": 32000,
+            "title": "Brief",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "name"
+        ],
+        "title": "CreateProject",
+        "type": "object"
+      },
+      "CreateReuse": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "explanation": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Explanation",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "review_token": {
+            "title": "Review Token",
+            "type": "string"
+          },
+          "source_project_id": {
+            "title": "Source Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_project_id",
+          "node_id",
+          "request_id",
+          "actor",
+          "review_token"
+        ],
+        "title": "CreateReuse",
+        "type": "object"
+      },
+      "CreateSequence": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "instructions": {
+            "default": "",
+            "maxLength": 32000,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ProjectLimits"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceStep"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "title",
+          "steps"
+        ],
+        "title": "CreateSequence",
+        "type": "object"
+      },
       "CreateWorkspace": {
         "properties": {
           "name": {
@@ -225,6 +629,403 @@
           "name"
         ],
         "title": "CreateWorkspace",
+        "type": "object"
+      },
+      "DecideSequence": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "candidate_token": {
+            "title": "Candidate Token",
+            "type": "string"
+          },
+          "direction_revision": {
+            "minimum": 0.0,
+            "title": "Direction Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selections": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Selections",
+            "type": "object"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "direction_revision",
+          "candidate_token",
+          "selections",
+          "reason"
+        ],
+        "title": "DecideSequence",
+        "type": "object"
+      },
+      "DecisionView": {
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Id"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "historical": {
+            "title": "Historical",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "selection",
+              "sequence_choice",
+              "assessment"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "previous_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "revised_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revised By"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "sequence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Id"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          }
+        },
+        "required": [
+          "id",
+          "event_id",
+          "seq",
+          "created_at",
+          "kind",
+          "actor",
+          "reason",
+          "node_ids",
+          "direction_id",
+          "turn_id",
+          "sequence_id",
+          "previous_id",
+          "revised_by",
+          "historical"
+        ],
+        "title": "DecisionView",
+        "type": "object"
+      },
+      "DeliveryFile": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "size_bytes"
+        ],
+        "title": "DeliveryFile",
+        "type": "object"
+      },
+      "DeliveryItem": {
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "requires_review": {
+            "default": false,
+            "title": "Requires Review",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "prepared",
+              "incomplete",
+              "complete"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "filename",
+          "asset_id",
+          "state",
+          "files"
+        ],
+        "title": "DeliveryItem",
+        "type": "object"
+      },
+      "DeliveryReview": {
+        "properties": {
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "target": {
+            "additionalProperties": true,
+            "title": "Target",
+            "type": "object"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "destination",
+          "target",
+          "ready",
+          "errors",
+          "items"
+        ],
+        "title": "DeliveryReview",
+        "type": "object"
+      },
+      "DeliverySelection": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Destination",
+            "type": "string"
+          },
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Node Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "node_ids"
+        ],
+        "title": "DeliverySelection",
+        "type": "object"
+      },
+      "DeliveryView": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "destination",
+          "actor",
+          "created_at",
+          "items"
+        ],
+        "title": "DeliveryView",
         "type": "object"
       },
       "Dial": {
@@ -473,6 +1274,215 @@
           "dials"
         ],
         "title": "Dials",
+        "type": "object"
+      },
+      "DirectionState": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "set_aside",
+              "restore",
+              "discard",
+              "reuse"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "action"
+        ],
+        "title": "DirectionState",
+        "type": "object"
+      },
+      "DirectionView": {
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecisionView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "row_idx": {
+            "title": "Row Idx",
+            "type": "integer"
+          },
+          "selection": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selection",
+            "type": "array"
+          },
+          "sequence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Id"
+          },
+          "sequence_step_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Step Key"
+          },
+          "sequence_template": {
+            "default": false,
+            "title": "Sequence Template",
+            "type": "boolean"
+          },
+          "set_aside": {
+            "title": "Set Aside",
+            "type": "boolean"
+          },
+          "setup": {
+            "additionalProperties": true,
+            "title": "Setup",
+            "type": "object"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "turn_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Turn Ids",
+            "type": "array"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "row_idx",
+          "title",
+          "state",
+          "setup",
+          "selection",
+          "revision",
+          "set_aside",
+          "actor",
+          "created_at",
+          "updated_at",
+          "turn_ids",
+          "node_ids"
+        ],
+        "title": "DirectionView",
+        "type": "object"
+      },
+      "DisplaySelection": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "node_ids"
+        ],
+        "title": "DisplaySelection",
         "type": "object"
       },
       "Engine": {
@@ -816,6 +1826,346 @@
         "title": "Events",
         "type": "object"
       },
+      "ExecutionControlView": {
+        "properties": {
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cancel_requested": {
+            "default": 0,
+            "title": "Cancel Requested",
+            "type": "integer"
+          },
+          "last_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Action"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested At"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "project",
+              "run",
+              "sequence"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "target_id",
+          "workspace_id",
+          "revision",
+          "paused",
+          "last_action",
+          "actor",
+          "reason",
+          "requested_at"
+        ],
+        "title": "ExecutionControlView",
+        "type": "object"
+      },
+      "ExecutionGroupView": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Ref"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionOutputView"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "slot_id": {
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "take": {
+            "title": "Take",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slot_id",
+          "take",
+          "state",
+          "job_ref",
+          "metadata",
+          "created_at",
+          "updated_at",
+          "outputs"
+        ],
+        "title": "ExecutionGroupView",
+        "type": "object"
+      },
+      "ExecutionOutputView": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "descriptor": {
+            "additionalProperties": true,
+            "title": "Descriptor",
+            "type": "object"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "identity": {
+            "title": "Identity",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "purged_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purged At"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          }
+        },
+        "required": [
+          "id",
+          "group_id",
+          "identity",
+          "ordinal",
+          "node_id",
+          "role",
+          "filename",
+          "media_type",
+          "sha256",
+          "size_bytes",
+          "descriptor",
+          "error",
+          "available",
+          "purged_at",
+          "created_at"
+        ],
+        "title": "ExecutionOutputView",
+        "type": "object"
+      },
+      "ExecutionReview": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "blocked_attempts": {
+            "title": "Blocked Attempts",
+            "type": "integer"
+          },
+          "direction_id": {
+            "title": "Direction Id",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "maximum_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Usd"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "ready_attempts": {
+            "title": "Ready Attempts",
+            "type": "integer"
+          },
+          "reserved_usd": {
+            "default": 0,
+            "title": "Reserved Usd",
+            "type": "number"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "snapshot": {
+            "additionalProperties": true,
+            "title": "Snapshot",
+            "type": "object"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction_id",
+          "revision",
+          "token",
+          "ready",
+          "errors",
+          "attempts",
+          "ready_attempts",
+          "blocked_attempts",
+          "maximum_usd",
+          "snapshot"
+        ],
+        "title": "ExecutionReview",
+        "type": "object"
+      },
       "ExternalBatch": {
         "description": "One external model's share of a Run — `takes` slots of it, each a\nfresh seed under the turn's policy, all concurrent and priced.",
         "properties": {
@@ -1050,6 +2400,23 @@
         "title": "GpuState",
         "type": "object"
       },
+      "GraphTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "default": "",
+            "title": "Field",
+            "type": "string"
+          },
+          "node_id": {
+            "default": "",
+            "title": "Node Id",
+            "type": "string"
+          }
+        },
+        "title": "GraphTarget",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1227,6 +2594,11 @@
             "title": "Presets",
             "type": "array"
           },
+          "preview": {
+            "default": false,
+            "title": "Preview",
+            "type": "boolean"
+          },
           "promote_dir": {
             "$ref": "#/components/schemas/HealthPromoteDir"
           },
@@ -1264,6 +2636,265 @@
           "mounted"
         ],
         "title": "HealthPromoteDir",
+        "type": "object"
+      },
+      "ImageBox": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 64000000.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "maximum": 64000000.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          },
+          "x": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "title": "ImageBox",
+        "type": "object"
+      },
+      "ImagePlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "crop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageBox"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageBox"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "node_id"
+        ],
+        "title": "ImagePlacement",
+        "type": "object"
+      },
+      "ImagePreparation": {
+        "additionalProperties": false,
+        "properties": {
+          "background": {
+            "default": "transparent",
+            "enum": [
+              "transparent",
+              "white",
+              "black"
+            ],
+            "title": "Background",
+            "type": "string"
+          },
+          "height": {
+            "default": 1024,
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImagePlacement"
+            },
+            "maxItems": 16,
+            "title": "Items",
+            "type": "array"
+          },
+          "mode": {
+            "default": "crop",
+            "enum": [
+              "crop",
+              "resize",
+              "arrange"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "resample": {
+            "default": "lanczos",
+            "enum": [
+              "nearest",
+              "lanczos"
+            ],
+            "title": "Resample",
+            "type": "string"
+          },
+          "width": {
+            "default": 1024,
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "title": "ImagePreparation",
+        "type": "object"
+      },
+      "ImportMaterial": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "data_base64": {
+            "maxLength": 188743680,
+            "title": "Data Base64",
+            "type": "string"
+          },
+          "direction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Id"
+          },
+          "explanation": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Explanation",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "parents": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Parents",
+            "type": "array"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "tool": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "filename",
+          "data_base64"
+        ],
+        "title": "ImportMaterial",
+        "type": "object"
+      },
+      "ImportOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "source_name": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Node Id"
+          },
+          "source_text": {
+            "default": "",
+            "maxLength": 8388608,
+            "title": "Source Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "name"
+        ],
+        "title": "ImportOperation",
+        "type": "object"
+      },
+      "ImportResult": {
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/DirectionView"
+          },
+          "node": {
+            "additionalProperties": true,
+            "title": "Node",
+            "type": "object"
+          }
+        },
+        "required": [
+          "node",
+          "direction"
+        ],
+        "title": "ImportResult",
         "type": "object"
       },
       "InFlight": {
@@ -1468,6 +3099,32 @@
         "title": "InputTarget",
         "type": "object"
       },
+      "InspectOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision"
+        ],
+        "title": "InspectOperation",
+        "type": "object"
+      },
       "Lanes": {
         "properties": {
           "external": {
@@ -1544,6 +3201,538 @@
           "slots"
         ],
         "title": "LocalLane",
+        "type": "object"
+      },
+      "MaskAdjustment": {
+        "additionalProperties": false,
+        "properties": {
+          "crop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageBox"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explanation": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Explanation",
+            "type": "string"
+          },
+          "resize_to_source": {
+            "default": false,
+            "title": "Resize To Source",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "explanation"
+        ],
+        "title": "MaskAdjustment",
+        "type": "object"
+      },
+      "MaskSourceView": {
+        "properties": {
+          "coordinates": {
+            "title": "Coordinates",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "node_id",
+          "sha256",
+          "width",
+          "height",
+          "coordinates"
+        ],
+        "title": "MaskSourceView",
+        "type": "object"
+      },
+      "MaskView": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "original_sha256": {
+            "title": "Original Sha256",
+            "type": "string"
+          },
+          "previous_mask_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Mask Id"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_node_id": {
+            "title": "Source Node Id",
+            "type": "string"
+          },
+          "source_sha256": {
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "transform": {
+            "additionalProperties": true,
+            "title": "Transform",
+            "type": "object"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "source_node_id",
+          "source_sha256",
+          "width",
+          "height",
+          "name",
+          "sha256",
+          "original_sha256",
+          "previous_mask_id",
+          "transform",
+          "actor",
+          "created_at",
+          "available"
+        ],
+        "title": "MaskView",
+        "type": "object"
+      },
+      "MaterialInfo": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "origin": {
+            "additionalProperties": true,
+            "title": "Origin",
+            "type": "object"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "node_id",
+          "sha256",
+          "filename",
+          "media_type",
+          "width",
+          "height",
+          "origin"
+        ],
+        "title": "MaterialInfo",
+        "type": "object"
+      },
+      "MaterialNode": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "charged_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charged Usd"
+          },
+          "committed_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Usd"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mesh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeMesh"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "output_index": {
+            "title": "Output Index",
+            "type": "integer"
+          },
+          "parents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parents",
+            "type": "array"
+          },
+          "payload": {
+            "enum": [
+              "image",
+              "3d"
+            ],
+            "title": "Payload",
+            "type": "string"
+          },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "purged_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purged At"
+          },
+          "retained_files": {
+            "items": {
+              "$ref": "#/components/schemas/RetainedFile"
+            },
+            "title": "Retained Files",
+            "type": "array"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "set_aside": {
+            "title": "Set Aside",
+            "type": "boolean"
+          },
+          "slot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Id"
+          },
+          "slot_pos": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Pos"
+          },
+          "take": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          },
+          "turn_idx": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Idx"
+          },
+          "verb": {
+            "title": "Verb",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "x": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X"
+          },
+          "y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "turn_id",
+          "slot_id",
+          "take",
+          "payload",
+          "verb",
+          "prompt",
+          "engine",
+          "seed",
+          "duration_ms",
+          "committed_usd",
+          "charged_usd",
+          "set_aside",
+          "x",
+          "y",
+          "created_at",
+          "parents",
+          "turn_idx",
+          "slot_pos",
+          "output_index",
+          "available",
+          "purged_at",
+          "material"
+        ],
+        "title": "MaterialNode",
+        "type": "object"
+      },
+      "MaterialRecord": {
+        "properties": {
+          "controls": {
+            "additionalProperties": true,
+            "title": "Controls",
+            "type": "object"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "regions": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regions"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "submitted": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted"
+          }
+        },
+        "required": [
+          "node_id",
+          "request",
+          "controls",
+          "submitted",
+          "regions"
+        ],
+        "title": "MaterialRecord",
         "type": "object"
       },
       "MeshBatch": {
@@ -1697,7 +3886,7 @@
         "type": "object"
       },
       "Node": {
-        "description": "A landed generation on the canvas (PRD §2). Blobs and server\npaths (output_path, submitted_graph, external, dials) never leave the\nserver — same rule as Slot; slimming lives in api_v4._node_view.\n`turn_idx` + `slot_pos` feed the card footer (`12b · FLUX…`: the card's\nletters are slot letters).",
+        "description": "A compact landed-material view, slimmed by api_v4._node_view.\n\nThis view omits paths, submitted graphs, external envelopes and dials.\nExplicit Crexil provenance reads expose saved requests and settings separately;\ncurrent runtime definitions never substitute for a take's historical facts.\nThe card footer uses turn_idx and slot_pos; its letters identify slots.",
         "properties": {
           "charged_usd": {
             "anyOf": [
@@ -2154,6 +4343,396 @@
         "title": "OpenRouterProbe",
         "type": "object"
       },
+      "OperationBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "cost_note": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Cost Note",
+            "type": "string"
+          },
+          "cost_review": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "unmetered",
+              "paid"
+            ],
+            "title": "Cost Review",
+            "type": "string"
+          },
+          "dependency_note": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Dependency Note",
+            "type": "string"
+          },
+          "downloads": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "none",
+              "ready",
+              "required"
+            ],
+            "title": "Downloads",
+            "type": "string"
+          },
+          "runtime": {
+            "const": "comfy",
+            "default": "comfy",
+            "title": "Runtime",
+            "type": "string"
+          }
+        },
+        "title": "OperationBinding",
+        "type": "object"
+      },
+      "OperationChoice": {
+        "properties": {
+          "controls": {
+            "additionalProperties": true,
+            "title": "Controls",
+            "type": "object"
+          },
+          "count": {
+            "default": 1,
+            "maximum": 16.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "revision"
+        ],
+        "title": "OperationChoice",
+        "type": "object"
+      },
+      "OperationDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "enum": [
+                "generate",
+                "continue",
+                "combine",
+                "custom"
+              ],
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Description",
+            "type": "string"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "title": "Graph",
+            "type": "object"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/PublicControl"
+            },
+            "maxItems": 128,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/OutputPort"
+            },
+            "maxItems": 128,
+            "title": "Outputs",
+            "type": "array"
+          },
+          "requirements": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Requirements",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourcePort"
+            },
+            "maxItems": 32,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "title": "OperationDefinition",
+        "type": "object"
+      },
+      "OperationRequirements": {
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "string"
+          },
+          "runtime_url": {
+            "title": "Runtime Url",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "revision",
+          "checked_at",
+          "runtime_url",
+          "state",
+          "findings",
+          "gaps",
+          "limitations"
+        ],
+        "title": "OperationRequirements",
+        "type": "object"
+      },
+      "OperationView": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "attempt_max": {
+            "default": 16,
+            "title": "Attempt Max",
+            "type": "integer"
+          },
+          "availability": {
+            "title": "Availability",
+            "type": "string"
+          },
+          "cost_basis": {
+            "title": "Cost Basis",
+            "type": "string"
+          },
+          "data_destination": {
+            "title": "Data Destination",
+            "type": "string"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "execution_location": {
+            "title": "Execution Location",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "maximum_usd_per_attempt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Usd Per Attempt"
+          },
+          "output_payload": {
+            "default": "image",
+            "title": "Output Payload",
+            "type": "string"
+          },
+          "price_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "string"
+          },
+          "source_limit": {
+            "title": "Source Limit",
+            "type": "integer"
+          },
+          "source_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "revision",
+          "actions",
+          "inputs",
+          "source_limit",
+          "evidence",
+          "availability",
+          "reasons",
+          "execution_location",
+          "data_destination",
+          "price_usd",
+          "maximum_usd_per_attempt",
+          "cost_basis"
+        ],
+        "title": "OperationView",
+        "type": "object"
+      },
+      "OutputPort": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "default": "images",
+            "title": "Field",
+            "type": "string"
+          },
+          "node_id": {
+            "default": "",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "payload": {
+            "default": "image",
+            "enum": [
+              "image",
+              "3d",
+              "file"
+            ],
+            "title": "Payload",
+            "type": "string"
+          },
+          "primary": {
+            "default": false,
+            "title": "Primary",
+            "type": "boolean"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "role": {
+            "default": "unclassified",
+            "enum": [
+              "final",
+              "alternative",
+              "layer",
+              "mask",
+              "preview",
+              "companion",
+              "intermediate",
+              "unclassified"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "when": {
+            "additionalProperties": true,
+            "title": "When",
+            "type": "object"
+          }
+        },
+        "title": "OutputPort",
+        "type": "object"
+      },
       "Passes": {
         "description": "A region take's pipeline position: pass `current` of\n`total` — the queue view's \"running · pass 2 of 4\".",
         "properties": {
@@ -2171,6 +4750,129 @@
           "total"
         ],
         "title": "Passes",
+        "type": "object"
+      },
+      "Preparation": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "generate",
+            "enum": [
+              "generate",
+              "continue",
+              "combine",
+              "region",
+              "custom",
+              "mesh",
+              "decimate",
+              "texture",
+              "import",
+              "prepare"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "attempt_limit": {
+            "default": 16,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Attempt Limit",
+            "type": "integer"
+          },
+          "controls": {
+            "additionalProperties": true,
+            "title": "Controls",
+            "type": "object"
+          },
+          "image_preparation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImagePreparation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "instructions": {
+            "default": "",
+            "maxLength": 32000,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/OperationChoice"
+            },
+            "maxItems": 32,
+            "title": "Operations",
+            "type": "array"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 32000,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "creative_request",
+            "enum": [
+              "creative_request",
+              "operation_test"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/Reference"
+            },
+            "maxItems": 32,
+            "title": "References",
+            "type": "array"
+          },
+          "region_overlap_policy": {
+            "anyOf": [
+              {
+                "const": "nd3-v1",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Overlap Policy"
+          },
+          "region_regenerate_unclaimed": {
+            "default": false,
+            "title": "Region Regenerate Unclaimed",
+            "type": "boolean"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/RegionInstruction"
+            },
+            "maxItems": 8,
+            "title": "Regions",
+            "type": "array"
+          },
+          "spending_limit_usd": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Spending Limit Usd",
+            "type": "number"
+          },
+          "spending_policy": {
+            "default": "hard_cap",
+            "enum": [
+              "hard_cap",
+              "published_tariff"
+            ],
+            "title": "Spending Policy",
+            "type": "string"
+          }
+        },
+        "title": "Preparation",
         "type": "object"
       },
       "Preset": {
@@ -2243,6 +4945,304 @@
           "inputs"
         ],
         "title": "Preset",
+        "type": "object"
+      },
+      "ProjectBackup": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "records": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Records",
+            "type": "object"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "project_name",
+          "created_at",
+          "sha256",
+          "size_bytes",
+          "records",
+          "files"
+        ],
+        "title": "ProjectBackup",
+        "type": "object"
+      },
+      "ProjectLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_limit": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Limit"
+          },
+          "spending_limit_usd": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spending Limit Usd"
+          },
+          "spending_policy": {
+            "default": "hard_cap",
+            "enum": [
+              "hard_cap",
+              "published_tariff"
+            ],
+            "title": "Spending Policy",
+            "type": "string"
+          }
+        },
+        "title": "ProjectLimits",
+        "type": "object"
+      },
+      "ProjectRecord": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionView"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "direction_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Direction Ids",
+            "type": "array"
+          },
+          "material_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Material Ids",
+            "type": "array"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          },
+          "turn_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Turn Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions",
+          "next_before",
+          "material_ids",
+          "direction_ids",
+          "turn_ids"
+        ],
+        "title": "ProjectRecord",
+        "type": "object"
+      },
+      "ProjectSnapshot": {
+        "properties": {
+          "accounting": {
+            "additionalProperties": true,
+            "title": "Accounting",
+            "type": "object"
+          },
+          "charged_usd": {
+            "title": "Charged Usd",
+            "type": "number"
+          },
+          "directions": {
+            "items": {
+              "$ref": "#/components/schemas/DirectionView"
+            },
+            "title": "Directions",
+            "type": "array"
+          },
+          "event_seq": {
+            "title": "Event Seq",
+            "type": "integer"
+          },
+          "execution_controls": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionControlView"
+            },
+            "title": "Execution Controls",
+            "type": "array"
+          },
+          "execution_groups": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionGroupView"
+            },
+            "title": "Execution Groups",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectView"
+          },
+          "restoration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restoration"
+          },
+          "sequences": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceView"
+            },
+            "title": "Sequences",
+            "type": "array"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project",
+          "directions",
+          "nodes",
+          "turns",
+          "charged_usd",
+          "event_seq",
+          "execution_groups"
+        ],
+        "title": "ProjectSnapshot",
+        "type": "object"
+      },
+      "ProjectView": {
+        "properties": {
+          "brief": {
+            "title": "Brief",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "dials": {
+            "additionalProperties": true,
+            "title": "Dials",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "title": "Instructions",
+            "type": "string"
+          },
+          "limits": {
+            "additionalProperties": true,
+            "title": "Limits",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "viewport": {
+            "additionalProperties": true,
+            "title": "Viewport",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "viewport",
+          "dials",
+          "created_at",
+          "updated_at",
+          "brief",
+          "instructions",
+          "revision",
+          "limits"
+        ],
+        "title": "ProjectView",
         "type": "object"
       },
       "PromoteBrowse": {
@@ -2584,6 +5584,18 @@
             ],
             "title": "Description"
           },
+          "discovered_model": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovered Model"
+          },
           "enabled": {
             "anyOf": [
               {
@@ -2594,6 +5606,36 @@
               }
             ],
             "title": "Enabled"
+          },
+          "endpoint_discovery_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Discovery Error"
+          },
+          "endpoints": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Endpoints",
+            "type": "array"
+          },
+          "endpoints_fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoints Fetched At"
           },
           "id": {
             "title": "Id",
@@ -2717,6 +5759,96 @@
         "title": "ProvidersInfo",
         "type": "object"
       },
+      "PublicControl": {
+        "additionalProperties": false,
+        "properties": {
+          "choices": {
+            "items": {},
+            "maxItems": 1000,
+            "title": "Choices",
+            "type": "array"
+          },
+          "default": {
+            "title": "Default"
+          },
+          "key": {
+            "default": "",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/GraphTarget"
+            },
+            "maxItems": 32,
+            "title": "Targets",
+            "type": "array"
+          },
+          "type": {
+            "default": "text",
+            "enum": [
+              "text",
+              "int",
+              "float",
+              "enum",
+              "seed",
+              "bool"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "when": {
+            "additionalProperties": true,
+            "title": "When",
+            "type": "object"
+          }
+        },
+        "title": "PublicControl",
+        "type": "object"
+      },
       "Purge": {
         "description": "The one irreversible verb (law 7). Ids must all be live set-aside\nnodes of the workspace — purge empties the tray, never the canvas —\nand the call is all-or-nothing, so the held button's count is exact.",
         "properties": {
@@ -2834,6 +5966,116 @@
         "title": "QueueView",
         "type": "object"
       },
+      "RecordAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "direction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Id"
+          },
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "previous_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Id"
+          },
+          "reason": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "reason"
+        ],
+        "title": "RecordAssessment",
+        "type": "object"
+      },
+      "Reference": {
+        "additionalProperties": false,
+        "properties": {
+          "contribution": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Contribution",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strength"
+          }
+        },
+        "required": [
+          "node_id"
+        ],
+        "title": "Reference",
+        "type": "object"
+      },
       "Region": {
         "description": "A committed region row (lineage). The mask itself is served at\n`mask_url` — mask_path never leaves the server.",
         "properties": {
@@ -2941,6 +6183,57 @@
           "preset_id"
         ],
         "title": "RegionBatch",
+        "type": "object"
+      },
+      "RegionInstruction": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "modify",
+            "enum": [
+              "keep",
+              "modify",
+              "replace",
+              "delete"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "mask_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Id"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "title": "RegionInstruction",
         "type": "object"
       },
       "RegionList": {
@@ -3062,6 +6355,126 @@
         "title": "RegionSpec",
         "type": "object"
       },
+      "RegistrationView": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "adaptation_note": {
+            "title": "Adaptation Note",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/OperationBinding"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/OperationDefinition"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inspection": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspection"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "operation_revision": {
+            "title": "Operation Revision",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "revisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Revisions",
+            "type": "array"
+          },
+          "source": {
+            "additionalProperties": true,
+            "title": "Source",
+            "type": "object"
+          },
+          "source_kind": {
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_sha256": {
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "source_text": {
+            "title": "Source Text",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "revision",
+          "operation_revision",
+          "source_name",
+          "source_text",
+          "source_sha256",
+          "source_kind",
+          "source",
+          "definition",
+          "binding",
+          "adaptation_note",
+          "actor",
+          "created_at",
+          "updated_at",
+          "gaps",
+          "inspection",
+          "evidence",
+          "revisions"
+        ],
+        "title": "RegistrationView",
+        "type": "object"
+      },
       "RenameWorkspace": {
         "description": "the slug is the promote path and never moves, so a rename is\nthe display name alone (db.rename_workspace).",
         "properties": {
@@ -3122,6 +6535,164 @@
         "title": "RerollResult",
         "type": "object"
       },
+      "ReserveArchive": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "minimum": 1.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "filename",
+          "size_bytes"
+        ],
+        "title": "ReserveArchive",
+        "type": "object"
+      },
+      "RestoreArchive": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "sha256"
+        ],
+        "title": "RestoreArchive",
+        "type": "object"
+      },
+      "RetainedFile": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "role",
+          "media_type",
+          "required",
+          "sha256",
+          "size_bytes",
+          "error",
+          "available",
+          "file"
+        ],
+        "title": "RetainedFile",
+        "type": "object"
+      },
       "RetryWait": {
         "description": "B2: a queued take waiting for its next automatic attempt;\nattempt i of n, and when the next try fires (`next_try_at`, server\nclock; `window` says whose clock: the provider's Retry-After or the\ncockpit's default). The cell counts down from it; GIVE UP is the\nslot's cancel.",
         "properties": {
@@ -3168,6 +6739,120 @@
           "next_try_at"
         ],
         "title": "RetryWait",
+        "type": "object"
+      },
+      "ReuseFile": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "filename",
+          "sha256",
+          "size_bytes"
+        ],
+        "title": "ReuseFile",
+        "type": "object"
+      },
+      "ReuseReview": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ReuseFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "payload": {
+            "title": "Payload",
+            "type": "string"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "source_node_id": {
+            "title": "Source Node Id",
+            "type": "string"
+          },
+          "source_project_id": {
+            "title": "Source Project Id",
+            "type": "string"
+          },
+          "source_project_name": {
+            "title": "Source Project Name",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "token",
+          "source_project_id",
+          "source_project_name",
+          "source_node_id",
+          "filename",
+          "payload",
+          "files",
+          "total_bytes",
+          "missing",
+          "errors",
+          "ready"
+        ],
+        "title": "ReuseReview",
+        "type": "object"
+      },
+      "ReuseSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "source_project_id": {
+            "title": "Source Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_project_id",
+          "node_id"
+        ],
+        "title": "ReuseSelection",
         "type": "object"
       },
       "Run": {
@@ -3252,6 +6937,370 @@
         "title": "RunResult",
         "type": "object"
       },
+      "SaveMask": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "adjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaskAdjustment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data_base64": {
+            "anyOf": [
+              {
+                "maxLength": 33554432,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Base64"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "previous_mask_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Mask Id"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "source_node_id": {
+            "title": "Source Node Id",
+            "type": "string"
+          },
+          "source_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Source Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "source_node_id",
+          "source_sha256",
+          "name"
+        ],
+        "title": "SaveMask",
+        "type": "object"
+      },
+      "SequenceDependency": {
+        "additionalProperties": false,
+        "properties": {
+          "contribution": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Contribution",
+            "type": "string"
+          },
+          "placement": {
+            "default": "after_fixed",
+            "enum": [
+              "before_fixed",
+              "after_fixed"
+            ],
+            "title": "Placement",
+            "type": "string"
+          },
+          "selection": {
+            "enum": [
+              "all_successful",
+              "chosen"
+            ],
+            "title": "Selection",
+            "type": "string"
+          },
+          "step_key": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Step Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_key",
+          "selection"
+        ],
+        "title": "SequenceDependency",
+        "type": "object"
+      },
+      "SequenceReview": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "sequence_id": {
+            "title": "Sequence Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "additionalProperties": true,
+            "title": "Snapshot",
+            "type": "object"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence_id",
+          "revision",
+          "token",
+          "ready",
+          "errors",
+          "snapshot"
+        ],
+        "title": "SequenceReview",
+        "type": "object"
+      },
+      "SequenceStep": {
+        "additionalProperties": false,
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceDependency"
+            },
+            "maxItems": 32,
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "direction_id": {
+            "title": "Direction Id",
+            "type": "string"
+          },
+          "input_mode": {
+            "default": "together",
+            "enum": [
+              "together",
+              "each"
+            ],
+            "title": "Input Mode",
+            "type": "string"
+          },
+          "key": {
+            "pattern": "^[A-Za-z0-9_-]{1,80}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "direction_id",
+          "revision"
+        ],
+        "title": "SequenceStep",
+        "type": "object"
+      },
+      "SequenceStepView": {
+        "properties": {
+          "binding": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding"
+          },
+          "candidate_token": {
+            "title": "Candidate Token",
+            "type": "string"
+          },
+          "candidates": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "title": "Candidates",
+            "type": "object"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceDependency"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "direction_id": {
+            "title": "Direction Id",
+            "type": "string"
+          },
+          "input_mode": {
+            "title": "Input Mode",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "ordinal",
+          "direction_id",
+          "input_mode",
+          "dependencies",
+          "binding",
+          "decision",
+          "state",
+          "reason",
+          "candidates",
+          "candidate_token",
+          "runs"
+        ],
+        "title": "SequenceStepView",
+        "type": "object"
+      },
+      "SequenceView": {
+        "properties": {
+          "accounting": {
+            "additionalProperties": true,
+            "title": "Accounting",
+            "type": "object"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "title": "Instructions",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ProjectLimits"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceStepView"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "title",
+          "instructions",
+          "limits",
+          "state",
+          "revision",
+          "actor",
+          "created_at",
+          "updated_at",
+          "steps",
+          "accounting"
+        ],
+        "title": "SequenceView",
+        "type": "object"
+      },
       "SetupKey": {
         "properties": {
           "api_key": {
@@ -3263,6 +7312,32 @@
           "api_key"
         ],
         "title": "SetupKey",
+        "type": "object"
+      },
+      "SetupOverview": {
+        "properties": {
+          "comfyui": {
+            "$ref": "#/components/schemas/HealthComfy"
+          },
+          "comfyui_url": {
+            "title": "Comfyui Url",
+            "type": "string"
+          },
+          "openrouter": {
+            "$ref": "#/components/schemas/SetupStatus"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "preview",
+          "comfyui_url",
+          "comfyui",
+          "openrouter"
+        ],
+        "title": "SetupOverview",
         "type": "object"
       },
       "SetupStatus": {
@@ -3674,6 +7749,133 @@
         "title": "SlotView",
         "type": "object"
       },
+      "SourcePort": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "default": "",
+            "title": "Field",
+            "type": "string"
+          },
+          "kind": {
+            "default": "image",
+            "enum": [
+              "image",
+              "mask"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "node_id": {
+            "default": "",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "role": {
+            "default": "",
+            "title": "Role",
+            "type": "string"
+          },
+          "when": {
+            "additionalProperties": true,
+            "title": "When",
+            "type": "object"
+          }
+        },
+        "title": "SourcePort",
+        "type": "object"
+      },
+      "StartSequence": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "review_token": {
+            "title": "Review Token",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "review_token"
+        ],
+        "title": "StartSequence",
+        "type": "object"
+      },
+      "SubmitDirection": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "review_token": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Review Token",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "review_token"
+        ],
+        "title": "SubmitDirection",
+        "type": "object"
+      },
+      "SubmittedDirection": {
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/DirectionView"
+          },
+          "review_token": {
+            "title": "Review Token",
+            "type": "string"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "turn_id",
+          "review_token"
+        ],
+        "title": "SubmittedDirection",
+        "type": "object"
+      },
       "Tray": {
         "properties": {
           "bytes": {
@@ -4073,6 +8275,231 @@
         "title": "UnbenchResult",
         "type": "object"
       },
+      "UpdateDirection": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/Preparation"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "title",
+          "setup"
+        ],
+        "title": "UpdateDirection",
+        "type": "object"
+      },
+      "UpdateOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "adaptation_note": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Adaptation Note",
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/OperationBinding"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/OperationDefinition"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "name",
+          "definition",
+          "binding"
+        ],
+        "title": "UpdateOperation",
+        "type": "object"
+      },
+      "UpdateProject": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "brief": {
+            "default": "",
+            "maxLength": 32000,
+            "title": "Brief",
+            "type": "string"
+          },
+          "instructions": {
+            "default": "",
+            "maxLength": 32000,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectLimits"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "name"
+        ],
+        "title": "UpdateProject",
+        "type": "object"
+      },
+      "UpdateSequence": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "instructions": {
+            "default": "",
+            "maxLength": 32000,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ProjectLimits"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "title",
+          "limits"
+        ],
+        "title": "UpdateSequence",
+        "type": "object"
+      },
+      "UpdateSequenceStep": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/SequenceDependency"
+            },
+            "maxItems": 32,
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "input_mode": {
+            "enum": [
+              "together",
+              "each"
+            ],
+            "title": "Input Mode",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "revision",
+          "input_mode"
+        ],
+        "title": "UpdateSequenceStep",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -4352,6 +8779,2738 @@
           }
         },
         "summary": "Costs"
+      }
+    },
+    "/api/crexil/archive-uploads": {
+      "post": {
+        "operationId": "reserve_archive_api_crexil_archive_uploads_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveArchive"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveUpload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reserve Archive",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/archive-uploads/{uid}": {
+      "get": {
+        "operationId": "archive_upload_state_api_crexil_archive_uploads__uid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "title": "Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveUpload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Upload State",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/archive-uploads/{uid}/file": {
+      "put": {
+        "operationId": "upload_archive_api_crexil_archive_uploads__uid__file_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "title": "Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveUpload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Archive",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/archive-uploads/{uid}/restore": {
+      "post": {
+        "operationId": "restore_archive_api_crexil_archive_uploads__uid__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "uid",
+            "required": true,
+            "schema": {
+              "title": "Uid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreArchive"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveRestoreResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Archive",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/attempts/{sid}/collect": {
+      "post": {
+        "operationId": "collect_execution_api_crexil_attempts__sid__collect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectExecution"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionGroupView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collect Execution",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/backups/{bid}/file": {
+      "get": {
+        "operationId": "backup_file_api_crexil_backups__bid__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bid",
+            "required": true,
+            "schema": {
+              "title": "Bid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Backup File",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/deliveries/{did}": {
+      "get": {
+        "operationId": "delivery_state_api_crexil_deliveries__did__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delivery State",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/deliveries/{did}/transfer": {
+      "post": {
+        "operationId": "transfer_delivery_api_crexil_deliveries__did__transfer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Command"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Delivery",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}": {
+      "patch": {
+        "operationId": "update_direction_api_crexil_directions__did__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDirection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Direction",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}/image-review": {
+      "get": {
+        "operationId": "review_image_preparation_api_crexil_directions__did__image_review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Image Preparation",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}/prepare-image": {
+      "post": {
+        "operationId": "prepare_image_api_crexil_directions__did__prepare_image_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitDirection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Image",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}/review": {
+      "get": {
+        "operationId": "review_direction_api_crexil_directions__did__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Direction",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}/selection": {
+      "put": {
+        "operationId": "display_selection_api_crexil_directions__did__selection_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisplaySelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Display Selection",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}/state": {
+      "post": {
+        "operationId": "direction_state_api_crexil_directions__did__state_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectionState"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Direction State",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}/submit": {
+      "post": {
+        "operationId": "submit_direction_api_crexil_directions__did__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitDirection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmittedDirection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Direction",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/execution/{scope}/{target_id}": {
+      "get": {
+        "operationId": "execution_control_state_api_crexil_execution__scope___target_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "enum": [
+                "project",
+                "run",
+                "sequence"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionControlView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execution Control State",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "post": {
+        "operationId": "control_execution_api_crexil_execution__scope___target_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "enum": [
+                "project",
+                "run",
+                "sequence"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlExecution"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionControlView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Control Execution",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/masks/{mid}/image": {
+      "get": {
+        "operationId": "mask_image_api_crexil_masks__mid__image_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mid",
+            "required": true,
+            "schema": {
+              "title": "Mid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mask Image",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/material/{nid}/files/{fid}": {
+      "get": {
+        "operationId": "retained_material_file_api_crexil_material__nid__files__fid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nid",
+            "required": true,
+            "schema": {
+              "title": "Nid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fid",
+            "required": true,
+            "schema": {
+              "title": "Fid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retained Material File",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/material/{nid}/record": {
+      "get": {
+        "operationId": "material_record_api_crexil_material__nid__record_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nid",
+            "required": true,
+            "schema": {
+              "title": "Nid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Record",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/operation-requirements": {
+      "get": {
+        "operationId": "operation_requirements_api_crexil_operation_requirements_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "title": "Revision",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationRequirements"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operation Requirements",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/operations": {
+      "get": {
+        "operationId": "operations_api_crexil_operations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OperationView"
+                  },
+                  "title": "Response Operations Api Crexil Operations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Operations",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/outputs/{oid}/file": {
+      "get": {
+        "operationId": "output_file_api_crexil_outputs__oid__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "oid",
+            "required": true,
+            "schema": {
+              "title": "Oid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Output File",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects": {
+      "get": {
+        "operationId": "projects_api_crexil_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectView"
+                  },
+                  "title": "Response Projects Api Crexil Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Projects",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "post": {
+        "operationId": "create_project_api_crexil_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProject"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Project",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}": {
+      "get": {
+        "operationId": "project_snapshot_api_crexil_projects__wid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Project Snapshot",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "patch": {
+        "operationId": "update_project_api_crexil_projects__wid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProject"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/assessments": {
+      "post": {
+        "operationId": "record_assessment_api_crexil_projects__wid__assessments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordAssessment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Assessment",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/backups": {
+      "post": {
+        "operationId": "create_backup_api_crexil_projects__wid__backups_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Command"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectBackup"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Backup",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/deliveries": {
+      "get": {
+        "operationId": "list_deliveries_api_crexil_projects__wid__deliveries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryView"
+                  },
+                  "title": "Response List Deliveries Api Crexil Projects  Wid  Deliveries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Deliveries",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "post": {
+        "operationId": "prepare_delivery_api_crexil_projects__wid__deliveries_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDelivery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Delivery",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/deliveries.csv": {
+      "get": {
+        "operationId": "delivery_csv_api_crexil_projects__wid__deliveries_csv_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delivery Csv",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/deliveries/review": {
+      "post": {
+        "operationId": "review_delivery_api_crexil_projects__wid__deliveries_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliverySelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Delivery",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/directions": {
+      "post": {
+        "operationId": "create_direction_api_crexil_projects__wid__directions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDirection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Direction",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/imports/{request_id}": {
+      "get": {
+        "operationId": "import_receipt_api_crexil_projects__wid__imports__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Receipt",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/mask-source/{nid}": {
+      "get": {
+        "operationId": "mask_source_api_crexil_projects__wid__mask_source__nid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "nid",
+            "required": true,
+            "schema": {
+              "title": "Nid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaskSourceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mask Source",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/masks": {
+      "get": {
+        "operationId": "saved_masks_api_crexil_projects__wid__masks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MaskView"
+                  },
+                  "title": "Response Saved Masks Api Crexil Projects  Wid  Masks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Saved Masks",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "post": {
+        "operationId": "save_mask_api_crexil_projects__wid__masks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMask"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaskView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Mask",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/material": {
+      "post": {
+        "operationId": "import_material_api_crexil_projects__wid__material_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportMaterial"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Material",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/record": {
+      "get": {
+        "operationId": "project_record_api_crexil_projects__wid__record_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 500,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Direction Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "turn_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turn Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Project Record",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/reuse": {
+      "post": {
+        "operationId": "reuse_material_api_crexil_projects__wid__reuse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReuse"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reuse Material",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/reuse/review": {
+      "post": {
+        "operationId": "review_reuse_api_crexil_projects__wid__reuse_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReuseSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReuseReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Reuse",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/sequences": {
+      "post": {
+        "operationId": "create_sequence_api_crexil_projects__wid__sequences_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSequence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Sequence",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/registrations": {
+      "get": {
+        "operationId": "registrations_api_crexil_registrations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RegistrationView"
+                  },
+                  "title": "Response Registrations Api Crexil Registrations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Registrations",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "post": {
+        "operationId": "import_operation_api_crexil_registrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportOperation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Operation",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/registrations/{rid}": {
+      "get": {
+        "operationId": "registration_api_crexil_registrations__rid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Registration",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "patch": {
+        "operationId": "update_operation_api_crexil_registrations__rid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOperation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Operation",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/registrations/{rid}/export": {
+      "get": {
+        "operationId": "export_operation_api_crexil_registrations__rid__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Operation",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/registrations/{rid}/inspect": {
+      "post": {
+        "operationId": "inspect_operation_api_crexil_registrations__rid__inspect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rid",
+            "required": true,
+            "schema": {
+              "title": "Rid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InspectOperation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inspect Operation",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/sequences/{sid}": {
+      "get": {
+        "operationId": "sequence_state_api_crexil_sequences__sid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sequence State",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      },
+      "patch": {
+        "operationId": "update_sequence_api_crexil_sequences__sid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSequence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Sequence",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/sequences/{sid}/reuse": {
+      "post": {
+        "operationId": "reuse_sequence_api_crexil_sequences__sid__reuse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Command"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reuse Sequence",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/sequences/{sid}/review": {
+      "get": {
+        "operationId": "review_sequence_api_crexil_sequences__sid__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Sequence",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/sequences/{sid}/start": {
+      "post": {
+        "operationId": "start_sequence_api_crexil_sequences__sid__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartSequence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Sequence",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/sequences/{sid}/steps/{key}": {
+      "patch": {
+        "operationId": "update_sequence_step_api_crexil_sequences__sid__steps__key__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSequenceStep"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Sequence Step",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/sequences/{sid}/steps/{key}/decision": {
+      "post": {
+        "operationId": "sequence_decision_api_crexil_sequences__sid__steps__key__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideSequence"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SequenceView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sequence Decision",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/setup": {
+      "get": {
+        "operationId": "setup_overview_api_crexil_setup_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Setup Overview",
+        "tags": [
+          "Crexil shared actions"
+        ]
       }
     },
     "/api/dials": {

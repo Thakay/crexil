@@ -385,10 +385,14 @@ async def test_a_queued_mesh_slot_survives_a_restart(tmp_path, monkeypatch):
     async with booted_mesh(tmp_path, monkeypatch, fakes2) as (client, _):
         turn = await settle_turn(turn_id, until={"landed", "failed",
                                                  "skipped"})
-        assert all(s["status"] == "landed" for s in turn["slots"]), \
-            [s["status"] for s in turn["slots"]]
+        assert [s['status'] for s in turn['slots']] == ['failed', 'landed']
+        assert turn['slots'][0]['kind'] == 'uncertain'
+        assert slots[0]['id'] not in fakes2['mesh'].starts
+        assert fakes2['mesh'].starts == [slots[1]['id']]
         nodes = (await client.get(f"/api/workspaces/{wid}/nodes")).json()
-        assert len([n for n in nodes if n["payload"] == "3d"]) == 2
+        meshes = [n for n in nodes if n['payload'] == '3d']
+        assert len(meshes) == 1
+        assert meshes[0]['parents'] == [node['id']]
 
 
 # --- the door's state, stated (law 12) ---

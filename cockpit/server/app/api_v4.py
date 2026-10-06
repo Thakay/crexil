@@ -291,21 +291,13 @@ async def workspace_view(wid: str, body: ViewUpdate):
 
 
 def _mesh_view(node: dict) -> dict | None:
-    """The slice of a mesh take's as-run record a face may see.
+    """Project the runner's measured mesh facts without inventing missing values.
 
-    The whole `{"mesh_job": …}` envelope stays server-side like every other
-    `submitted_graph` — this projects the six measured facts plus the two
-    ids the turntable routes need. Every value is `funnel.py`'s own
-    measurement; a fact the record doesn't carry stays null rather than
-    defaulting to a claim (law 12: unverified is shown as unverified).
-
-    `watertight` arrives as a list, one bool per geometry, and TRELLIS.2
-    legitimately returns false (open surfaces are recorded, not failed).
-    An empty list claims nothing.
-
-    The DECIMATE pair is `asked_triangles` (what the run requested) beside
-    `triangles` (what the mesh reached), because on a machine UV atlas
-    the two differ by design and only the pair says so."""
+    Requested and actual triangle counts remain distinct. Current companion
+    bytes decide field availability after retrieval repairs; the execution
+    receipt remains immutable. Turntables prefer retained local bytes; a runtime
+    lookup requires an observed runner job belonging to this installation.
+    """
     if node.get("payload") != "3d":
         return None
     job = ((node.get("submitted_graph") or {}).get("mesh_job") or {})
@@ -327,13 +319,15 @@ def _mesh_view(node: dict) -> dict | None:
         "file_mb": v.get("file_mb"),
         # what a client asks before requesting a plate; a mesh without one
         # keeps its card and its word (law 12), it is never hidden
-        "has_turntable": bool(job.get("turntable")),
+        "has_turntable": bool(not node.get('purged_at') and (
+            node.get('output_path') and Path(node['output_path']).with_suffix('.turntable.webp').is_file()
+            or job.get('turntable') and job.get('runner_job_id') and not (node.get('dials') or {}).get('crexil_restore'))),
         "asked_triangles": asked if isinstance(asked, int) else None,
         "forced": p.get("force") is True,
-        # Whether this mesh kept its voxel field, which is the whole
-        # of whether TRELLIS.2 can re-extract from it. A fact, not a guess —
-        # the executor records it only when the bytes actually landed.
-        "fields_kept": job.get("fields_kept") is True,
+        # Collection can recover a missing companion after the immutable
+        # node receipt was written. Current bytes decide re-extraction.
+        "fields_kept": bool(node.get("output_path") and not node.get("purged_at")
+                            and fields_sidecar(node["output_path"]).is_file()),
     }
 
 
@@ -404,6 +398,9 @@ async def _fetch_turntable(job: str) -> bytes:
     unit happens to be up on this machine, which is the coupling the
     harness exists to cut (`wiring.probe_mesh_runner` stands down the same
     way, for the same reason)."""
+    if config.CREXIL_PREVIEW:
+        raise HTTPException(503, "This preview cannot fetch a turntable from "
+                            "the 3D runtime. The imported mesh remains available.")
     if wiring.EXECUTOR_FACTORY is not None or config.HARNESS_EXECUTORS:
         from .harness import turntable_webp
         return turntable_webp(job)
@@ -425,17 +422,22 @@ async def _turntable_file(node: dict) -> Path:
     is unreachable keeps its card and its word (law 12)."""
     if node["payload"] != "3d":
         raise HTTPException(404, "only a mesh has a turntable")
+    if node.get('purged_at'):
+        raise HTTPException(404, 'This mesh was purged. Its preview is unavailable.')
+    dst = Path(node["output_path"]).with_suffix(".turntable.webp")
+    if dst.is_file():
+        return dst
+    if (node.get("dials") or {}).get("crexil_restore"):
+        raise HTTPException(404, "This restored mesh has no retained turntable. Its old runtime is not contacted.")
     mesh = _mesh_view(node) or {}
     job = mesh.get("runner_job_id")
     if not mesh.get("has_turntable") or not job:
         raise HTTPException(404, TURNTABLE_MISSING)
-    dst = Path(node["output_path"]).with_suffix(".turntable.webp")
-    if not dst.is_file():
-        data = await _fetch_turntable(str(job))
-        tmp = dst.with_suffix(f".tmp{os.getpid()}")
-        tmp.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_bytes(data)
-        os.replace(tmp, dst)             # two concurrent firsts can't tear
+    data = await _fetch_turntable(str(job))
+    tmp = dst.with_suffix(f".tmp{os.getpid()}")
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_bytes(data)
+    os.replace(tmp, dst)             # two concurrent firsts can't tear
     return dst
 
 
@@ -507,7 +509,7 @@ async def node_position(nid: str, body: NodePos):
 # --- the set-aside tray + purge (law 7) ---
 
 
-def _artefact_paths(node: dict, regions: list[dict]) -> list[Path]:
+def _artefact_paths(node: dict, regions: list[dict], companions: list[Path] | None = None) -> list[Path]:
     """Everything a node owns on disk: the staged artefact, the two caches
     beside it (node_thumb's and node_turntable's naming), its voxel-field
     sidecar and its region masks. The turntable cache and the field set are
@@ -518,9 +520,9 @@ def _artefact_paths(node: dict, regions: list[dict]) -> list[Path]:
     measured 21–92 MB against a 34–41 MB mesh, so a tray entry that omitted it
     could understate the purge by more than the artefact itself."""
     out = Path(node["output_path"])
-    return ([out, out.with_suffix(".thumb.webp"),
+    return list(dict.fromkeys([out, out.with_suffix(".thumb.webp"),
              out.with_suffix(".turntable.webp"), fields_sidecar(out)]
-            + [Path(r["mask_path"]) for r in regions])
+            + [Path(r["mask_path"]) for r in regions] + (companions or [])))
 
 
 def _bytes_on_disk(groups: list[list[Path]]) -> list[int]:
@@ -555,7 +557,8 @@ async def workspace_tray(wid: str):
         raise HTTPException(404, "no such workspace")
     nodes = await db.tray_nodes(wid)
     kids = await db.children_counts([n["id"] for n in nodes])
-    groups = [_artefact_paths(n, await db.regions_for_node(n["id"]))
+    from .execution_outputs import owned_companions
+    groups = [_artefact_paths(n, await db.regions_for_node(n["id"]), await owned_companions(db, n["id"]))
               for n in nodes]
     sizes = await run_in_threadpool(_bytes_on_disk, groups) if groups else []
     entries = [{**_node_view(n), "bytes": size,
@@ -574,31 +577,31 @@ async def purge_nodes(wid: str, body: Purge):
     db = _stack().db
     if await db.get_workspace(wid) is None:
         raise HTTPException(404, "no such workspace")
-    nodes = []
-    for nid in dict.fromkeys(body.ids):
-        node = await db.get_node(nid)
-        if node is None or node["purged_at"] or node["workspace_id"] != wid:
-            raise HTTPException(422, "one of those takes is not in this "
-                                "workspace's tray any more — nothing was "
-                                "purged; reopen the tray and hold again")
-        if not node["set_aside"]:
-            raise HTTPException(422, "that take is still on the canvas — "
-                                "purge only empties the tray; set it aside "
-                                "first. Nothing was purged")
-        nodes.append(node)
-    kids = await db.children_counts([n["id"] for n in nodes])
-    freed = 0
-    for node in nodes:
-        # the same list the tray counted, from the same function — the held
-        # button promised an exact figure, and two hand-kept lists is how
-        # that promise drifts (the one home: the field set is on that list,
-        # so purge frees it too)
-        regions = await db.regions_for_node(node["id"])
-        purged = await db.purge_node(node["id"])
-        paths = _artefact_paths(purged, regions)
-        freed += (await run_in_threadpool(_bytes_on_disk, [paths]))[0]
+    from .execution_outputs import owned_companions
+    groups = []
+    try:
+        # Validate and tombstone the entire request together. Required-source
+        # guards may refuse any target; no file is touched until all commit.
+        async with db._tx():
+            nodes = []
+            for nid in dict.fromkeys(body.ids):
+                node = await db.get_node(nid)
+                if node is None or node["purged_at"] or node["workspace_id"] != wid:
+                    raise HTTPException(422, "A take is not in this workspace's tray; nothing was purged. Reopen the tray.")
+                if not node["set_aside"]:
+                    raise HTTPException(422, "A take is still on the canvas. Set it aside first; nothing was purged.")
+                nodes.append(node)
+            kids = await db.children_counts([n["id"] for n in nodes])
+            for node in nodes:
+                regions = await db.regions_for_node(node["id"])
+                purged = await db.purge_node(node["id"])
+                groups.append(_artefact_paths(purged, regions, await owned_companions(db, node["id"])))
+            await db.touch_workspace(wid)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    freed = sum(await run_in_threadpool(_bytes_on_disk, groups))
+    for paths in groups:
         await run_in_threadpool(_unlink_all, paths)
-    await db.touch_workspace(wid)
     return {"purged": len(nodes), "freed_bytes": freed,
             "children": sum(kids.values()), "seq": await db.latest_seq()}
 
@@ -670,7 +673,7 @@ async def _stage_source(stack, node: dict) -> tuple[str, str]:
 
 
 def _build_local_graph(preset: dict, inputs: dict, capability: str,
-                       source_name: str | None):
+                       source_name: str | None, *, workflow: dict | None = None):
     """The per-take base graph + what a take still needs stamped on it.
     Returns (applied, seed_targets, base). A preset whose graph is missing a
     declared target is a config error the artist can act on, not a 500 —
@@ -683,7 +686,8 @@ def _build_local_graph(preset: dict, inputs: dict, capability: str,
     except (presets_mod.PresetError, ValueError, TypeError) as e:
         raise HTTPException(422, f"preset '{preset['id']}' can't take these "
                             f"inputs: {e}")
-    base = presets_mod.load_workflow(preset["workflows"][capability])
+    base = (copy.deepcopy(workflow) if workflow is not None else
+            presets_mod.load_workflow(preset["workflows"][capability]))
     try:
         if source_name is not None:
             presets_mod.patch_input(
@@ -892,6 +896,8 @@ async def _reroll(stack, slot: dict, turn: dict, verb: str,
     size, which becomes the cell's own dials from then on."""
     db, sched = stack.db, stack.scheduler
     slot_id = slot["id"]
+    if slot.get('dials', {}).get('crexil'):
+        raise HTTPException(409, 'Reuse this direction and review a new request. Its sources, operation revision and limits must be checked together.')
     if local_only and wiring.lane_of(slot["engine"]) != "local":
         raise HTTPException(409, f"LOCAL ONLY is on — '{slot['engine']}' is "
                             "a paid model, so this cell stays as it is and "

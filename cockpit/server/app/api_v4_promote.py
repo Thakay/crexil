@@ -50,7 +50,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from . import config, manifests, promote
-from .api_v4 import _live_node, _mesh_view, _stack, _turntable_file
+from .api_v4 import _live_node, _stack, _turntable_file
 from .db import new_id
 from .schemas import (PromoteBrowse, PromotePreview, PromoteRepoint,
                       PromoteTarget, Promotion)
@@ -228,41 +228,15 @@ async def promote_preview(nid: str):
     folder = _folder_for(node, workspace)
     dest = f"{root}/{folder}"
 
-    mesh = _mesh_view(node) or {}
-    # A mesh's rows are its own. The suffix is the artefact's own
-    # (`promote_candidate` keeps it), the manifest holds different facts,
-    # and the orbit rides beside the GLB — a promoted mesh that only a 3D
-    # viewer can open is a folder the artist can't read.
-    if node["payload"] == "3d":
-        files = [{"path": f"{dest}/{asset_id}"
-                          f"{Path(node['output_path']).suffix or '.glb'}",
-                  "what": "the mesh, exactly the file the engine wrote"},
-                 {"path": f"{dest}/{asset_id}.json",
-                  "what": "its manifest — engine, seed, the cutout, the "
-                          "mesh's own measurements, and the file itself by "
-                          "sha256"}]
-        if mesh.get("has_turntable"):
-            files.append({"path": f"{dest}/{asset_id}"
-                                  f"{manifests.TURNTABLE_SUFFIX}",
-                          "what": "the engine's own turntable render, so "
-                                  "the mesh has a face outside a 3D viewer"})
-    else:
-        files = [{"path": f"{dest}/{asset_id}.png",
-                  "what": "the take, full resolution, byte for byte"},
-                 {"path": f"{dest}/{asset_id}.json",
-                  "what": "its manifest — engine, prompt, seed, model files "
-                          "by sha256, the exact graph that ran"}]
-    for i, parent in enumerate(parents):
-        if Path(parent["output_path"]).is_file():
-            name = "source.png" if i == 0 else f"source-{i + 1}.png"
-            files.append({"path": f"{dest}/{asset_id}.inputs/{name}",
-                          "what": "the image this mesh was made from"
-                          if node["payload"] == "3d"
-                          else "the image this take was made from"})
-    region = ((turn or {}).get("dials") or {}).get("region") or {}
-    for rid in region.get("region_ids") or []:
-        files.append({"path": f"{dest}/{asset_id}.inputs/region-{rid}.png",
-                      "what": "a region mask this take was drawn through"})
+    _manifest, extra_files = await manifests.build_v4_manifest(
+        db, asset_id=asset_id, workspace=workspace, node=node, turn=turn,
+        slot=slot, parents=parents, turntable=await _orbit(node))
+    files = [{'path': f"{dest}/{asset_id}{Path(node['output_path']).suffix or '.png'}",
+              'what': 'the mesh, exactly the file the engine wrote' if node['payload']=='3d' else 'the original material, byte for byte'},
+             {'path': f'{dest}/{asset_id}.json', 'what': 'its execution, lineage and file manifest'}]
+    files.extend({'path': f'{dest}/{rel}', 'what': 'the engine turntable render' if rel.endswith(manifests.TURNTABLE_SUFFIX) else
+                   'the image this mesh was made from' if node['payload']=='3d' and '.inputs/source' in rel else
+                   'related material recorded in the manifest'} for _source, rel in extra_files)
 
     already = [e["ts"] for e in
                await db.node_events(nid, "node.promoted")]
@@ -270,9 +244,7 @@ async def promote_preview(nid: str):
         "node_id": nid, "asset_id": asset_id, "folder": dest, "files": files,
         "facts": _facts_line(node, turn, slot),
         "cost": _cost_line(node),
-        "replayable": (manifests.REPLAY_EXTERNAL if node.get("external")
-                       else manifests.REPLAY_MESH if node["payload"] == "3d"
-                       else manifests.REPLAY_LOCAL),
+        "replayable": _manifest['replayable'],
         "target": await _target(db),
         "already": already,
     }
@@ -293,10 +265,16 @@ async def promote_node(nid: str):
     manifest, extra_files = await manifests.build_v4_manifest(
         db, asset_id=asset_id, workspace=workspace, node=node, turn=turn,
         slot=slot, parents=parents, turntable=await _orbit(node))
+    absent = [item['filename'] for item in (manifest.get('material') or {}).get('related_files', [])
+              if item['required'] and (not item['available'] or item.get('error'))]
+    if absent:
+        raise HTTPException(409, 'Required related material is unavailable: ' + ', '.join(absent))
     try:
         art, man, _staged = await asyncio.to_thread(
             promote.promote_candidate, Path(node["output_path"]), manifest,
             _folder_for(node, workspace), asset_id, extra_files, root=root)
+    except promote.PromoteMaterialError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except promote.PromoteTargetError as e:
         return _broken(e)               # nothing written, the take untouched
     event = await db.record_promotion(nid, str(man), str(art))

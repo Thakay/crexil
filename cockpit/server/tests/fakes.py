@@ -79,6 +79,7 @@ class FakeExecutor:
         self.probe.concurrent += 1
         self.probe.max_concurrent = max(self.probe.max_concurrent,
                                         self.probe.concurrent)
+        waiters = []
         try:
             step = h.step
             waiters = [asyncio.create_task(h.cancelled.wait())]
@@ -108,13 +109,17 @@ class FakeExecutor:
                 external=({"transport": "fake"} if self.lane == "external"
                           else None))
         finally:
+            for waiter in waiters:
+                if not waiter.done():
+                    waiter.cancel()
+            await asyncio.gather(*waiters, return_exceptions=True)
             self.probe.concurrent -= 1
 
     async def cancel(self, h: FakeHandle):
         self.cancels.append(h.job_ref)
         h.cancelled.set()
 
-    async def reconcile(self, slot):
+    async def reconcile(self, slot, *, request=None):
         return self.reconcile_map.get(slot["id"], Reconciliation("gone"))
 
     async def verify_charge(self, job_ref):

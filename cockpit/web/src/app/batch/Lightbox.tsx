@@ -236,7 +236,7 @@ function webgl2(): boolean {
 // A renderer that dies mid-flight (a context that can't be created after
 // all, a shader that won't compile) becomes the failed state rather than
 // a blank frame: the turntable is the fallback for every dead case.
-class StageBoundary extends Component<
+export class StageBoundary extends Component<
   { onFail: (error: string) => void; children: ReactNode },
   { failed: boolean }
 > {

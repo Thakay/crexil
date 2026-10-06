@@ -5,9 +5,9 @@ ComfyExecutor's completion/blank/oom/interrupt mechanics in the loop.
     sequencing   passes submit in plan order; each pass's source is the
                  WORKING frame cropped to the pass box, content-addressed
                  into the input dir; pass N+1 sees pass N's paste-back
-    compositing  mask-native passes paste the whole box; instruction-tier
-                 passes paste through the effective mask; KEEP restored
-                 byte-exactly at the end (the clause, executor-level)
+    compositing  every pass clips to its effective mask; instruction-tier
+                 feather stays inside that mask; KEEP and source alpha
+                 stay exact after every pass
     record       the as-run region_plan rides ExecutionResult.submitted_graph
                  with every pass's exact graph + prompt_id
     failures     a pass failure is the take's failure with the pass named
@@ -25,11 +25,12 @@ from __future__ import annotations
 
 import asyncio
 import io
+from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageChops
 
-from app import config
+from app import config, regions
 from app import presets as presets_mod
 from app import regionrun
 from app.executors import EngineFailure
@@ -76,14 +77,18 @@ DELETE_BOX = (700, 40, 850, 160)   # clear of KEEP — else it is occluded
 
 
 def make_envelope(tmp_path, preset_id="raw-sdxl", seed=11,
-                  include_delete=True):
+                  include_delete=True, source_mode="RGB", modify_box=MODIFY_BOX):
     """A real staged envelope: keep + modify (+ delete) on a noise source."""
     source = Image.effect_noise(SIZE, 60).convert("RGB")
+    if source_mode == "RGBA":
+        source = source.convert("RGBA")
+        alpha = Image.linear_gradient("L").resize(SIZE)
+        source.putalpha(alpha)
     src_path = tmp_path / "source.png"
     source.save(src_path)
 
     rows = [region("rk", "keep", 1), region("rm", "modify", 2, "blue flame")]
-    masks = {"rk": rect_mask(KEEP_BOX), "rm": rect_mask(MODIFY_BOX)}
+    masks = {"rk": rect_mask(KEEP_BOX), "rm": rect_mask(modify_box)}
     if include_delete:
         rows.append(region("rd", "delete", 3))
         masks["rd"] = rect_mask(DELETE_BOX)
@@ -92,7 +97,7 @@ def make_envelope(tmp_path, preset_id="raw-sdxl", seed=11,
         mp = tmp_path / f"mask-p{p['idx']}.png"
         mp.write_bytes(p["mask"])
         p["mask_path"] = str(mp)
-        p["mask_sha256"] = "0" * 64
+        p["mask_sha256"] = regions.sha256_bytes(p["mask"])
         p["mask_upload"] = f"cockpit-mask-p{p['idx']}.png"
     keep_path = tmp_path / "keep.png"
     keep_path.write_bytes(plan["keep_mask"])
@@ -106,9 +111,9 @@ def make_envelope(tmp_path, preset_id="raw-sdxl", seed=11,
                if s.get("type") != "seed"}
     env = regionrun.build_engine_envelope(
         preset, applied, specs, plan,
-        source={"path": str(src_path), "sha256": "f" * 64,
+        source={"path": str(src_path), "sha256": regions.sha256_bytes(src_path.read_bytes()),
                 "name": "cockpit-src.png"},
-        keep={"path": str(keep_path), "sha256": "e" * 64},
+        keep={"path": str(keep_path), "sha256": regions.sha256_bytes(plan["keep_mask"])},
         region_ids=["rk", "rm", "rd"])
     env = regionrun.stamp_take(env, seed, "tok", 0)
     return env, source, plan
@@ -163,7 +168,7 @@ class FakeComfy:
                     {"filename": f"{pid}.png", "type": "output",
                      "subfolder": ""}]}}}
 
-    async def view(self, filename, subfolder=""):
+    async def view(self, filename, subfolder="", type_="output"):
         pid = filename[:-4]
         step = self.by_pid[pid]
         color = (40 * (int(pid[-1]) + 2) % 255, 80, 120)
@@ -273,6 +278,50 @@ async def test_instruction_tier_pastes_only_inside_the_mask(tmp_path,
     assert out.getpixel(center) != source.getpixel(center)
 
 
+@pytest.mark.parametrize("preset_id", ["raw-sdxl", "raw-flux2"])
+@pytest.mark.parametrize("mode", ["RGB", "RGBA"])
+async def test_all_runtime_tiers_preserve_outside_and_overlapping_keep(
+        tmp_path, fast_poll, preset_id, mode):
+    env, source, plan = make_envelope(
+        tmp_path, preset_id=preset_id, source_mode=mode,
+        modify_box=(200, 300, 800, 560))
+    fake = FakeComfy([("land", box_size(env, 0)), ("land", box_size(env, 1))])
+    executor = RegionExecutor(fake)
+    result = await executor.wait(await executor.start(request(env)))
+    out = Image.open(io.BytesIO(result.data))
+    edit = Image.new("L", SIZE, 0)
+    for p in plan["passes"]:
+        edit = ImageChops.lighter(edit, regions.load_mask(p["mask"], SIZE))
+    outside = ImageChops.invert(edit)
+    blank = Image.new(mode, SIZE)
+    assert out.mode == mode
+    assert Image.composite(out, blank, outside).tobytes() == \
+        Image.composite(source, blank, outside).tobytes()
+    assert out.crop(KEEP_BOX).tobytes() == source.crop(KEEP_BOX).tobytes()
+    assert out.getpixel((600, 400)) != source.getpixel((600, 400))
+    if mode == "RGBA":
+        assert out.getchannel("A").tobytes() == source.getchannel("A").tobytes()
+
+
+async def test_keep_is_restored_before_the_next_pass_upload(tmp_path, fast_poll):
+    env, source, _ = make_envelope(tmp_path)
+    # Even a prepared pass mask that overlaps KEEP cannot damage the protected
+    # source supplied to the next operation. Both crops include the KEEP edge.
+    for p in env["region_plan"]["passes"]:
+        p["box"] = None
+    mask_path = env["region_plan"]["passes"][0]["mask"]["path"]
+    rect_mask((0, 0, 1024, 768)).save(mask_path)
+    env["region_plan"]["passes"][0]["mask"]["sha256"] = regions.sha256_bytes(
+        Path(mask_path).read_bytes())
+    fake = FakeComfy([("land", SIZE), ("land", SIZE)])
+    executor = RegionExecutor(fake)
+    await executor.wait(await executor.start(request(env)))
+    graph = fake.submitted[1][1]
+    node = presets_mod.find_nodes_by_title(graph, "source_image")[0]
+    uploaded = Image.open(io.BytesIO(fake.uploads[graph[node]["inputs"]["image"]]))
+    assert uploaded.crop(KEEP_BOX).tobytes() == source.crop(KEEP_BOX).tobytes()
+
+
 async def test_as_run_record_carries_graphs_and_prompt_ids(tmp_path,
                                                            fast_poll):
     env, _, _ = make_envelope(tmp_path)
@@ -323,6 +372,53 @@ async def test_missing_source_is_an_error_in_words(tmp_path, fast_poll):
     assert "went missing" in str(ei.value)
 
 
+@pytest.mark.parametrize(("target", "reason"), [
+    ("source", "source image"), ("keep", "KEEP mask"),
+    (0, "pass 1 mask"), (1, "pass 2 mask"),
+])
+async def test_changed_frozen_bytes_refuse_the_entire_take_before_upload(
+        tmp_path, target, reason):
+    env, _, _ = make_envelope(tmp_path)
+    plan = env["region_plan"]
+    ref = plan[target] if isinstance(target, str) else plan["passes"][target]["mask"]
+    # Still a valid image at the right size: digest drift is the refusal reason.
+    Path(ref["path"]).write_bytes(flat_png((255, 0, 255), SIZE))
+    fake = FakeComfy([])
+    executor = RegionExecutor(fake)
+    with pytest.raises(EngineFailure, match=f"{reason} changed.*SHA256") as failure:
+        await executor.wait(await executor.start(request(env)))
+    assert failure.value.kind == "error"
+    assert fake.uploads == {}
+    assert fake.submitted == []
+
+
+async def test_verified_masks_remain_frozen_when_staging_changes_during_upload(
+        tmp_path, fast_poll):
+    env, source, plan = make_envelope(tmp_path)
+
+    class ChangedStagingComfy(FakeComfy):
+        async def upload_image(self, blob, name):
+            for ref in [env["region_plan"]["source"], env["region_plan"]["keep"],
+                        *(p["mask"] for p in env["region_plan"]["passes"])]:
+                rect_mask((0, 0, *SIZE)).save(ref["path"])
+            return await super().upload_image(blob, name)
+
+    fake = ChangedStagingComfy([("land", box_size(env, 0)), ("land", box_size(env, 1))])
+    executor = RegionExecutor(fake)
+    result = await executor.wait(await executor.start(request(env)))
+    out = Image.open(io.BytesIO(result.data)).convert("RGB")
+    edit = Image.new("L", SIZE, 0)
+    for p in plan["passes"]:
+        edit = ImageChops.lighter(edit, regions.load_mask(p["mask"], SIZE))
+    outside = ImageChops.invert(edit)
+    blank = Image.new("RGB", SIZE)
+    assert Image.composite(out, blank, outside).tobytes() == \
+        Image.composite(source, blank, outside).tobytes()
+    assert out.crop(KEEP_BOX).tobytes() == source.crop(KEEP_BOX).tobytes()
+    assert out.getpixel((600, 400)) != source.getpixel((600, 400))
+    assert len(fake.submitted) == 2
+
+
 async def test_start_refuses_an_empty_plan(tmp_path):
     ex = RegionExecutor(FakeComfy([]))
     with pytest.raises(EngineFailure, match="no plan"):
@@ -344,6 +440,40 @@ async def test_preflight_cancel_stops_before_any_submit(tmp_path, fast_poll):
         await ex.wait(h)
     assert ei.value.kind == "interrupted"
     assert fake.submitted == []
+
+
+@pytest.mark.parametrize("cancel_pass", [0, 1])
+async def test_cancel_during_upload_never_dispatches_that_pass(
+        tmp_path, fast_poll, cancel_pass):
+    env, _, _ = make_envelope(tmp_path)
+    entered = asyncio.Event()
+    released = asyncio.Event()
+
+    class GatedUploadComfy(FakeComfy):
+        async def upload_image(self, blob, name):
+            if len(self.submitted) == cancel_pass:
+                entered.set()
+                await released.wait()
+            return await super().upload_image(blob, name)
+
+    fake = GatedUploadComfy([("land", box_size(env, 0)), ("land", box_size(env, 1))])
+    executor = RegionExecutor(fake)
+    handle = await executor.start(request(env))
+    waiter = asyncio.create_task(executor.wait(handle))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        await executor.cancel(handle)
+        released.set()
+        with pytest.raises(EngineFailure, match="interrupted by cancel") as failure:
+            await asyncio.wait_for(waiter, timeout=5)
+        assert failure.value.kind == "interrupted"
+        assert len(fake.submitted) == cancel_pass
+        assert fake.interrupts == 0
+    finally:
+        released.set()
+        if not waiter.done():
+            waiter.cancel()
+            await asyncio.gather(waiter, return_exceptions=True)
 
 
 async def test_midpass_cancel_interrupts_and_stops_the_chain(tmp_path,
@@ -373,3 +503,33 @@ async def test_reconcile_is_gone_and_verify_charge_none(tmp_path):
     rec = await ex.reconcile({"job_ref": None})
     assert rec.kind == "gone"
     assert await ex.verify_charge("x") is None
+
+
+async def test_protected_checkpoint_precedes_later_pass_failure(tmp_path, fast_poll):
+    from dataclasses import replace
+    env, source, _ = make_envelope(tmp_path, source_mode='RGBA')
+    collected = []
+
+    async def save(output):
+        if output.data is not None:
+            collected.append(output)
+            # The callback represents durable server acceptance before return.
+            (tmp_path / f'checkpoint-{len(collected)}.png').write_bytes(output.data)
+
+    class ObservedComfy(FakeComfy):
+        async def submit(self, graph):
+            if len(self.submitted) == 1:
+                protected = next(o for o in collected if o.identity == 'pass:0/protected')
+                assert protected.role == 'intermediate'
+                assert Image.open(io.BytesIO(protected.data)).crop(KEEP_BOX).tobytes() == source.crop(KEEP_BOX).tobytes()
+                assert any(path.read_bytes() == protected.data for path in tmp_path.glob('checkpoint-*.png'))
+                assert protected.submitted_graph['region_plan']['passes'][0]['prompt_id'] == 'pid-0'
+            return await super().submit(graph)
+
+    fake = ObservedComfy([('land', box_size(env, 0)), ('error', 'RuntimeError', 'later pass failed')])
+    executor = RegionExecutor(fake)
+    with pytest.raises(EngineFailure, match='pass 2/2'):
+        await executor.wait(await executor.start(replace(request(env), on_output=save)))
+    assert len(fake.submitted) == 2
+    assert [o.role for o in collected if o.role != 'runtime input'] == ['raw pass output', 'intermediate']
+    assert not any(o.role == 'final' for o in collected)

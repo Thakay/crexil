@@ -1,15 +1,12 @@
 // The region surface's chrome: what it says (the binding
 // precedence rule, the honest capability line), how a draft declares itself,
 // the fan-out roster with its dashed-0 reasons (law 12), the
-// attempt panes' faces and the commit bar. The Konva stage itself is
-// e2e's — react-konva is mocked shallowly here, so these tests assert
-// words and structure, never pixels. jsdom never fires the take image's
-// onload, so the stage column shows its loading line throughout and FAN
-// OUT stays disarmed on the pixels reason — that's expected, not a
-// failure (the armed POST path is e2e's; the request body is
-// fanout.test.ts's).
+// attempt panes' faces and the commit bar. Konva is mocked here, so these
+// tests assert words, structure and committed ink, never rendered pixels.
+// Legacy chrome cases leave source images unloaded. Controlled canvas cases
+// deliver an image explicitly to check natural coordinates and stroke lifetime.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useUi } from "../state/ui";
@@ -18,21 +15,57 @@ import {
   PRECEDENCE_LINE,
   SAME_REGIONS_LINE,
   UNCLAIMED_LINE,
+  type RegionDraft,
 } from "./model";
 import { EXTERNALS_LINE, NO_RECIPES_REASON } from "./fanout";
 import { useRegions } from "./store";
 
-vi.mock("konva", () => ({ default: { Line: class {}, Rect: class {} } }));
-vi.mock("react-konva", () => ({
-  Stage: () => null,
-  Layer: () => null,
-  Line: () => null,
-  Rect: () => null,
-  Image: () => null,
+type PointerEvent = { target: { getStage: () => { getPointerPosition: () => { x: number; y: number } } } };
+type DrawingStage = {
+  scaleX: number;
+  onMouseDown: (event: PointerEvent) => void;
+  onMouseMove: (event: PointerEvent) => void;
+  onMouseUp: () => void;
+  onMouseLeave: () => void;
+};
+const drawing = vi.hoisted(() => ({
+  stage: null as DrawingStage | null,
+  renders: 0,
+  layer: { add: vi.fn(), batchDraw: vi.fn() },
 }));
+
+vi.mock("konva", () => {
+  class Shape {
+    constructor(private attrs: Record<string, unknown>) {}
+    setAttrs(attrs: Record<string, unknown>) { Object.assign(this.attrs, attrs); }
+    points(points: number[]) { this.attrs.points = points; }
+    x() { return Number(this.attrs.x); }
+    y() { return Number(this.attrs.y); }
+    width() { return Number(this.attrs.width); }
+    height() { return Number(this.attrs.height); }
+    destroy() {}
+  }
+  return { default: { Line: Shape, Rect: Shape } };
+});
+vi.mock("react-konva", async () => {
+  const { forwardRef, useImperativeHandle } = await import("react");
+  return {
+    Stage: (props: DrawingStage & { children?: import("react").ReactNode }) => {
+      drawing.stage = props;
+      drawing.renders += 1;
+      return props.children;
+    },
+    Layer: forwardRef<unknown, { children?: import("react").ReactNode }>((props, ref) => {
+      useImperativeHandle(ref, () => drawing.layer);
+      return props.children;
+    }),
+    Image: () => null,
+  };
+});
 
 // The mocks above must land before the component pulls react-konva in.
 const { RegionSurface } = await import("./RegionSurface");
+const { MaskCanvas } = await import("./MaskCanvas");
 
 const NODE = {
   id: "n1",
@@ -228,6 +261,10 @@ function mount() {
 }
 
 beforeEach(() => {
+  drawing.stage = null;
+  drawing.renders = 0;
+  drawing.layer.add.mockClear();
+  drawing.layer.batchDraw.mockClear();
   useRegions.setState({
     drafts: {},
     activeKey: {},
@@ -479,4 +516,98 @@ test("same-region strokes land in ONE bitmap — no per-stroke layers to stack",
   );
   expect(useRegions.getState().drafts.n1[0].mask).toBe(after1.mask);
   spy.mockRestore();
+});
+
+function controlledImageLoads() {
+  class LoadedImage {
+    naturalWidth = 200;
+    naturalHeight = 100;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_url: string) { images.push(this); }
+  }
+  const images: LoadedImage[] = [];
+  vi.stubGlobal("Image", LoadedImage);
+  return images;
+}
+
+function pointer(x: number, y: number): PointerEvent {
+  return { target: { getStage: () => ({ getPointerPosition: () => ({ x, y }) }) } };
+}
+
+const CONTROLLED_DRAFT: RegionDraft = {
+  key: "parent-owned", name: "Protected area", action: "keep", prompt: "",
+  mask: null, inkRev: 0, inked: false, visible: true,
+};
+
+test.each(["brush", "erase", "rect", "lasso"] as const)(
+  "controlled %s emits one natural-coordinate stroke without rendering on pointer moves",
+  (tool) => {
+    const images = controlledImageLoads();
+    const onInk = vi.fn();
+    const onSourceSize = vi.fn();
+    const onCreateRegion = vi.fn();
+    render(<MaskCanvas sourceUrl="/source.png" drafts={[CONTROLLED_DRAFT]}
+      activeKey={CONTROLLED_DRAFT.key} tool={tool} brushSize={36}
+      onInk={onInk} onSourceSize={onSourceSize} onCreateRegion={onCreateRegion}/>);
+    expect(onSourceSize).toHaveBeenLastCalledWith(null);
+    act(() => images[0].onload?.());
+    expect(onSourceSize).toHaveBeenLastCalledWith({ w: 200, h: 100 });
+    const stage = drawing.stage!;
+    expect(stage.scaleX).toBe(0.4); // jsdom's zero-size area uses the 80px floor.
+    const renders = drawing.renders;
+    act(() => {
+      stage.onMouseDown(pointer(4, 8));
+      stage.onMouseMove(pointer(20, 24));
+      stage.onMouseMove(pointer(40, 32));
+    });
+    expect(onInk).not.toHaveBeenCalled();
+    expect(onCreateRegion).not.toHaveBeenCalled();
+    expect(drawing.renders).toBe(renders);
+    expect(drawing.layer.batchDraw).toHaveBeenCalledTimes(3);
+    act(() => { stage.onMouseLeave(); stage.onMouseUp(); });
+    const expected = tool === "rect"
+      ? { tool, x: 10, y: 20, w: 90, h: 60 }
+      : { tool, points: [10, 20, 50, 60, 100, 80], ...(tool === "lasso" ? {} : { size: 90 }) };
+    expect(onInk).toHaveBeenCalledExactlyOnceWith("parent-owned", expected, { w: 200, h: 100 });
+    expect(CONTROLLED_DRAFT.mask).toBeNull();
+    expect(useRegions.getState().drafts).toEqual({});
+  },
+);
+
+test("controlled canvas lets its parent create the first region before props refresh", () => {
+  const images = controlledImageLoads();
+  const onInk = vi.fn();
+  const onCreateRegion = vi.fn(() => "new-parent-region");
+  render(<MaskCanvas sourceUrl="/source.png" drafts={[]} activeKey={null}
+    tool="brush" brushSize={36} onInk={onInk} onCreateRegion={onCreateRegion}/>);
+  act(() => images[0].onload?.());
+  act(() => {
+    drawing.stage!.onMouseDown(pointer(4, 8));
+    drawing.stage!.onMouseUp();
+  });
+  expect(onCreateRegion).toHaveBeenCalledOnce();
+  expect(onInk).toHaveBeenCalledExactlyOnceWith("new-parent-region",
+    { tool: "brush", points: [10, 20], size: 90 }, { w: 200, h: 100 });
+});
+
+test("changing the controlled source cancels old ink and clears its dimensions until loaded", () => {
+  const images = controlledImageLoads();
+  const onInk = vi.fn();
+  const onSourceSize = vi.fn();
+  const props = { drafts: [CONTROLLED_DRAFT], activeKey: CONTROLLED_DRAFT.key,
+    tool: "brush" as const, brushSize: 36, onInk, onSourceSize };
+  const view = render(<MaskCanvas sourceUrl="/first.png" {...props}/>);
+  act(() => images[0].onload?.());
+  act(() => drawing.stage!.onMouseDown(pointer(4, 8)));
+  view.rerender(<MaskCanvas sourceUrl="/second.png" {...props}/>);
+  expect(images[0].onload).toBeNull();
+  expect(onSourceSize).toHaveBeenLastCalledWith(null);
+  expect(screen.getByText("Loading source image")).toBeInTheDocument();
+  images[1].naturalWidth = 300;
+  images[1].naturalHeight = 400;
+  act(() => images[1].onload?.());
+  act(() => drawing.stage!.onMouseUp());
+  expect(onSourceSize).toHaveBeenLastCalledWith({ w: 300, h: 400 });
+  expect(onInk).not.toHaveBeenCalled();
 });

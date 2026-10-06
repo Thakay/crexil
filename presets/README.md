@@ -81,6 +81,15 @@ experiments; zimage Base = CFG + negative + the LoRA-training target),
 `sketch-zimage` (Turbo iteration loop: 4 takes, ~2 s each, cfg
 pinned 1.0).
 
+## Crexil execution cost review
+
+`execution_cost.maximum_usd_per_attempt: 0` declares that the reviewed workflows
+contain no metered service calls. `execution_cost.workflow_sha256` maps every
+workflow capability to the SHA-256 of its exact file bytes. Inspect the graph and
+its dependencies before making this declaration. A graph edit invalidates it.
+The enforcing contract is `cockpit/server/app/crexil_execution.py`. Nonzero prices
+and catalogue estimates do not supply an enforceable request ceiling by themselves.
+
 ## External bench (`providers.json` + live catalog)
 
 External fan-out models are NOT presets. The full model list is **live**:

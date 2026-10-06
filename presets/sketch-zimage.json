@@ -1,4 +1,10 @@
 {
+  "execution_cost": {
+    "maximum_usd_per_attempt": 0,
+    "workflow_sha256": {
+      "txt2img": "33e537ad9f920817c27277bbba055fbb42af7c990cfbfac3f577a64c27fb4ef9"
+    }
+  },
   "id": "sketch-zimage",
   "display_name": "Sketch · Z-Image Turbo",
   "description": "The iteration engine: 6B distilled Z-Image Turbo, ~2 s per image, legible bilingual text. Fan 4 out, react, refine. Apache-2.0.",

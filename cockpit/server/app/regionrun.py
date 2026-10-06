@@ -111,13 +111,14 @@ def _crop_mask_bytes(mask_png: bytes, box) -> bytes:
 
 
 def build_region_plan(rows: list[dict], masks: dict, size: tuple[int, int],
-                      turn_prompt: str | None) -> dict:
+                      turn_prompt: str | None, *, regenerate_unclaimed: bool = True) -> dict:
     """The engine-neutral plan: regions.build_pipeline + one crop box per
     pass. Each pass gains `box` (None = full frame) and `mask_crop` (the
     mask at crop geometry, bytes); DELETE stays full-frame on LaMa. Raises
     RegionRunError in the artist's words."""
     try:
-        plan = regions_mod.build_pipeline(rows, masks, size, turn_prompt)
+        plan = regions_mod.build_pipeline(rows, masks, size, turn_prompt,
+                                         regenerate_unclaimed=regenerate_unclaimed)
     except regions_mod.RegionError as e:
         raise RegionRunError(str(e))
     for p in plan["passes"]:
@@ -152,12 +153,19 @@ def _patch_if_field(graph: dict, title: str, field: str, value) -> None:
             inputs[field] = value
 
 
+def _control_targets(graph: dict, targets: list[dict]) -> list[tuple[str, str]]:
+    """Only existing fields can consume a public control on a native pass."""
+    return [(nid, target['field']) for target in targets
+            for nid in presets_mod.find_nodes_by_title(graph, target['node_title'])
+            if target['field'] in graph[nid].get('inputs', {})]
+
+
 _patch_existing = presets_mod.patch_existing
 
 
 def build_engine_envelope(preset: dict, applied: dict, specs: dict,
                           plan: dict, *, source: dict, keep: dict | None,
-                          region_ids: list[str]) -> dict:
+                          region_ids: list[str], workflows: dict | None = None) -> dict:
     """One engine's pass graphs over the shared plan — everything but the
     per-take seed and save prefix (stamp_take) and the runtime working-frame
     upload (the executor's). `specs` are the preset's region-applicable
@@ -173,9 +181,10 @@ def build_engine_envelope(preset: dict, applied: dict, specs: dict,
     prompt_spec = specs.get("prompt")
     passes = []
     for p in plan["passes"]:
-        graph = presets_mod.load_workflow(
-            preset["workflows"][p["capability"]])
+        graph = (copy.deepcopy(workflows[p['capability']]) if workflows is not None else
+                 presets_mod.load_workflow(preset["workflows"][p["capability"]]))
         tier = tier_of(preset)
+        controls = {}
         # preset handles where the pass graph has the node — geometry and
         # denoise are pass-scoped, never the preset loop's
         for key, spec in specs.items():
@@ -183,15 +192,26 @@ def build_engine_envelope(preset: dict, applied: dict, specs: dict,
                     or key in GEOMETRY_KEYS or key == "prompt" \
                     or key not in applied:
                 continue
-            for target in spec["target"]:
-                _patch_existing(graph, target, applied[key])
+            for nid, field in _control_targets(graph, spec['target']):
+                graph[nid]['inputs'][field] = applied[key]
+                controls[key] = applied[key]
         prompt, template_id = pass_prompt(preset, p["kind"], p["prompt"])
-        if prompt is not None and prompt_spec is not None:
-            for target in prompt_spec["target"]:
-                _patch_existing(graph, target, prompt)
+        if prompt is not None:
+            if prompt_spec is None:
+                raise RegionRunError('This region recipe has no mapped instruction input.')
+            targets = _control_targets(graph, prompt_spec['target'])
+            if not targets:
+                raise RegionRunError('This region recipe has no mapped instruction input.')
+            for nid, field in targets:
+                graph[nid]['inputs'][field] = prompt
+            controls['prompt'] = prompt
         if p.get("uses_denoise") and "denoise" in applied:
-            _patch_existing(graph, {"node_title": "sampler",
-                                    "field": "denoise"}, applied["denoise"])
+            for nid, field in _control_targets(graph, specs['denoise']['target']):
+                graph[nid]['inputs'][field] = applied['denoise']
+                controls['denoise'] = applied['denoise']
+        if _control_targets(graph, [{'node_title': title, 'field': field}
+                                    for title, field in SEED_FIELDS.items()]):
+            controls['seed'] = applied.get('seed', {'mode': 'random'})
         # the shared box owns geometry: crop dims into whatever latent /
         # scheduler nodes the graph carries (field-presence guarded — SDXL
         # pass graphs have neither and derive size from the crop itself)
@@ -206,12 +226,15 @@ def build_engine_envelope(preset: dict, applied: dict, specs: dict,
         # graphs have no region_mask node — the mask acts at paste-back)
         _patch_existing(graph, {"node_title": "region_mask",
                                 "field": "image"}, p["mask_upload"])
+        controls = {key: value for key, value in controls.items() if key == 'seed' or any(
+            graph[nid]['inputs'][field] == value for nid, field in _control_targets(graph, specs[key]['target']))}
         passes.append({
             "idx": p["idx"], "kind": p["kind"],
             "capability": p["capability"],
             "workflow": preset["workflows"][p["capability"]],
             "region_ids": p["region_ids"],
             "prompt": prompt, "template_id": template_id,
+            "applied_controls": controls,
             "box": p["box"],
             # instruction tiers paste through the effective mask (their
             # graphs never saw it); mask-native passes composited already
@@ -229,7 +252,7 @@ def build_engine_envelope(preset: dict, applied: dict, specs: dict,
     }}
 
 
-def stamp_take(envelope: dict, seed: int, run_token: str, pos: int) -> dict:
+def stamp_take(envelope: dict, seed: int | None, run_token: str, pos: int) -> dict:
     """A take's own copy: seed into every pass graph (field-presence rule),
     save prefixes namespaced per pass."""
     env = copy.deepcopy(envelope)
@@ -237,6 +260,8 @@ def stamp_take(envelope: dict, seed: int, run_token: str, pos: int) -> dict:
         graph = p["graph"]
         for title, field in SEED_FIELDS.items():
             _patch_if_field(graph, title, field, seed)
+        if 'seed' in p.get('applied_controls', {}):
+            p['applied_controls']['seed'] = seed
         for node in graph.values():
             if node.get("class_type") == "SaveImage":
                 node["inputs"]["filename_prefix"] = (

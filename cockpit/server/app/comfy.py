@@ -96,6 +96,25 @@ class ComfyClient:
         return r.json()
 
     @staticmethod
+    def output_files(history_entry: dict) -> list[dict]:
+        """Retain every file descriptor with its runtime node, field and order.
+
+        Roles cannot be inferred from a filename. Non-file output values stay
+        in the history record and are never interpreted as filesystem paths.
+        """
+        files = []
+        for node_id, out in (history_entry.get("outputs") or {}).items():
+            if not isinstance(out, dict):
+                continue
+            for field, values in out.items():
+                if not isinstance(values, list):
+                    continue
+                for ordinal, value in enumerate(values):
+                    if isinstance(value, dict) and isinstance(value.get("filename"), str):
+                        files.append({**value, "node_id": str(node_id), "field": field, "ordinal": ordinal})
+        return files
+
+    @staticmethod
     def first_image(history_entry: dict) -> dict | None:
         for out in (history_entry.get("outputs") or {}).values():
             for img in out.get("images") or []:

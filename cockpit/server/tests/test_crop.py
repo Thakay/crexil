@@ -4,9 +4,9 @@
                     /16, MIN_SIDE growth centered, edge clamp with inward
                     shift, full-frame fallback at >=90% of both dims,
                     empty mask -> full frame, determinism
-    paste_back      whole-box paste (SDXL tier) leaves outside-box bytes
-                    untouched; masked paste (klein/Qwen tiers) leaves
-                    outside-mask bytes untouched beyond the feather;
+    paste_back      explicit whole-box paste leaves outside-box bytes
+                    untouched; masked paste leaves every outside-mask
+                    pixel unchanged, including the adjacent edge;
                     wrong-size result resized to the box (Qwen ~1MP cap)
     KEEP round-trip crop -> mutate -> paste_back -> regions.apply_keep
                     restores KEEP pixels byte-exactly (the clause)
@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import io
 
-from PIL import Image
+import pytest
+from PIL import Image, ImageChops
 
 from app import regions as regions_mod
 from app.crop import (FULL_FRAME_FRAC, MARGIN_MIN, MIN_SIDE, SNAP, crop,
@@ -140,7 +141,7 @@ def test_whole_box_paste_changes_only_the_box():
     assert o.getpixel((600, 1024)) == (10, 20, 30)
 
 
-def test_masked_paste_stays_inside_the_mask_beyond_the_feather():
+def test_masked_paste_stays_inside_the_mask_including_the_feather_edge():
     frame = flat((10, 20, 30))
     mask = rect_mask((700, 700, 900, 900))
     box = (512, 512, 1024, 1024)
@@ -150,6 +151,9 @@ def test_masked_paste_stays_inside_the_mask_beyond_the_feather():
     assert o.getpixel((800, 800)) == (250, 0, 0)          # inside the mask
     assert o.getpixel((600, 600)) == (10, 20, 30)          # in-box, off-mask
     assert o.getpixel((695, 800)) == (10, 20, 30)          # beyond the feather
+    assert o.getpixel((699, 800)) == (10, 20, 30)          # immediately outside
+    assert o.getpixel((900, 800)) == (10, 20, 30)          # opposite boundary
+    assert 10 < o.getpixel((700, 800))[0] < 250           # feather is inward
     assert o.getpixel((100, 100)) == (10, 20, 30)          # outside the box
 
 
@@ -171,6 +175,48 @@ def test_full_frame_paste_with_mask():
     o = Image.open(io.BytesIO(out))
     assert o.getpixel((200, 200)) == (0, 0, 250)
     assert o.getpixel((400, 400)) == (10, 20, 30)
+
+
+@pytest.mark.parametrize("feather", [0, 2, 7])
+@pytest.mark.parametrize("mode", ["RGB", "RGBA"])
+def test_every_pixel_outside_binary_edit_area_is_exact(mode, feather):
+    size = (64, 40)
+    source = Image.new(mode, size)
+    source.putdata([
+        ((x * 3 % 256, y * 5 % 256, (x + y) % 256, x * y % 256)
+         if mode == "RGBA" else (x * 3 % 256, y * 5 % 256, (x + y) % 256))
+        for y in range(size[1]) for x in range(size[0])])
+    mask = rect_mask((12, 8, 50, 32), size)
+    mask.paste(0, (25, 16, 32, 23))  # a protected hole has its own hard edge
+    mask.putpixel((9, 5), 255)       # a disconnected single-pixel edit
+    output = Image.open(io.BytesIO(paste_back(
+        png(source), png(flat((250, 240, 230), (13, 11))),
+        (8, 4, 56, 36), png(mask), feather=feather)))
+    outside = ImageChops.invert(mask)
+    blank = Image.new(mode, size)
+    assert Image.composite(output, blank, outside).tobytes() == \
+        Image.composite(source, blank, outside).tobytes()
+    assert output.getpixel((20, 20)) != source.getpixel((20, 20))
+    if mode == "RGBA":
+        assert output.getchannel("A").tobytes() == source.getchannel("A").tobytes()
+
+
+def test_mask_threshold_and_hard_edge_without_feather():
+    source = flat((10, 20, 30), (4, 1))
+    mask = Image.new("L", source.size)
+    mask.putdata([0, 127, 128, 255])
+    output = Image.open(io.BytesIO(paste_back(
+        png(source), png(flat((200, 210, 220), source.size)), None,
+        png(mask), feather=0)))
+    assert [output.getpixel((x, 0)) for x in range(4)] == [
+        (10, 20, 30), (10, 20, 30), (200, 210, 220), (200, 210, 220)]
+
+
+def test_mask_geometry_is_never_silently_resized():
+    source = flat((10, 20, 30), (8, 8))
+    with pytest.raises(ValueError, match="match the source image size"):
+        paste_back(png(source), png(source), None,
+                   png(Image.new("L", (4, 4), 255)))
 
 
 # --- the clause: KEEP byte-exact through the crop round-trip ---

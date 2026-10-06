@@ -1,42 +1,23 @@
-"""The 3D lane's executor: mesh takes on the serial local lane, served by
-the host-side runner.
+"""Execute bounded 3D jobs through the installed runner on the shared local lane.
 
-The runner, not this module, holds the engines: the cockpit container has
-no GPU and no engine venvs, so TRELLIS.2 / Hunyuan3D run on the host behind
-a small HTTP service (`tools/3d/runner.py`, `THREED_URL`) and this executor
-is its client, exactly as the image executor is ComfyUI's. It declares
-`lane="local"`, so the scheduler's one local worker serialises a mesh
-against an image take with no code here.
+Frozen mesh envelopes retain staged source paths, parameters and optional byte
+hashes. Validated source bytes are authoritative; runner job references are only
+caches. Generation, reduction and repaint use the same durable slot lifecycle.
 
-The payload envelope. A mesh take rides `DispatchRequest.submitted_graph`
-as `{"mesh_job": …}` — the same trick the region plan plays — so slot
-persistence, `_rebuild_request` and restart recovery carry a mesh like any
-other take; `is_mesh_payload` is the scheduler's routing peek. The envelope
-names the SOURCE BY PATH in the cockpit's own staging, which is why a
-rebuild after restart still finds its input.
+Completed jobs yield their GLB plus retained companions or explicit missing-file
+receipts. Free collection only retrieves existing work. Restart recovery fetches
+completed jobs and cancels still-running jobs before reporting them gone; it does
+not reattach or decide whether another attempt is allowed.
 
-Every 3D verb is a kind. The runner takes a job `kind`, and `source_path`
-keeps one meaning across all of them: the input artefact in the cockpit's
-staging. A `generate` kind reads it as an image and base64s it; a mesh-input
-kind pushes it to the runner's raw `/meshes` route, or skips the push when
-the parent take's own runner job still holds the bytes. The staged GLB is
-the artefact of record; the runner's copy is a cache with a TTL.
-
-Recovery is a lookup. The runner writes a job record per state change, so
-`reconcile` asks `GET /jobs/<id>` and is told — landed, failed, or gone.
-That is why the runner is a service with job ids rather than a spawned
-child: a container that spawns a child loses it on restart.
-
-Minutes, not seconds. A cold take runs for minutes; nothing here imposes a
-deadline — `wait` polls on the runner's clock (`THREED_POLL_S`) and the
-local take timeout is unbounded by default. Nothing bills on the GPU:
-`verify_charge` answers None, like ComfyUI's.
+The scheduler owns writes, attempt limits and serialization with image engines.
+No local processing bills a provider. Long cold starts have no executor deadline.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 from contextlib import suppress
@@ -46,7 +27,7 @@ from pathlib import Path
 import httpx
 
 from . import config
-from .executors import (EngineFailure, ExecutionResult, Handle, Lane,
+from .executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult, Handle, Lane,
                         Reconciliation, _OOM_TEXT)
 
 log = logging.getLogger("cockpit.mesh")
@@ -161,7 +142,7 @@ def parent_runner_job(node: dict | None) -> str | None:
     A verb passes it along so the runner can reuse bytes it already holds
     (`runs/<id>/`); it is an optimisation with a TTL behind it, so None and
     a stale id are both ordinary — the executor uploads instead."""
-    if not node or node.get("payload") != "3d":
+    if not node or node.get("payload") != "3d" or (node.get("dials") or {}).get("crexil_restore"):
         return None
     job = (node.get("submitted_graph") or {}).get("mesh_job") or {}
     ref = job.get("runner_job_id")
@@ -182,6 +163,7 @@ class MeshHandle(Handle):
     """`job_ref` is the runner's job id — recorded on the slot row the moment
     it exists, which is what makes recovery a lookup."""
     engine: str = ""
+    request: DispatchRequest | None = None
 
 
 class MeshExecutor:
@@ -234,6 +216,7 @@ class MeshExecutor:
 
     async def start(self, req) -> MeshHandle:
         job = (req.submitted_graph or {}).get("mesh_job") or {}
+        frozen_sources = self._checked_sources(job)
         engine = job.get("engine") or req.engine
         kind = job.get("kind") or "generate"
         runner_engine = ENGINE_TO_RUNNER.get(engine)
@@ -248,7 +231,7 @@ class MeshExecutor:
         if takes == "fields":
             source = fields_sidecar(source)
         try:
-            data = source.read_bytes()
+            data = frozen_sources[str(source)] if str(source) in frozen_sources else source.read_bytes()
         except OSError as e:
             # law 7 read from the other side: the source take's bytes are
             # gone, so say which artefact rather than failing the engine's
@@ -293,7 +276,7 @@ class MeshExecutor:
             # is the reference's failure, named as such, never the mesh's.
             ref_source = Path(job.get("ref_path") or "")
             try:
-                ref_bytes = ref_source.read_bytes()
+                ref_bytes = frozen_sources[str(ref_source)] if str(ref_source) in frozen_sources else ref_source.read_bytes()
             except OSError as e:
                 raise EngineFailure(
                     "error", "the reference image this take paints from is "
@@ -322,7 +305,30 @@ class MeshExecutor:
                                 f"the 3D runner refused this take "
                                 f"({r.status_code}) — {_detail(r)}")
         return MeshHandle(job_ref=(r.json() or {}).get("job_id"),
-                          engine=engine)
+                          engine=engine, request=req)
+
+    @staticmethod
+    def _checked_sources(job: dict) -> dict[str, bytes]:
+        """Validate frozen source receipts before cache reuse or any upload."""
+        if 'source_hashes' not in job:
+            return {}
+        receipts = job['source_hashes']
+        if not isinstance(receipts, list):
+            raise EngineFailure('error', 'The frozen mesh source receipts are invalid.')
+        checked = {}
+        for receipt in receipts:
+            if not isinstance(receipt, dict) or not isinstance(receipt.get('path'), str) or not isinstance(receipt.get('sha256'), str):
+                raise EngineFailure('error', 'The frozen mesh source receipts are invalid.')
+            path = Path(receipt['path'])
+            try:
+                blob = path.read_bytes()
+            except OSError as exc:
+                raise EngineFailure('error', 'A frozen mesh source is no longer available. Review the preparation again.',
+                                    detail=str(path)) from exc
+            if hashlib.sha256(blob).hexdigest() != receipt['sha256']:
+                raise EngineFailure('error', 'A frozen mesh source changed. Review the preparation again.', detail=str(path))
+            checked[str(path)] = blob
+        return checked
 
     async def _post_job(self, body: dict) -> httpx.Response:
         try:
@@ -386,7 +392,7 @@ class MeshExecutor:
         with suppress(httpx.HTTPError):   # wait() surfaces what actually happened
             await self._http.delete(f"/jobs/{h.job_ref}")
 
-    async def reconcile(self, slot: dict) -> Reconciliation:
+    async def reconcile(self, slot: dict, *, request=None) -> Reconciliation:
         """Recovery is a LOOKUP, which is the whole reason the runner keeps
         job records. Two verdicts are deliberate rather than obvious:
 
@@ -417,15 +423,34 @@ class MeshExecutor:
             return Reconciliation("gone")
         if state == "done":
             try:
-                data = await self._glb(job_ref)
+                result = await self._land(MeshHandle(job_ref=job_ref, request=request), rec)
             except (httpx.HTTPError, EngineFailure) as e:
                 return Reconciliation("failed",
                                       cause=f"the mesh landed but could not "
                                             f"be fetched during recovery: {e}")
             return Reconciliation("landed",
-                                  result=self._result(rec, data))
+                                  result=result)
         cause, kind = _failure_words(rec)
         return Reconciliation("failed", cause=cause, failure_kind=kind)
+
+    async def collect_existing(self, slot: dict, *, request=None) -> Reconciliation:
+        """Retrieve a completed job without submitting or cancelling any work."""
+        job_ref = slot.get('job_ref')
+        if not job_ref:
+            return Reconciliation('gone')
+        try:
+            rec = await self._fetch(job_ref)
+        except httpx.HTTPError:
+            return Reconciliation('unverifiable')
+        if rec is None:
+            return Reconciliation('gone')
+        if rec.get('state') not in TERMINAL:
+            return Reconciliation('unverifiable')
+        try:
+            result = await self._land(MeshHandle(job_ref=job_ref, request=request), rec)
+        except EngineFailure as exc:
+            return Reconciliation('failed', cause=str(exc), failure_kind=exc.kind)
+        return Reconciliation('landed', result=result)
 
     async def verify_charge(self, _job_ref: str) -> float | None:
         return None                      # nothing bills on the GPU
@@ -460,35 +485,46 @@ class MeshExecutor:
         if state == "failed":
             cause, kind = _failure_words(rec)
             raise EngineFailure(kind, cause, detail=_tail_detail(rec))
+        on_output = h.request.on_output if h.request else None
+        primary = CollectedOutput(identity='primary', filename=f"{rec.get('engine')}.glb", payload='3d',
+                                  descriptor={'runner_job_id': h.job_ref, 'route': 'glb'})
+        cached = await on_output(primary) if on_output else None
         try:
-            data = await self._glb(h.job_ref or "")
+            data = cached if cached is not None else await self._glb(h.job_ref or "")
         except httpx.HTTPError as e:
             raise self._unreachable(e, "while fetching the mesh") from e
-        return self._result(rec, data, await self._fields(h.job_ref or "", rec))
+        fields, error = await self._fields(h.job_ref or "", rec)
+        result = self._result(rec, data, fields)
+        if on_output:
+            await on_output(CollectedOutput(identity=primary.identity, filename=primary.filename,
+                data=data, payload='3d', descriptor=primary.descriptor, submitted_graph=result.submitted_graph))
+            if error:
+                await on_output(CollectedOutput(identity='companion:' + FIELDS_SUFFIX,
+                    filename='companion' + FIELDS_SUFFIX, payload=None, role='companion',
+                    descriptor={'runner_job_id': h.job_ref, 'route': 'fields',
+                                'advertised_path': (rec.get('result') or {}).get('fields')}, error=error))
+        return result
 
-    async def _fields(self, job_ref: str, rec: dict) -> bytes | None:
-        """The voxel field a TRELLIS.2 take kept, pulled beside its mesh so
-        the cockpit — not the runner's ageing records — is what makes a
-        re-extraction possible months later.
+    async def _fields(self, job_ref: str, rec: dict) -> tuple[bytes | None, str | None]:
+        """Keep advertised fields or an explicit retryable missing receipt.
 
-        Best-effort by construction: a take without one is the normal case
-        for every other engine, and a fetch that fails costs the child its
-        re-extraction, never its landing. The node then says so honestly when
-        the verb is offered."""
+        A mesh without advertised fields is complete without a companion.
+        A failed companion fetch never discards its usable GLB.
+        """
         if not (rec.get("result") or {}).get("fields"):
-            return None
+            return None, None
         try:
             r = await self._http.get(f"/jobs/{job_ref}/fields",
                                      timeout=httpx.Timeout(300.0, connect=5.0))
         except httpx.HTTPError as e:
             log.warning("mesh: job %s kept a field set but it could not be "
                         "fetched (%s) — the mesh lands without it", job_ref, e)
-            return None
+            return None, f'The runner advertised voxel fields, but retrieval failed: {e}'
         if r.status_code >= 400 or not r.content:
             log.warning("mesh: job %s kept a field set but the runner would "
                         "not serve it (%s)", job_ref, r.status_code)
-            return None
-        return r.content
+            return None, f'The runner advertised voxel fields, but returned {r.status_code} with {len(r.content)} bytes.'
+        return r.content, None
 
     def _result(self, rec: dict, data: bytes,
                 fields: bytes | None = None) -> ExecutionResult:

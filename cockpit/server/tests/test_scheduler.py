@@ -17,6 +17,7 @@ recovery, which is exactly what the recovery section exercises.
 """
 
 import asyncio
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 import pytest
@@ -108,7 +109,8 @@ async def events_of(db, type_):
 async def test_mixed_batch_lands_out_of_order_and_completely(tmp_path):
     async with opened(tmp_path) as db:
         ws = await db.create_workspace("Hero Sword")
-        local = FakeExecutor("comfy", "local", default=Step(delay_s=0.05))
+        release_local = asyncio.Event()
+        local = FakeExecutor("comfy", "local", default=Step(gate=release_local))
         ext = FakeExecutor("or", "external", default=Step(cost=0.01))
         routes = {"klein": "comfy", "z-image": "comfy",
                   "gpt": "or", "gemini": "or"}
@@ -118,12 +120,21 @@ async def test_mixed_batch_lands_out_of_order_and_completely(tmp_path):
                          ("gpt", "external"), ("gemini", "external")],
                 committed=0.02)
             await sched.submit_turn(turn["id"], reqs)
+            for _ in range(800):
+                current = await db.get_turn(turn["id"])
+                if all(s['status'] == 'landed' for s in current['slots'][2:]):
+                    break
+                await asyncio.sleep(.01)
+            else:
+                raise AssertionError('External work did not finish while the local lane was occupied.')
+            assert all(s['status'] != 'landed' for s in current['slots'][:2])
+            release_local.set()
             done = await settle(db, turn["id"], until={"landed"})
         nodes = await db.list_nodes(ws["id"])
         assert len(nodes) == 4                     # every slot landed a node
         externals = [n for n in nodes if n["engine"] in ("gpt", "gemini")]
         locals_ = [n for n in nodes if n["engine"] in ("klein", "z-image")]
-        # externals were instant, locals 50ms serial: out-of-order landing
+        # External work finishes independently of a blocked local lane.
         assert max(e["created_at"] for e in externals) \
             <= min(n["created_at"] for n in locals_)
         assert {s["id"] for s in done["slots"]} \
@@ -764,14 +775,15 @@ async def test_retry_history_is_permanent_in_slot_events(tmp_path):
             await settle(db, turn["id"], until={"landed"})
         types = [e["type"] for e in await db.slot_events(sid)]
         assert types == ["slot.prepared", "slot.dispatched", "slot.retrying",
-                         "slot.queued", "slot.dispatched", "node.landed"]
+                         "slot.queued", "slot.dispatched", "execution.output_discovered", "node.collected",
+                         "execution.output_collected", "node.landed"]
 
 
 # --- restart recovery: a mid-batch restart recovers ---
 # These tests DELIBERATELY leave state behind and start a fresh Scheduler
 # over the same DB — turns created before start() are recovery's to adopt.
 
-async def test_restart_mid_batch_finishes_the_remaining_slots(tmp_path):
+async def test_restart_finishes_queued_slots_and_preserves_active_uncertainty(tmp_path):
     async with opened(tmp_path) as db:
         ws = await db.create_workspace("A")
         gate = asyncio.Event()
@@ -785,11 +797,12 @@ async def test_restart_mid_batch_finishes_the_remaining_slots(tmp_path):
             == "running"
         local2 = FakeExecutor("comfy", "local")      # fresh process
         async with running(db, tmp_path, [local2], {"klein": "comfy"}):
-            done = await settle(db, turn["id"], until={"landed"})
-        assert all(sl["status"] == "landed" for sl in done["slots"])
-        requeued = [e for e in await events_of(db, "slot.queued")
-                    if e["payload"].get("recovered")]
-        assert requeued                               # gone-from-history path
+            done = await settle(db, turn["id"], until={"landed", "failed"})
+        assert [sl['status'] for sl in done['slots']] == ['failed', 'landed', 'landed']
+        assert done['slots'][0]['kind'] == 'uncertain'
+        assert done['slots'][0]['id'] not in local2.starts
+        assert len(local2.starts) == 2
+        assert len(await events_of(db, 'slot.delivery_uncertain')) == 1
 
 
 async def test_recovered_slots_keep_their_land_fields(tmp_path):
@@ -806,7 +819,7 @@ async def test_recovered_slots_keep_their_land_fields(tmp_path):
             await wait_until_running(db, turn["slots"][0]["id"])
         local2 = FakeExecutor("comfy", "local")
         async with running(db, tmp_path, [local2], {"klein": "comfy"}):
-            await settle(db, turn["id"], until={"landed"})
+            await settle(db, turn["id"], until={"landed", "failed"})
         for node in await db.list_nodes(ws["id"]):
             if node["id"] == parent["id"]:
                 continue
@@ -851,7 +864,7 @@ async def test_running_local_with_error_history_fails_on_recovery(tmp_path):
         assert done["slots"][0]["detail"] == "error: OOM"
 
 
-async def test_running_local_without_job_ref_requeues_and_lands(tmp_path):
+async def test_running_local_without_job_ref_is_uncertain_and_never_resubmitted(tmp_path):
     async with opened(tmp_path) as db:
         ws = await db.create_workspace("A")
         turn, _ = await make_batch(db, ws, [("klein", "local")])
@@ -859,8 +872,11 @@ async def test_running_local_without_job_ref_requeues_and_lands(tmp_path):
         await db.dispatch_slot(sid, submitted_graph={"g": 1})   # no job_ref:
         local = FakeExecutor("comfy", "local")                  # pre-submit crash
         async with running(db, tmp_path, [local], {"klein": "comfy"}):
-            done = await settle(db, turn["id"], until={"landed"})
-        assert done["slots"][0]["attempt"] == 2       # a fresh lease term
+            done = await settle(db, turn["id"], until={"failed"})
+        assert done['slots'][0]['kind'] == 'uncertain'
+        assert done['slots'][0]['attempt'] == 1
+        assert local.starts == []
+        assert await db.list_nodes(ws['id']) == []
 
 
 async def test_orphaned_external_fails_honestly_with_unverified_amount(tmp_path):
@@ -945,3 +961,23 @@ async def test_a_failing_on_event_callback_never_breaks_a_take(tmp_path):
             await s.submit_turn(turn["id"], reqs)
             done = await settle(db, turn["id"], until={"landed"})
         assert all(sl["status"] == "landed" for sl in done["slots"])
+
+
+async def test_recovery_collects_a_still_running_prompt_without_new_dispatch(tmp_path):
+    from fakes import FakeHandle
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace('Running job')
+        turn, _ = await make_batch(db, ws, [('klein', 'local')])
+        sid = turn['slots'][0]['id']
+        await db.dispatch_slot(sid, job_ref='still-running', submitted_graph={'g': 1})
+        local = FakeExecutor('comfy', 'local')
+        local.reconcile_map[sid] = Reconciliation('running', handle=FakeHandle(
+            job_ref='still-running', step=Step(data=b'collected-existing-result')))
+        async with running(db, tmp_path, [local], {'klein': 'comfy'}):
+            done = await settle(db, turn['id'], until={'landed'})
+        assert done['slots'][0]['attempt'] == 1
+        assert done['slots'][0]['job_ref'] == 'still-running'
+        assert local.starts == []
+        nodes = await db.list_nodes(ws['id'])
+        assert len(nodes) == 1
+        assert Path(nodes[0]['output_path']).read_bytes() == b'collected-existing-result'

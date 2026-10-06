@@ -1,7 +1,13 @@
-"""Manifest writer: the manifest is a sidecar JSON wrapping
-the EXACT graph that was submitted for that take, plus provenance
-extras. Re-run-from-manifest (later) resubmits `submitted_graph`
-verbatim — no parameter reconstruction by hand.
+"""Write additive manifest v4 provenance and the existing delivery file list.
+
+Submitted graphs, frozen shared requests and sequence decisions belong to the
+exported take, never the current draft or slot attempt. Missing historical
+evidence stays absent; imported material makes no claim about its creation.
+The versioned shared_request extension retains the accepted preparation and
+matching operation snapshot, with actual attempt controls identified separately.
+Sequence authorization comes from the last matching event before acceptance,
+never a sequence's mutable current authorization. This is an asset record, not
+a project backup or permission to submit work.
 
 Model files are identified by name + size + sha256; hashes are computed once
 per file and cached in SQLite (an 8 GB checkpoint hashes in ~15 s the first
@@ -11,11 +17,15 @@ time, then it is free).
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
+import json
+import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
+from .execution_outputs import inventory
 from .db import Database
 
 # loader class -> [(input key, models subdir, role), ...]
@@ -105,6 +115,7 @@ REPLAY_LOCAL = ("exact: the submitted graph is verbatim and every model "
 REPLAY_EXTERNAL = ("record only, not replayable: the request is exact, but "
                    "the provider can change the weights behind this model "
                    "name at any time")
+REPLAY_IMPORTED = "record only: original material is retained; its creation was not observed"
 # A mesh is a third tier, not either of the two above. The engine,
 # its seed and its arguments are verbatim and the GLB itself is pinned, but
 # the mesh engines live host-side in their own venvs with weights
@@ -184,6 +195,112 @@ def _sampler_blob(dials: dict) -> dict:
             if k in dials}
 
 
+async def _shared_request(db, node: dict, turn: dict | None) -> dict | None:
+    """Project only this take's immutable acceptance and original node controls."""
+    frozen = ((turn or {}).get('dials') or {}).get('crexil')
+    if not frozen:
+        return None
+    dials = node.get('dials') or {}
+    attempt = dials.get('crexil') or {}
+    operation_id = attempt.get('operation_id') or node.get('engine')
+    operation = next((op for op in frozen.get('operations', [])
+                      if op.get('id') == operation_id
+                      and op.get('revision') == attempt.get('operation_revision')), None)
+    result = {key: copy.deepcopy(frozen[key]) for key in (
+        'direction_id', 'revision', 'setup', 'project_revision', 'brief',
+        'project_instructions', 'project_limits', 'sources', 'review_token',
+        'actor', 'request_id', 'maximum_usd', 'sequence') if key in frozen}
+    result.update(version=1, accepted_at=turn['created_at'], operation=copy.deepcopy(operation),
+                  attempt={'slot_id': node.get('slot_id'), 'take': node.get('take'),
+                           'operation_id': operation_id, 'seed': node.get('seed'),
+                           'dials': copy.deepcopy(dials)})
+    if result.get('sequence'):
+        # Event order, unlike wall-clock timestamps, distinguishes authorization
+        # changes and acceptance even when both happen in the same millisecond.
+        event = await db._one(
+            "SELECT seq,ts,payload_json FROM events WHERE workspace_id=? "
+            "AND type='sequence.authorized' AND json_extract(payload_json,'$.sequence_id')=? "
+            "AND seq < (SELECT MIN(seq) FROM events WHERE workspace_id=? AND turn_id=? "
+            "AND type='turn.created') ORDER BY seq DESC LIMIT 1",
+            (node['workspace_id'], result['sequence']['id'], node['workspace_id'], turn['id']))
+        result['sequence_authorization'] = (
+            {'event_seq': event['seq'], 'accepted_at': event['ts'], **json.loads(event['payload_json'])}
+            if event else None)
+    return result
+
+
+def _represents_mesh_file(receipt: dict, path: Path, suffix: str) -> bool:
+    """Missing receipts still identify their standard companion by filename."""
+    stored = receipt.get('path')
+    return bool((stored and Path(stored).resolve() == path.resolve())
+                or receipt.get('filename', '').endswith(suffix)
+                or receipt.get('filename') == suffix.lstrip('.')
+                or receipt.get('identity') == 'companion:' + suffix)
+
+
+async def _legacy_mesh_files(db, node: dict, asset_id: str, material: dict | None,
+                             execution: dict | None, mesh: dict | None,
+                             turntable: Path | None) -> tuple[dict | None, list[tuple[Path, str]]]:
+    """Expose owned legacy sidecars without replacing any recorded receipt.
+
+    These are present file facts only. They do not create material records in
+    the database, invent execution, or repair a missing or corrupt companion.
+    """
+    from .material_files import files_from_origin
+    from .mesh import FIELDS_SUFFIX, fields_sidecar
+
+    if node['payload'] != '3d' or node.get('purged_at'):
+        return material, []
+    receipts = []
+    if material:
+        public = {item['id']: item for item in material['related_files']}
+        receipts.extend({**item, **public[item['id']]} for item in
+                        files_from_origin(node, material['origin']))
+    if execution:
+        paths = {row['id']: row['output_path'] for row in await db._all(
+            'SELECT id,output_path FROM execution_outputs WHERE group_id=?', (execution['id'],))}
+        receipts.extend({**item, 'path': paths[item['id']]} for item in execution['outputs'])
+    primary = Path(node['output_path'])
+    orbit = turntable if turntable is not None else primary.with_suffix(TURNTABLE_SUFFIX)
+    extras = []
+    for source, suffix, identity, role, media, required in (
+        (fields_sidecar(primary), FIELDS_SUFFIX, 'legacy-fields', 'companion', 'application/octet-stream', True),
+        (orbit, TURNTABLE_SUFFIX, 'legacy-turntable', 'preview', 'image/webp', False),
+    ):
+        declared = [item for item in receipts if _represents_mesh_file(item, source, suffix)]
+        if declared:
+            if suffix == TURNTABLE_SUFFIX and mesh is not None:
+                mesh['turntable'] = next((item['file'] for item in declared
+                    if item.get('available') and not item.get('error')), None)
+            continue
+        if not source.is_file():
+            continue
+        if not source.resolve().is_relative_to(primary.parent.resolve()):
+            raise ValueError('A mesh companion would leave its material directory.')
+        if suffix == TURNTABLE_SUFFIX and mesh is not None:
+            # Preserve the established generated-mesh orbit layout.
+            mesh['turntable'] = f'{asset_id}{TURNTABLE_SUFFIX}'
+            extras.append((source, mesh['turntable']))
+            continue
+        if material is None:
+            material = {'sha256': await asyncio.to_thread(_sha256_file, primary),
+                        'filename': primary.name,
+                        'media_type': mimetypes.guess_type(primary.name)[0] or 'application/octet-stream',
+                        'origin': {'kind': 'unattributed'}, 'related_files_version': 1, 'related_files': []}
+        ids = {item['id'] for item in material['related_files']}
+        base, counter = identity, 1
+        while identity in ids:
+            counter += 1
+            identity = f'{base}-{counter}'
+        relative = f'{asset_id}.outputs/{identity}{source.suffix}'
+        material['related_files'].append({'id': identity, 'filename': source.name,
+            'role': role, 'media_type': media, 'required': required,
+            'sha256': await asyncio.to_thread(_sha256_file, source), 'size_bytes': source.stat().st_size,
+            'error': None, 'available': True, 'file': relative})
+        extras.append((source, relative))
+    return material, extras
+
+
 async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
                             node: dict, turn: dict | None, slot: dict | None,
                             parents: list[dict],
@@ -200,10 +317,23 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
     the only way to see what the GLB is without a 3D viewer. The route
     decides whether an orbit exists; the layout and the manifest's word
     for it are decided here, so the file's name has one home."""
+    # Callers may hold a newer run or slot. The node's immutable ownership is
+    # the only authority for historical request context.
+    turn = await db.get_turn(node['turn_id']) if node.get('turn_id') else None
+    slot = await db.get_slot(node['slot_id']) if node.get('slot_id') else None
     dials = node.get("dials") or {}
     turn_dials = (turn or {}).get("dials") or {}
     external = node.get("external")
     graph = node.get("submitted_graph")
+    restoration = copy.deepcopy(dials.get('crexil_restore'))
+    if restoration:
+        from .crexil_restore import context
+        restored = await context(db, workspace['id'])
+        relevant = {node['id'], *(node.get('parents') or [])}
+        restoration['node_identities'] = {old: current for old, current in
+            (restored or {}).get('identities', {}).get('nodes', {}).items() if current in relevant}
+        restoration['model_hashes'] = 'Original installation model files are not available for verification here.'
+    region_record = (graph or {}).get('region_plan') or {}
     region = turn_dials.get("region")
     is_mesh = node["payload"] == "3d"
     mesh = _mesh_blob(node) if is_mesh else None
@@ -214,10 +344,6 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         # rendered or whose runner was down still promotes, and the record
         # says which of the two happened by not naming a file (law 12)
         mesh["turntable"] = None
-        if turntable is not None and turntable.is_file():
-            rel = f"{asset_id}{TURNTABLE_SUFFIX}"
-            extra_files.append((turntable, rel))
-            mesh["turntable"] = rel
 
     # A region take's `submitted_graph` is the {region_plan} envelope,
     # not a ComfyUI graph: the passes carry the graphs. Hash the
@@ -237,20 +363,26 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
 
     input_images: list[dict] = []
     for i, parent in enumerate(parents):
-        rel = f"{asset_id}.inputs/source.png" if i == 0 \
-            else f"{asset_id}.inputs/source-{i + 1}.png"
         src = Path(parent["output_path"])
-        if src.is_file():
+        suffix = src.suffix or '.bin'
+        rel = f"{asset_id}.inputs/source{suffix}" if i == 0 \
+            else f"{asset_id}.inputs/source-{i + 1}{suffix}"
+        available = not parent.get('purged_at') and src.is_file()
+        if available:
             extra_files.append((src, rel))
+        source_info = await db._one('SELECT sha256 FROM material_info WHERE node_id=?', (parent['id'],))
+        source_hash = (source_info['sha256'] if source_info else
+                       await asyncio.to_thread(_sha256_file, src) if available else None)
         input_images.append({
-            "node_id": parent["id"],
-            "sha256": dials.get("source_image_sha256") if i == 0 else None,
-            "file": rel,
+            "node_id": parent["id"], "sha256": source_hash,
+            "file": rel if available else None, "available": available,
         })
 
     regions: list[dict] = []
     if region and region.get("region_ids"):
-        for r in await db.regions_by_ids(list(region["region_ids"])):
+        from .crexil_restore import resolve
+        region_ids = [await resolve(db, workspace["id"], "regions", rid) for rid in region["region_ids"]]
+        for r in await db.regions_by_ids(region_ids):
             rel = f"{asset_id}.inputs/region-{r['id']}.png"
             extra_files.append((Path(r["mask_path"]), rel))
             regions.append({
@@ -258,6 +390,50 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
                 "prompt": r["prompt"], "z_order": r["z_order"],
                 "mask_sha256": r["mask_sha256"], "mask_file": rel,
             })
+
+    # Runtime identity and completion belong to the attempt, not the mutable
+    # current slot. A reroll must never rewrite an older output's provenance.
+    execution = next((g for g in await inventory(db, workspace['id'])
+                      if g['slot_id'] == node.get('slot_id') and g['take'] == node.get('take')), None)
+    runtime_inputs = []
+    if execution:
+        for output in execution['outputs']:
+            output['file'] = None
+            if output['available']:
+                if output['node_id'] == node['id']:
+                    output['file'] = f"{asset_id}{Path(node['output_path']).suffix or '.png'}"
+                else:
+                    raw = await db._one('SELECT output_path FROM execution_outputs WHERE id=?', (output['id'],))
+                    source = Path(raw['output_path'])
+                    folder = 'inputs' if output['role'] == 'runtime input' else 'outputs'
+                    output['file'] = f"{asset_id}.{folder}/{output['id']}{source.suffix}"
+                    extra_files.append((source, output['file']))
+            if output['role'] == 'runtime input':
+                runtime_inputs.append({key: output[key] for key in
+                    ('identity', 'sha256', 'file', 'available', 'size_bytes')} | {
+                    'description': {key: value for key, value in output['descriptor'].items() if key != 'receipt'}})
+    material = await db._one('SELECT * FROM material_info WHERE node_id=?', (node['id'],))
+    material_record = ({'sha256': material['sha256'], 'filename': material['filename'],
+                        'media_type': material['media_type'], 'origin': json.loads(material['origin_json'])}
+                       if material else None)
+    if material_record is not None:
+        from .material_files import export_files
+        related, retained = await export_files(db, node, asset_id)
+        material_record.update(related_files_version=1, related_files=related)
+        extra_files.extend(retained)
+    material_record, legacy_files = await _legacy_mesh_files(
+        db, node, asset_id, material_record, execution, mesh, turntable)
+    extra_files.extend(legacy_files)
+    if material_record is not None:
+        # Live ownership paths are replaced by portable receipts. Nested source
+        # records are historical evidence and retain their original contents.
+        material_record['origin'].pop('retained_files', None)
+    prepared_image = bool(material_record and material_record['origin'].get('kind') == 'prepared_image')
+    unknown_creation = node.get('verb') == 'import' and not prepared_image
+    keep_hash = region_record.get('keep_mask_sha256') or (region or {}).get('keep_mask_sha256')
+    keep_input = next((item for item in runtime_inputs
+                       if item['identity'] == (region_record.get('keep') or {}).get('identity')), None)
+    keep_scope = 'each completed pass' if region_record.get('keep_scope') == 'each_completed_pass' else 'the final pass'
 
     manifest = {
         "manifest_version": MANIFEST_VERSION,
@@ -273,31 +449,34 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         "take": node.get("take"),
         "payload": node["payload"],
         "verb": node["verb"],
-        "capability": dials.get("capability", "txt2img"),
+        "capability": None if unknown_creation else dials.get("capability", "txt2img"),
         "parent_node_ids": list(node.get("parents") or []),
         "landed_at": node["created_at"],
+        "restoration": restoration,
         "engine": node.get("engine"),
-        "transport": "openrouter" if external else "local",
-        "provider": None if external else "comfyui",
+        "transport": None if unknown_creation else "openrouter" if external else "local",
+        "provider": None if external or is_mesh or not graph or unknown_creation else "comfyui",
         # Two different facts, both the manifest's: what this ASSET is (it involved
         # no external call), and whether the artist's LOCAL ONLY switch was
         # down for the run that made it (the claim is recorded on the
         # turn; the switch being off doesn't make an asset non-local).
-        "local_only": external is None,
-        "run_local_only": bool(turn_dials.get("local_only")),
-        "replayable": (REPLAY_EXTERNAL if external
-                       else REPLAY_MESH if is_mesh else REPLAY_LOCAL),
+        "local_only": None if unknown_creation else external is None,
+        "run_local_only": None if unknown_creation else bool(turn_dials.get("local_only")),
+        "replayable": (REPLAY_IMPORTED if unknown_creation else REPLAY_EXTERNAL if external else REPLAY_MESH if is_mesh
+                       else 'recipe: the recorded pixel transform, renderer version and source hashes describe this prepared image'
+                       if prepared_image else REPLAY_IMPORTED
+                       if not graph else REPLAY_LOCAL),
         "model": {
             "family": (external or {}).get("model") if external
             else node.get("engine"),
-            "files": await model_files_meta(db, *graphs),
+            "files": [] if dials.get("crexil_restore") else await model_files_meta(db, *graphs),
         },
         "loras": [] if external else extract_loras(graphs[-1] if graphs
                                                    else {}),
         "carry_channels": [],
         "style_ref": None,
         "prompts": {
-            "positive": node.get("prompt") if external
+            "positive": None if unknown_creation else node.get("prompt") if external
             else dials.get("prompt", node.get("prompt")),
             "negative": None if external else dials.get("negative_prompt"),
         },
@@ -306,12 +485,14 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         "seed": external.get("seed") if external else node.get("seed"),
         "sampler": {} if external else _sampler_blob(dials),
         "input_images": input_images,
+        "runtime_inputs": runtime_inputs,
         "regions": regions,
         "region_policy": (region or {}).get("policy"),
-        "keep_composite": ({"mask_sha256": region["keep_mask_sha256"],
+        "keep_composite": ({"mask_sha256": keep_hash,
+                            "mask_file": keep_input['file'] if keep_input else None,
                             "note": "server-side verbatim restore of KEEP "
-                                    "pixels after the final pass (nd3-v1)"}
-                           if region and region.get("keep_mask_sha256")
+                                    f"pixels after {keep_scope} (nd3-v1)"}
+                           if keep_hash
                            else None),
         # An image's size comes from the promoted file; a mesh has no
         # resolution to read, and asking PIL for one would answer
@@ -327,11 +508,16 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         "cost": {"committed_usd": node.get("committed_usd"),
                  "charged_usd": node.get("charged_usd")},
         "duration_ms": node.get("duration_ms"),
-        "comfyui": None if external else {"job_ref": (slot or {}).get("job_ref")},
+        "comfyui": None if external or is_mesh or unknown_creation or prepared_image else {"job_ref": execution["job_ref"] if execution else
+            (slot or {}).get("job_ref") if (slot or {}).get("attempt") == node.get("take") else None},
+        "execution": execution,
+        "material": material_record,
+        "shared_request": await _shared_request(db, node, turn),
         "external": external,
         "pipeline": ([{k: p.get(k) for k in
                        ("idx", "kind", "capability", "workflow", "region_ids",
-                        "prompt", "box", "uses_denoise", "mask_sha256",
+                        "prompt", "box", "uses_denoise", "mask_sha256", "applied_controls",
+                        "source_input", "mask_input", "effective_mask_input",
                         "graph")}
                       for p in passes] if passes else None),
         "submitted_graph": None if passes else graph,

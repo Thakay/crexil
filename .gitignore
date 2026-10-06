@@ -14,6 +14,10 @@ venv/
 
 # node
 node_modules/
+node_modules
+.venv
+.worktrees/
+.preview/
 dist/
 .vite/
 cockpit/server/static/

@@ -32,12 +32,33 @@ artist's real production tree, and a folder rename is routine there. So:
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
 from pathlib import Path
 
 from . import config
+
+
+class PromoteMaterialError(ValueError):
+    """Collected bytes no longer match their receipt; delivery is refused."""
+
+
+def _verify_collected_copy(path: Path, relative: str, manifest: dict, primary: bool = False) -> None:
+    expected = (manifest.get('material') or {}).get('sha256') if primary else None
+    for item in [*((manifest.get('execution') or {}).get('outputs') or []), *(manifest.get('input_images') or []),
+                 *((manifest.get('material') or {}).get('related_files') or [])]:
+        if item.get('file') == relative and item.get('sha256'):
+            expected = item['sha256']
+    for item in manifest.get('regions') or []:
+        if item.get('mask_file') == relative:
+            expected = item.get('mask_sha256')
+    if expected:
+        with path.open('rb') as source:
+            actual = hashlib.file_digest(source, 'sha256').hexdigest()
+        if actual != expected:
+            raise PromoteMaterialError('A file changed since it was collected. Restore its original bytes or collect this attempt again before delivery. Nothing was delivered.')
 
 
 class PromoteTargetError(OSError):
@@ -217,14 +238,18 @@ def promote_candidate(artefact_path: Path, manifest: dict, dest_rel: str,
         shutil.copyfile(staged_manifest, staged_man)
         plan.append((staged_man, man_dest))
         for src, rel in extra_files:
-            if src.is_file():
-                staged = tmpdir / "extra" / rel
-                staged.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, staged)
-                plan.append((staged, target / rel))
+            staged = tmpdir / "extra" / rel
+            staged.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, staged)
+            _verify_collected_copy(staged, rel, manifest)
+            plan.append((staged, target / rel))
         staged_art = tmpdir / art_dest.name
         shutil.copyfile(artefact_path, staged_art)
+        _verify_collected_copy(staged_art, art_dest.name, manifest, primary=True)
         plan.append((staged_art, art_dest))
+    except PromoteMaterialError:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
     except OSError as e:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise PromoteTargetError(

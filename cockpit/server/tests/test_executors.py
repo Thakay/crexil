@@ -308,3 +308,16 @@ async def test_openrouter_read_timeout_is_its_own_kind(monkeypatch):
         await orc.generate(model="m", prompt="p")
     assert ei.value.kind == "timeout"
     await orc.close()
+
+
+async def test_comfy_recovery_watches_a_known_active_prompt_without_resubmission():
+    client = FakeComfy()
+    client.queue['queue_running'] = [[1, 'pid-active', {}, {}, []]]
+    executor = ComfyExecutor(client)
+    rec = await executor.reconcile({'job_ref': 'pid-active'})
+    assert rec.kind == 'running'
+    assert rec.handle.job_ref == 'pid-active'
+    client.history_map['pid-active'] = SUCCESS_ENTRY
+    result = await executor.wait(rec.handle)
+    assert result.data == b'png-bytes'
+    assert client.submitted == []

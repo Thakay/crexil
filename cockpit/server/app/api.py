@@ -33,10 +33,13 @@ def _stack() -> wiring.Stack:
                              "description": "degraded — same shape"}})
 async def health(response: Response):
     stack = _stack()
-    checks: dict = {"db": True,
+    checks: dict = {"db": True, "preview": config.CREXIL_PREVIEW,
                     "build": {"id": config.BUILD_ID,
                               "time": config.BUILD_TIME}}
-    if stack.comfy is None:
+    if config.CREXIL_PREVIEW:
+        checks["comfyui"] = {"ok": False,
+                             "error": wiring.PREVIEW_UNAVAILABLE}
+    elif stack.comfy is None:
         # scripted executors (pytest fakes, the e2e harness) own no
         # ComfyClient — degraded is the honest answer, not a guess
         checks["comfyui"] = {"ok": False,

@@ -1,44 +1,19 @@
-"""Schema v4 — the product-model store. One SQLite file.
+"""One server-owned SQLite record for projects, attempts and material.
 
-Clean CREATE + version stamp '4'; the migration ladder starts here, forward
-only, and `open()` refuses a pre-v4 file so one is never touched by
-mistake. Entities: workspaces / turns / slots / nodes (plural parents via
-`node_parents`), the append-only `events` table, and FTS5 over node
-prompts. Engines and verbs are config; the DB stores their ids as TEXT.
+Forward migrations refuse incompatible archives before changing them. Nodes
+identify immutable material and provenance by slot, attempt and output index;
+several collected images can belong to one attempt. Available incomplete work
+can exist without claiming a successful execution. Only terminal collection
+moves a slot to landed and records its charge, once for the whole execution.
 
-Contracts:
-- Node rows insert at land time only, generative fields immutable; `slot_id`
-  + `take` (the slot's attempt at land) make reroll a pure append — old
-  takes stay first-class rows (law 7). Failed attempts produce no node row;
-  the slot + its events are their permanent record (law 9).
-- Purge is a tombstone (`purged_at`), never DELETE — a trigger aborts hard
-  deletes, so children's lineage survives structurally. `purge_node` returns
-  the file paths for the caller to unlink; the store touches only the DB.
-  Turns and slots are trigger-guarded the same way, and a slot's
-  `pos`/`turn_id`/`engine` refuse UPDATE (law 8: geometry is frozen at Run).
-- `slots.detail` keeps the raw engine text behind the plain `cause` (law 3);
-  `slots.retry_of` names the failure kind an automatic retry answers
-  (law 9); `slots.kind` is the failure kind on the row, so the face picks
-  its remedy without walking the ledger. Cleared by reroll.
-- Dispatch provenance (`submitted_graph_json` / `external_json` / `job_ref`)
-  lands on the slot at dispatch — manifests wrap reality, never a
-  reconstruction — and is copied onto the node at land.
-- Money: `committed_usd` and `charged_usd` are separate everywhere, and the
-  rollup source of truth is `events.charged_usd` — a reroll must not lose
-  the previous attempt's charge. Each confirmed charge enters the ledger
-  through exactly ONE of land_node / fail_slot / record_charge.
-- `events.seq` is AUTOINCREMENT (never reused — the poll's resume cursor)
-  and the table rejects UPDATE/DELETE by trigger.
-- View state is the mutability exception: `nodes.x/y`, workspace viewport
-  and dials, and the turn's grid anchor persist so a restart restores the
-  canvas exactly. `UNIQUE(turn_id, pos)` is law 8 in DDL.
-- No per-step progress column (memory only) and no lease columns: a single
-  process, so the scheduler's registry is the live lease and
-  status+job_ref+attempt the durable one. No speculative columns.
-- Concurrency (`_locked`): one shared connection, one task-reentrant lock
-  over every statement — reads observe committed state only, standalone
-  writes never join another task's open transaction, and a cancelled
-  transaction rolls back only itself.
+Purge tombstones material and keeps lineage. Events are append-only; slot position,
+turn and engine are frozen. Current group members share the slot's set-aside state
+only when every member is aside. Older attempts never change a newer slot's state.
+The event ledger owns spending totals; estimates and confirmed charges stay separate.
+
+Every database statement uses the task-reentrant lock. Reads see committed state,
+standalone writes never join another task's transaction, and nested mutations use
+savepoints. Files belong to server storage callers; this module writes no artifacts.
 """
 
 from __future__ import annotations
@@ -118,6 +93,7 @@ CREATE TABLE IF NOT EXISTS nodes(
   turn_id              TEXT REFERENCES turns(id),
   slot_id              TEXT REFERENCES slots(id),
   take                 INTEGER,
+  output_index         INTEGER NOT NULL DEFAULT 0 CHECK(output_index >= 0),
   payload              TEXT NOT NULL CHECK(payload IN ('image','3d')),
   verb                 TEXT NOT NULL,
   prompt               TEXT,
@@ -136,9 +112,6 @@ CREATE TABLE IF NOT EXISTS nodes(
   purged_at            TEXT,
   created_at           TEXT NOT NULL
 ) STRICT;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_nodes_slot_take
-  ON nodes(slot_id, take) WHERE slot_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS node_parents(
   node_id   TEXT NOT NULL REFERENCES nodes(id),
@@ -257,7 +230,10 @@ CREATE INDEX IF NOT EXISTS idx_events_promoted
   ON events(node_id) WHERE type = 'node.promoted';
 """
 
-SCHEMA_VERSION = "7"
+from .crexil_store import SCHEMA as CREXIL_SCHEMA
+
+SCHEMA += CREXIL_SCHEMA
+SCHEMA_VERSION = "12"
 
 # Slot lifecycle (PRD §2): to-status -> the from-statuses it is legal from.
 # Policy detail (cancel semantics, late handling) is the scheduler's, in code;
@@ -348,6 +324,9 @@ class Database:
             raise SchemaVersionError(
                 f"{self._path} has tables but no version stamp — "
                 "not a cockpit database; refusing to touch it")
+        sealed = await self._one("SELECT value FROM meta WHERE key='archive_sealed'")
+        if sealed:
+            raise SchemaVersionError('This is a project backup. Restore it through Crexil instead of opening it as a live database.')
         row = await self._one(
             "SELECT value FROM meta WHERE key='schema_version'")
         stamp = row["value"] if row else None
@@ -432,8 +411,39 @@ class Database:
                 await self.conn.execute("ROLLBACK")
                 raise
             version = "7"
+        if version == "7":
+            from .crexil_store import migrate_projects
+            async with self._tx():
+                await migrate_projects(self)
+                await self.conn.execute(
+                    "UPDATE meta SET value='8' WHERE key='schema_version'")
+            version = "8"
+        if version == "8":
+            async with self._tx():
+                columns = {row['name'] for row in await self._all('PRAGMA table_info(nodes)')}
+                if 'output_index' not in columns:
+                    await self.conn.execute('ALTER TABLE nodes ADD COLUMN output_index INTEGER NOT NULL DEFAULT 0 CHECK(output_index >= 0)')
+                await self.conn.execute('DROP INDEX IF EXISTS idx_nodes_slot_take')
+                await self.conn.execute('CREATE UNIQUE INDEX idx_nodes_slot_take ON nodes(slot_id,take,output_index) WHERE slot_id IS NOT NULL')
+                await self.conn.execute("UPDATE meta SET value='9' WHERE key='schema_version'")
+            version = "9"
+        if version == "9":
+            async with self._tx():
+                await self.conn.execute("UPDATE meta SET value='10' WHERE key='schema_version'")
+            version = "10"
+        if version == "10":
+            async with self._tx():
+                await self.conn.execute("UPDATE meta SET value='11' WHERE key='schema_version'")
+            version = "11"
+        if version == "11":
+            async with self._tx():
+                await self.conn.execute("UPDATE meta SET value='12' WHERE key='schema_version'")
+            version = "12"
         if version != SCHEMA_VERSION:
             raise SchemaVersionError(f"unsupported schema version {version}")
+        # Fresh stores already have the new column; existing stores gain it in
+        # the rung above before this index can be created.
+        await self.conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_nodes_slot_take ON nodes(slot_id,take,output_index) WHERE slot_id IS NOT NULL')
 
     async def close(self) -> None:
         if self._conn:
@@ -480,6 +490,20 @@ class Database:
         serializes logical transactions across tasks on the one shared
         connection — aiosqlite serializes statements, not transactions."""
         async with self._locked():
+            if self.conn.in_transaction:
+                # Shared actions compose existing atomic store methods. A
+                # savepoint lets an inner failure unwind without committing
+                # the caller's receipt or any earlier part of its action.
+                savepoint = "nested_" + uuid.uuid4().hex
+                await self.conn.execute(f"SAVEPOINT {savepoint}")
+                try:
+                    yield
+                    await self.conn.execute(f"RELEASE {savepoint}")
+                except BaseException:
+                    await self.conn.execute(f"ROLLBACK TO {savepoint}")
+                    await self.conn.execute(f"RELEASE {savepoint}")
+                    raise
+                return
             # Cancellation-safe: a task cancelled at any await here may have
             # had its statement already executed by aiosqlite's worker thread
             # (cancelling the future does not unqueue the work). BEGIN inside
@@ -673,7 +697,13 @@ class Database:
         attempts unless a re-dispatch names a new one."""
         async with self._tx():
             slot = await self._require_slot(slot_id)
+            from .crexil_restore import guard as guard_restored
+            guard_restored(slot)
             self._guard_transition(slot, "running")
+            from .execution_controls import guard_dispatch as guard_control
+            await guard_control(self, slot)
+            from .crexil_budget import guard_dispatch
+            await guard_dispatch(self, slot)
             attempt = slot["attempt"] + 1
             await self.conn.execute(
                 "UPDATE slots SET status='running', attempt=?, started_at=?,"
@@ -727,7 +757,7 @@ class Database:
                  now_iso(), charged_usd, slot_id))
             ids = await self._slot_ids(slot)
             await self._append_event(
-                "slot.failed", **ids, charged_usd=charged_usd,
+                "slot.failed", **ids, charged_usd=await self._unrecorded_charge(slot, charged_usd),
                 payload={"cause": cause, "kind": kind,
                          "attempt": slot["attempt"],
                          "engine": slot["engine"], "detail": detail,
@@ -767,6 +797,8 @@ class Database:
         cell's from here on; the old take's node keeps its own."""
         async with self._tx():
             slot = await self._require_slot(slot_id)
+            from .crexil_restore import guard as guard_restored
+            guard_restored(slot)
             if slot["status"] not in REROLLABLE:
                 raise ValueError(
                     f"illegal slot transition: {slot['status']} -> queued"
@@ -882,45 +914,102 @@ class Database:
                         duration_ms: int | None = None,
                         committed_usd: float | None = None,
                         charged_usd: float | None = None,
-                        x: float | None = None, y: float | None = None) -> dict:
-        """The one way a generation becomes a node: insert node + ordered
-        parents + slot -> landed + the node.landed event, one transaction.
-        Omitted generative fields inherit the slot's dispatch-time values."""
+                        x: float | None = None, y: float | None = None,
+                        output_index: int = 0, complete: bool = True,
+                        expected_attempt: int | None = None) -> dict:
+        """Record a collected material member, optionally completing its attempt.
+
+        Intermediate collection never changes slot status or bills. Repeating
+        collection at the same index and path reuses its identity. Completion
+        retains the existing terminal-transition guard, so one execution bills
+        once regardless of how many files it returned.
+        """
         nid, ts = new_id(), now_iso()
         async with self._tx():
             slot = await self._require_slot(slot_id)
-            self._guard_transition(slot, "landed")
+            if expected_attempt is not None and slot['attempt'] != expected_attempt:
+                raise ValueError('This output belongs to an earlier attempt; the current request is unchanged.')
+            if complete:
+                self._guard_transition(slot, 'landed')
+            elif slot['status'] not in {'running', 'late', 'failed', 'landed', 'set_aside'}:
+                raise ValueError('Material cannot be collected before its attempt starts.')
+            if not complete and charged_usd is not None:
+                raise ValueError('Collection does not record a charge. Complete or fail the execution once.')
             ids = await self._slot_ids(slot)
-            graph_src = (submitted_graph if submitted_graph is not None
-                         else slot["submitted_graph"])
-            graph = json.dumps(graph_src) if graph_src is not None else None
-            ext_src = external if external is not None else slot["external"]
-            ext = json.dumps(ext_src) if ext_src is not None else None
-            await self.conn.execute(
-                "INSERT INTO nodes(id, workspace_id, turn_id, slot_id, take,"
-                " payload, verb, prompt, engine, seed, dials_json, output_path,"
-                " submitted_graph_json, external_json, duration_ms,"
-                " committed_usd, charged_usd, x, y, created_at)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (nid, ids["workspace_id"], slot["turn_id"], slot_id,
-                 slot["attempt"], payload, verb, prompt,
-                 engine or slot["engine"],
-                 seed if seed is not None else slot["seed"],
-                 json.dumps(dials if dials is not None else slot["dials"]),
-                 output_path, graph, ext, duration_ms,
-                 committed_usd if committed_usd is not None
-                 else slot["committed_usd"],
-                 charged_usd, x, y, ts))
-            await self._insert_parents(nid, parents or [])
-            await self.conn.execute(
-                "UPDATE slots SET status='landed', finished_at=?,"
-                " charged_usd=COALESCE(?, charged_usd) WHERE id=?",
-                (ts, charged_usd, slot_id))
-            await self._append_event(
-                "node.landed", **ids, node_id=nid, charged_usd=charged_usd,
-                payload={"engine": engine or slot["engine"],
-                         "take": slot["attempt"], "duration_ms": duration_ms})
+            previous = await self._one('SELECT id,output_path FROM nodes WHERE slot_id=? AND take=? AND output_index=?',
+                                       (slot_id, slot['attempt'], output_index))
+            if previous:
+                if previous['output_path'] != output_path:
+                    raise ValueError('This output index already identifies different material.')
+                nid = previous['id']
+            else:
+                graph_src = submitted_graph if submitted_graph is not None else slot['submitted_graph']
+                graph = json.dumps(graph_src) if graph_src is not None else None
+                ext_src = external if external is not None else slot['external']
+                ext = json.dumps(ext_src) if ext_src is not None else None
+                await self.conn.execute(
+                    'INSERT INTO nodes(id,workspace_id,turn_id,slot_id,take,output_index,'
+                    'payload,verb,prompt,engine,seed,dials_json,output_path,submitted_graph_json,'
+                    'external_json,duration_ms,committed_usd,charged_usd,x,y,created_at) '
+                    'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (nid, ids['workspace_id'], slot['turn_id'], slot_id, slot['attempt'], output_index,
+                     payload, verb, prompt, engine or slot['engine'],
+                     seed if seed is not None else slot['seed'],
+                     json.dumps(dials if dials is not None else slot['dials']), output_path,
+                     graph, ext, duration_ms,
+                     committed_usd if committed_usd is not None else slot['committed_usd'],
+                     charged_usd, x, y, ts))
+                await self._insert_parents(nid, parents or [])
+            if complete:
+                visible = await self._one('SELECT 1 FROM nodes WHERE slot_id=? AND take=? AND set_aside=0 AND purged_at IS NULL LIMIT 1',
+                                          (slot_id, slot['attempt']))
+                await self.conn.execute(
+                    "UPDATE slots SET status=?,finished_at=?,charged_usd=COALESCE(?,charged_usd) WHERE id=?",
+                    ('landed' if visible else 'set_aside', ts, charged_usd, slot_id))
+                if previous:
+                    # Completion fills execution facts, never image bytes or
+                    # generative inputs already attached to the material.
+                    await self.conn.execute('UPDATE nodes SET duration_ms=COALESCE(duration_ms,?),charged_usd=COALESCE(charged_usd,?) WHERE id=?',
+                                             (duration_ms, charged_usd, nid))
+                await self._append_event('node.landed', **ids, node_id=nid, charged_usd=await self._unrecorded_charge(slot, charged_usd),
+                    payload={'engine': engine or slot['engine'], 'take': slot['attempt'],
+                             'duration_ms': duration_ms, 'output_index': output_index})
+            elif not previous:
+                if slot['status'] == 'set_aside':
+                    await self.conn.execute("UPDATE slots SET status='landed' WHERE id=?", (slot_id,))
+                await self._append_event('node.collected', **ids, node_id=nid,
+                    payload={'engine': engine or slot['engine'], 'take': slot['attempt'],
+                             'output_index': output_index, 'complete': False})
         return await self.get_node(nid)
+
+    async def complete_files(self, slot_id: str, attempt: int, *, charged_usd: float | None = None) -> None:
+        """Complete a file-only operation without inventing an image or mesh node."""
+        async with self._tx():
+            slot = await self._require_slot(slot_id)
+            if slot['attempt'] != attempt:
+                raise ValueError('These files belong to an earlier attempt.')
+            self._guard_transition(slot, 'landed')
+            await self.conn.execute("UPDATE slots SET status='landed',finished_at=?,charged_usd=COALESCE(?,charged_usd) WHERE id=?",
+                                    (now_iso(), charged_usd, slot_id))
+            await self._append_event('slot.files_landed', **await self._slot_ids(slot), charged_usd=await self._unrecorded_charge(slot, charged_usd),
+                                    payload={'attempt': attempt, 'job_ref': slot['job_ref']})
+
+    async def recovered_collection(self, slot_id: str, attempt: int) -> None:
+        """Verified runtime success may repair collection uncertainty, never bill again."""
+        async with self._tx():
+            slot = await self._require_slot(slot_id)
+            if slot['attempt'] != attempt:
+                raise ValueError('The request now has another attempt. Its state was not changed.')
+            if slot['status'] != 'failed' or slot['kind'] not in {'collection', 'uncertain', 'timeout', 'restart', 'charged_blank'}:
+                return
+            visible = await self._one('SELECT 1 FROM nodes WHERE slot_id=? AND take=? AND set_aside=0 AND purged_at IS NULL LIMIT 1',
+                                      (slot_id, attempt))
+            if not visible and not await self._one('SELECT 1 FROM nodes WHERE slot_id=? AND take=? LIMIT 1', (slot_id, attempt)):
+                visible = await self._one('SELECT 1 FROM execution_outputs o JOIN execution_groups g ON g.id=o.group_id WHERE g.slot_id=? AND g.take=? AND o.sha256 IS NOT NULL LIMIT 1', (slot_id, attempt))
+            await self.conn.execute("UPDATE slots SET status=?,cause=NULL,kind=NULL,detail=NULL WHERE id=?",
+                                    ('landed' if visible else 'set_aside', slot_id))
+            await self._append_event('slot.collection_recovered', **await self._slot_ids(slot),
+                payload={'attempt': attempt, 'job_ref': slot['job_ref'], 'generated_again': False})
 
     async def import_node(self, wid: str, *, output_path: str,
                           payload: str = "image", prompt: str | None = None,
@@ -1016,6 +1105,11 @@ class Database:
         slot = await self.get_slot(node["slot_id"])
         if slot and slot["status"] == from_status \
                 and slot["attempt"] == node["take"]:
+            if to_status == 'set_aside':
+                visible = await self._one('SELECT COUNT(*) AS n FROM nodes WHERE slot_id=? AND take=? AND set_aside=0 AND purged_at IS NULL',
+                                          (slot['id'], slot['attempt']))
+                if visible['n']:
+                    return
             await self.conn.execute(
                 "UPDATE slots SET status=? WHERE id=?",
                 (to_status, slot["id"]))
@@ -1083,6 +1177,8 @@ class Database:
             regions = await self.regions_for_node(nid)
             fresh = not node["purged_at"]
             if fresh:
+                from .crexil_sequences import guard_purge
+                await guard_purge(self, nid)
                 await self.conn.execute(
                     "UPDATE nodes SET purged_at=? WHERE id=?"
                     " AND purged_at IS NULL", (now_iso(), nid))
@@ -1249,19 +1345,54 @@ class Database:
         row = await self._one("SELECT COALESCE(MAX(seq), 0) FROM events")
         return row[0]
 
+    async def _unrecorded_charge(self, slot: dict, amount: float | None) -> float | None:
+        if amount is None:
+            return None
+        row = await self._one("SELECT charged_usd FROM events WHERE slot_id=? AND type='slot.provider_charge_reported' "
+                              "AND json_extract(payload_json,'$.attempt')=? LIMIT 1", (slot['id'], slot['attempt']))
+        return round(amount - row['charged_usd'], 6) if row else amount
+
+    async def report_provider_charge(self, slot: dict, amount: float, job_ref: str | None) -> None:
+        """Record a known response charge once, before its files finish downloading."""
+        async with self._tx():
+            previous = await self._one("SELECT 1 FROM events WHERE slot_id=? AND type='slot.provider_charge_reported' "
+                                       "AND json_extract(payload_json,'$.attempt')=?", (slot['id'], slot['attempt']))
+            if previous:
+                return
+            await self.conn.execute('UPDATE slots SET charged_usd=?,job_ref=COALESCE(?,job_ref) WHERE id=? AND attempt=?',
+                                    (amount, job_ref, slot['id'], slot['attempt']))
+            await self._append_event('slot.provider_charge_reported', **await self._slot_ids(slot), charged_usd=amount,
+                                     payload={'attempt': slot['attempt'], 'job_ref': job_ref})
+
+    async def confirm_unsent_stop(self, slot: dict) -> None:
+        """A cancelled external preflight can stop only before its paid-send event."""
+        async with self._tx():
+            current = await self._require_slot(slot['id'])
+            if current['status'] != 'late' or current['attempt'] != slot['attempt']:
+                return
+            sent = await self._one("SELECT 1 FROM events WHERE slot_id=? AND type='slot.provider_sending' "
+                                   "AND json_extract(payload_json,'$.attempt')=?", (slot['id'], slot['attempt']))
+            if sent:
+                raise ValueError('A sent request cannot be confirmed as unsent.')
+            await self.conn.execute("UPDATE slots SET status='skipped',finished_at=?,cause='Stopped before provider dispatch' WHERE id=?",
+                                    (now_iso(), slot['id']))
+            await self._append_event('slot.stop_confirmed', **await self._slot_ids(slot),
+                                      payload={'attempt': slot['attempt'], 'reason': 'No paid request was sent'})
+
     async def record_charge(self, slot_id: str, usd: float,
-                            *, note: str | None = None) -> dict:
+                            *, note: str | None = None, attempt: int | None = None) -> dict:
         """The ledger entry for charges outside land/fail — B4's charged-but-
         nothing-returned, cancel of an in-flight external take."""
         async with self._tx():
             slot = await self._require_slot(slot_id)
+            attempt = slot['attempt'] if attempt is None else attempt
             await self.conn.execute(
                 "UPDATE slots SET charged_usd=COALESCE(charged_usd,0)+?"
-                " WHERE id=?", (usd, slot_id))
+                " WHERE id=? AND attempt=?", (usd, slot_id, attempt))
             ids = await self._slot_ids(slot)
             return await self._append_event(
                 "slot.charged", **ids, charged_usd=usd,
-                payload={"note": note, "engine": slot["engine"]})
+                payload={"note": note, "engine": slot["engine"], 'attempt': attempt})
 
     # --- cost rollups (totals report CHARGED, summed from the ledger) ---
 
@@ -1279,7 +1410,8 @@ class Database:
         sorts before every timestamp of that day, as intended."""
         row = await self._one(
             "SELECT COALESCE(SUM(charged_usd), 0) FROM events"
-            " WHERE charged_usd IS NOT NULL AND ts >= ? AND ts < ?",
+            " WHERE charged_usd IS NOT NULL AND ts >= ? AND ts < ?"
+            " AND json_type(payload_json,'$.archive_origin') IS NULL",
             (start_iso, end_iso))
         return round(row[0], 6)
 

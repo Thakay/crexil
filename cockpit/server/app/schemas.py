@@ -85,6 +85,7 @@ class OpenRouterProbe(BaseModel):
 
 class HealthInfo(BaseModel):
     db: bool
+    preview: bool = False
     build: HealthBuild
     comfyui: HealthComfy
     presets: list[str]
@@ -152,6 +153,10 @@ class ProviderModel(BaseModel):
     description: str | None = None
     params: dict[str, Any] | None = None
     enabled: bool | None = None               # config-fallback entries only
+    endpoints: list[dict] = Field(default_factory=list)
+    endpoints_fetched_at: str | None = None
+    endpoint_discovery_error: str | None = None
+    discovered_model: dict | None = None
 
 
 class ProvidersInfo(BaseModel):
@@ -685,11 +690,13 @@ class NodeMesh(BaseModel):
 
 
 class Node(BaseModel):
-    """A landed generation on the canvas (PRD §2). Blobs and server
-    paths (output_path, submitted_graph, external, dials) never leave the
-    server — same rule as Slot; slimming lives in api_v4._node_view.
-    `turn_idx` + `slot_pos` feed the card footer (`12b · FLUX…`: the card's
-    letters are slot letters)."""
+    """A compact landed-material view, slimmed by api_v4._node_view.
+
+    This view omits paths, submitted graphs, external envelopes and dials.
+    Explicit Crexil provenance reads expose saved requests and settings separately;
+    current runtime definitions never substitute for a take's historical facts.
+    The card footer uses turn_idx and slot_pos; its letters identify slots.
+    """
     id: str
     workspace_id: str
     turn_id: str | None                  # imported nodes have neither

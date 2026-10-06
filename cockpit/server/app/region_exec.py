@@ -1,29 +1,23 @@
-"""RegionExecutor: one region take = one multi-pass pipeline on the
-local lane, behind the ordinary Executor protocol.
+"""Execute one region take as an ordered pipeline on the serial local lane.
 
-The scheduler stays payload-agnostic: a region take is registered like any
-other because the whole plan rides `DispatchRequest.submitted_graph` as the
-`{"region_plan": …}` envelope (regionrun.build_engine_envelope). This
-executor walks the envelope pass by pass — crop the working frame to the
-pass's plan-time box, content-address the crop into ComfyUI's input dir,
-submit the pass graph through an inner ComfyExecutor (confirm-poll, blank
-detection, oom classification and interrupt semantics reused verbatim),
-composite the result back (crop.paste_back — whole box for the mask-native
-rails, through the feathered effective mask for the instruction tiers) —
-then restores KEEP byte-exactly (regions.apply_keep) and hands the frame
-to the scheduler as one ordinary landing.
+The region-plan envelope owns crop geometry, effective masks and pass order.
+Source, KEEP and every effective mask are verified against their frozen hashes
+before any dispatch, then held in memory so staging changes cannot alter a take.
+Each pass crops the working image, submits its graph through ComfyExecutor,
+then clips the result to the effective binary mask. Instruction tiers feather
+inward; mask-native tiers retain their graph's blend within the same fence.
+Every pass preserves source alpha and restores KEEP before another pass sees
+the image. Trusting a mask-native graph alone would violate exact protection.
 
-Restart truth: `start()` returns immediately with job_ref=None and the
-pipeline runs inside `wait()`, so a crash mid-pipeline leaves the slot
-"running without job_ref" — recovery's safe-requeue rule re-runs the
-envelope from pass 0 (idempotent: content-addressed uploads, the take's
-one seed baked into every pass; the cost is GPU time only). `reconcile`
-is protocol completeness — with job_ref never set it is not reached.
+The final result carries each submitted graph and runtime prompt ID. The
+scheduler owns database writes and final landing. Failures retain their kind
+and identify the failing pass; cancellation interrupts the active pass.
 
-A pass failure IS the take's failure, its kind preserved (oom keeps its
-frame face, blank keeps its artefact — laws 3/7) with the pass named in
-front of the message. Cancel interrupts the in-flight pass and stops the
-chain (kind `interrupted`).
+The handle has no durable job reference, so interrupted execution remains
+uncertain after restart and is not automatically repeated. Raw runtime files
+and protected working frames are collected through the server after each pass,
+before a later pass can fail or execution can stop. Exact normalized inputs
+and uploaded crops are collected before dispatch, without creating image nodes.
 """
 
 from __future__ import annotations
@@ -35,8 +29,9 @@ from dataclasses import dataclass, replace
 from . import crop as crop_mod
 from . import presets as presets_mod
 from . import regions as regions_mod
+from . import regionrun
 from .comfy import ComfyClient
-from .executors import (ComfyExecutor, ComfyHandle, DispatchRequest,
+from .executors import (CollectedOutput, ComfyExecutor, ComfyHandle, DispatchRequest,
                         EngineFailure, ExecutionResult, Handle, Lane,
                         Reconciliation)
 
@@ -92,13 +87,47 @@ class RegionExecutor:
                 "error", f"the {what} went missing from staging mid-run "
                 f"({path}) — reroll re-stages it") from e
 
+    async def _read_verified(self, ref: dict, what: str) -> bytes:
+        blob = await self._read(ref["path"], what)
+        if regions_mod.sha256_bytes(blob) != ref.get("sha256"):
+            raise EngineFailure(
+                "error", f"the {what} changed from its frozen SHA256; "
+                "reroll to stage and review it again")
+        return blob
+
+    @staticmethod
+    async def _retain_input(req: DispatchRequest, identity: str, blob: bytes,
+                            purpose: str, *, submitted_graph: dict | None = None, **details) -> dict:
+        ref = {'identity': 'region-input:' + identity,
+               'sha256': regions_mod.sha256_bytes(blob), 'purpose': purpose, **details}
+        if req.on_output:
+            await req.on_output(CollectedOutput(identity=ref['identity'],
+                filename=identity.replace(':', '-') + '.png', data=blob,
+                payload=None, role='runtime input', descriptor=ref, submitted_graph=submitted_graph))
+        return ref
+
     async def wait(self, h: RegionHandle) -> ExecutionResult:
+        if h.cancelled:
+            raise EngineFailure("interrupted", "interrupted by cancel")
         req = h.request
         plan = req.submitted_graph["region_plan"]
         total = len(plan["passes"])
-        working = await self._read(plan["source"]["path"], "source image")
+        source_png = await self._read_verified(plan["source"], "source image")
+        working = source_png
+        keep_png = (await self._read_verified(plan["keep"], "KEEP mask")
+                    if plan.get("keep") else None)
+        masks = [await self._read_verified(p["mask"], f"pass {p['idx'] + 1} mask")
+                 for p in plan["passes"]]
+        source_ref = await self._retain_input(req, 'source', source_png, 'normalized source',
+            **{key: value for key, value in plan['source'].items()
+               if key in ('original_sha256', 'coordinates', 'name')}, size=plan['size'])
+        keep_ref = (await self._retain_input(req, 'keep', keep_png, 'protected pixels', size=plan['size'])
+                    if keep_png is not None else None)
+        mask_refs = [await self._retain_input(req, f"pass:{p['idx']}:effective-mask", mask,
+            'effective edit mask', pass_index=p['idx'], size=plan['size'])
+            for p, mask in zip(plan['passes'], masks, strict=True)]
         as_run: list[dict] = []
-        for p in plan["passes"]:
+        for p, mask_png, mask_ref in zip(plan["passes"], masks, mask_refs, strict=True):
             if h.cancelled:
                 raise EngineFailure("interrupted", "interrupted by cancel")
             h.passes = {"current": p["idx"] + 1, "total": total}
@@ -106,12 +135,46 @@ class RegionExecutor:
             box = tuple(p["box"]) if p["box"] else None
             crop_png = await asyncio.to_thread(
                 self._crop_png, working, box)
+            crop_size = [box[2] - box[0], box[3] - box[1]] if box else plan['size']
+            crop_ref = await self._retain_input(req, f"pass:{p['idx']}:source", crop_png,
+                'runtime source crop', pass_index=p['idx'], box=p['box'], size=crop_size)
+            if h.cancelled:
+                raise EngineFailure("interrupted", "interrupted by cancel")
             source_name = await self._upload(crop_png)
+            if h.cancelled:
+                raise EngineFailure("interrupted", "interrupted by cancel")
+            cropped_mask = await asyncio.to_thread(regionrun._crop_mask_bytes, mask_png, p['box'])
+            crop_mask_ref = await self._retain_input(req, f"pass:{p['idx']}:mask", cropped_mask,
+                'runtime mask crop', pass_index=p['idx'], box=p['box'], size=crop_size)
+            if h.cancelled:
+                raise EngineFailure('interrupted', 'interrupted by cancel')
+            mask_name = p['mask'].get('upload')
+            if p['mask'].get('upload_at_dispatch'):
+                mask_name = await self._upload(cropped_mask)
+                if h.cancelled:
+                    raise EngineFailure("interrupted", "interrupted by cancel")
+                presets_mod.patch_existing(graph, {'node_title': 'region_mask', 'field': 'image'}, mask_name)
             presets_mod.patch_input(
                 graph, {"node_title": "source_image", "field": "image"},
                 source_name)
-            inner = await self._inner.start(replace(req,
-                                                    submitted_graph=graph))
+            crop_ref = await self._retain_input(req, f"pass:{p['idx']}:source", crop_png,
+                'runtime source crop', pass_index=p['idx'], box=p['box'], size=crop_size,
+                upload=source_name, node_title='source_image', field='image', submitted_graph=graph)
+            crop_mask_ref = await self._retain_input(req, f"pass:{p['idx']}:mask", cropped_mask,
+                'runtime mask crop', pass_index=p['idx'], box=p['box'], size=crop_size,
+                upload=mask_name, node_title='region_mask', field='image',
+                graph_uses_mask=bool(presets_mod.find_nodes_by_title(graph, 'region_mask')), submitted_graph=graph)
+            if h.cancelled:
+                raise EngineFailure('interrupted', 'interrupted by cancel')
+            async def raw_output(output: CollectedOutput, pass_index=p['idx'], pass_graph=graph) -> bytes | None:
+                if req.on_output:
+                    return await req.on_output(replace(output, identity=f'pass:{pass_index}/raw:' + output.identity,
+                        role='raw pass output', descriptor={**output.descriptor, 'pass_index': pass_index},
+                        submitted_graph=pass_graph))
+                return None
+
+            inner = await self._inner.start(replace(req, submitted_graph=graph,
+                                                    sources=(), output_ports=(), on_output=raw_output))
             h.current = inner
             try:
                 result = await self._inner.wait(inner)
@@ -125,12 +188,14 @@ class RegionExecutor:
                     retry_after_s=e.retry_after_s) from e
             finally:
                 h.current = None
-            mask_png = None
-            if p["masked_paste"]:
-                mask_png = await self._read(p["mask"]["path"],
-                                            f"pass {p['idx']} mask")
+            # Every runtime must meet the same outside-area promise. A graph
+            # that already composites still drifts outside its own mask.
+            feather = crop_mod.PASTE_FEATHER_PX if p["masked_paste"] else 0
             working = await asyncio.to_thread(
-                crop_mod.paste_back, working, result.data, box, mask_png)
+                crop_mod.paste_back, working, result.data, box, mask_png, feather)
+            if keep_png is not None:
+                working = await asyncio.to_thread(
+                    regions_mod.apply_keep, working, source_png, keep_png)
             as_run.append({"idx": p["idx"], "kind": p["kind"],
                            "capability": p["capability"],
                            "workflow": p["workflow"],
@@ -138,29 +203,42 @@ class RegionExecutor:
                            "prompt": p["prompt"],
                            "template_id": p["template_id"],
                            "box": p["box"],
+                           "applied_controls": p.get('applied_controls', {}),
+                           "source_input": crop_ref,
+                           "mask_input": crop_mask_ref,
+                           "effective_mask_input": mask_ref,
                            "mask_sha256": p["mask"]["sha256"],
                            "prompt_id": inner.job_ref, "graph": graph})
-        keep_applied = False
-        if plan.get("keep"):
-            source_png = await self._read(plan["source"]["path"],
-                                          "source image")
-            keep_png = await self._read(plan["keep"]["path"], "keep mask")
-            working = await asyncio.to_thread(
-                regions_mod.apply_keep, working, source_png, keep_png)
-            keep_applied = True
+            if req.on_output:
+                await req.on_output(CollectedOutput(identity=f"pass:{p['idx']}/protected",
+                    filename=f"pass-{p['idx'] + 1}-protected.png", data=working,
+                    role='final' if p['idx'] + 1 == total else 'intermediate',
+                    descriptor={'pass_index': p['idx'], 'source_sha256': plan['source']['sha256'],
+                                'mask_sha256': p['mask']['sha256'], 'job_ref': inner.job_ref,
+                                'keep_mask_sha256': (plan.get('keep') or {}).get('sha256')},
+                    submitted_graph={'region_plan': {'passes': copy.deepcopy(as_run),
+                        'source': source_ref, 'keep': keep_ref,
+                        'policy': plan['policy'], 'size': plan['size'],
+                        'region_ids': plan['region_ids'], 'occluded_region_ids': plan['occluded_region_ids'],
+                        'keep_applied': keep_png is not None,
+                        'keep_scope': 'each_completed_pass',
+                        'keep_mask_sha256': (plan.get('keep') or {}).get('sha256')}}))
+        keep_applied = keep_png is not None
         h.passes = None
         # the as-run record replaces the envelope on the landed node
         # (every pass with its EXACT graph and prompt_id)
         record = {"region_plan": {
             "policy": plan["policy"], "size": plan["size"],
-            "source": {k: plan["source"][k] for k in ("sha256", "name")},
+            "source": source_ref, "keep": keep_ref,
             "region_ids": plan["region_ids"],
             "occluded_region_ids": plan["occluded_region_ids"],
             "keep_applied": keep_applied,
+            "keep_scope": 'each_completed_pass',
             "keep_mask_sha256": (plan["keep"] or {}).get("sha256"),
             "passes": as_run,
         }}
-        return ExecutionResult(data=working, submitted_graph=record)
+        return ExecutionResult(data=working, submitted_graph=record,
+                               primary_identity=f"pass:{plan['passes'][-1]['idx']}/protected")
 
     @staticmethod
     def _crop_png(frame_png: bytes, box) -> bytes:
@@ -178,9 +256,9 @@ class RegionExecutor:
         if h.current is not None:
             await self._inner.cancel(h.current)
 
-    async def reconcile(self, _slot: dict) -> Reconciliation:
-        # never reached in practice: job_ref is never set, so recovery's
-        # running-without-job_ref rule requeues from the envelope instead
+    async def reconcile(self, _slot: dict, *, request=None) -> Reconciliation:  # noqa: ARG002
+        # A pass may have finished without a durable composite receipt.
+        # Keep collected checkpoints; never start the pipeline again here.
         return Reconciliation("gone")
 
     async def verify_charge(self, _job_ref: str) -> float | None:

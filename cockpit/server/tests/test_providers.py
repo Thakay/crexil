@@ -318,6 +318,53 @@ async def test_enrichment_failure_degrades_that_model_only(cat_env):
     assert by["acme/alpha"]["price_usd_per_image"] == 0.01
 
 
+async def test_complete_endpoint_facts_survive_pins_snapshot_and_consumer_mutation(cat_env):
+    cat_env([pin("acme/alpha", price_usd_per_image=999, supports_seed=False)])
+    listing = [{"id": "acme/alpha", "name": "Alpha", "description": "long " * 100,
+                "architecture": {"input_modalities": ["text", "image"]},
+                "supported_parameters": {"seed": {"type": "boolean"}},
+                "endpoints": "/images/models/acme/alpha/endpoints"}]
+    endpoints = [{"id": "endpoint-a", "provider_tag": "acme/region-a",
+                  "provider_slug": "acme", "provider_name": "Acme",
+                  "supported_parameters": {
+                      "seed": {"type": "boolean"},
+                      "input_references": {"type": "range", "min": 0, "max": 4}},
+                  "pricing": [rec("image", .05),
+                              {**rec("image", .08), "variant": "4k"},
+                              rec("image", .01, "input_reference")],
+                  "allowed_passthrough_parameters": ["guidance"],
+                  "supports_streaming": False, "future_field": {"keep": True}}]
+    fake = FakeClient(listing, {"acme/alpha": endpoints})
+    cat = ProviderCatalog(fake)
+    served = by_id((await cat.get(force=True))["models"])["acme/alpha"]
+    assert served["price_usd_per_image"] == 999  # display pin never alters evidence
+    assert served["supports_seed"] is False
+    assert served["endpoints"] == endpoints
+    assert served["discovered_model"] == listing[0]
+    assert served["endpoints_fetched_at"] and served["endpoint_discovery_error"] is None
+    served["endpoints"][0]["pricing"].clear()
+    assert cat.selectable()["acme/alpha"]["endpoints"] == endpoints
+    restarted = ProviderCatalog(FakeClient(list_error=httpx.ConnectError("offline")))
+    assert restarted.selectable()["acme/alpha"] == cat.selectable()["acme/alpha"]
+
+
+async def test_endpoint_failure_preserves_facts_without_refreshing_their_timestamp(cat_env):
+    cat_env([])
+    fake = FakeClient(LISTING, ENDPOINTS)
+    cat = ProviderCatalog(fake)
+    original = by_id((await cat.get(force=True))["models"])["acme/alpha"]
+    fake.endpoint_errors.add("acme/alpha")
+    failed = by_id((await cat.get(force=True))["models"])["acme/alpha"]
+    assert failed["endpoints"] == original["endpoints"]
+    assert failed["endpoints_fetched_at"] == original["endpoints_fetched_at"]
+    assert failed["endpoint_discovery_error"] == "enrich failed"
+    assert failed["price_usd_per_image"] == original["price_usd_per_image"]
+    fake.endpoint_errors.clear()
+    fresh = by_id((await cat.get(force=True))["models"])["acme/alpha"]
+    assert fresh["endpoint_discovery_error"] is None
+    assert fresh["endpoints_fetched_at"] > original["endpoints_fetched_at"]
+
+
 # --- the route, through the real app ---
 
 async def test_route_serves_pins_only_before_first_fetch(tmp_path, monkeypatch):

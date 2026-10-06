@@ -1,23 +1,21 @@
-"""The shared crop half of the region crop+composite layer.
+"""Shared crop geometry and exact pixel containment for region compositing.
 
-One box per pass, computed once at plan time from the pass's effective
-mask and inherited by every fanned-out engine. A fan-out compares
-identical crops, side by side, so the box is plan state, never
-executor state. Every pass kind runs on the crop (SDXL's mask-native
-graphs take any-size inputs, so cropping is purely input-side; LaMa
-fills sharper on the zoomed crop than on the full frame); regen_rest
-hits the full-frame fallback naturally. The composite half already exists:
-regions.apply_keep restores KEEP byte-exactly at frame size after the
-final pass, so nothing here can break the byte-exactness clause.
+Each pass uses its plan-time crop across engines. Paste-back clips edits to
+the declared binary mask; feathering blends inward and never expands it.
+Mask-native graphs still need this outer fence because decoding and graph
+compositing can change pixels outside their internal mask. RGB and RGBA source
+pixels outside the mask remain exact, and source alpha is preserved everywhere.
+Mask coordinates must already match the source; this layer never resizes masks.
 
-Pure PIL, no DB, no app imports (mask arithmetic, zero ML).
+Pure PIL, no database or runtime access. A missing mask explicitly requests a
+whole-box paste and is not sufficient for a Region Edit implementation.
 """
 
 from __future__ import annotations
 
 import io
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageChops, ImageFilter
 
 # The box rule of record: crop around the mask bbox with a context margin.
 # The numbers are authored here and pinned by test_crop.py.
@@ -83,15 +81,16 @@ def paste_back(frame_png: bytes, result_png: bytes, box: Box | None,
                feather: int = PASTE_FEATHER_PX) -> bytes:
     """Composite a pass result back into the working frame.
 
-    mask_png=None pastes the whole box (the SDXL tier: its graph already
-    composited through the softened mask on the crop, so box-edge pixels
-    are original ±1/255 and seam-free). With a mask (klein/Qwen tiers —
-    no mask channel of their own), only the effective-mask pixels land,
-    edge-feathered so the seam blends; everything outside the mask stays
-    byte-identical to the working frame. A result at the wrong size
-    (Qwen's ~1MP internal cap) is LANCZOS-resized to the box first.
+    A supplied mask is the exact edit boundary. Its threshold is 128 and
+    feathering never crosses its binary edge. Source alpha is retained even
+    when the engine returns RGB. A result at the wrong size is resized to the
+    declared crop; source pixels and mask coordinates are never resampled.
+    mask_png=None explicitly replaces the whole crop, without feathering.
     """
-    frame = Image.open(io.BytesIO(frame_png)).convert("RGB")
+    frame = Image.open(io.BytesIO(frame_png))
+    frame = frame.convert("RGBA" if "A" in frame.getbands()
+                          or "transparency" in frame.info else "RGB")
+    alpha = frame.getchannel("A") if frame.mode == "RGBA" else None
     result = Image.open(io.BytesIO(result_png)).convert("RGB")
     if box is None:
         box = (0, 0, frame.width, frame.height)
@@ -103,12 +102,14 @@ def paste_back(frame_png: bytes, result_png: bytes, box: Box | None,
     else:
         mask = Image.open(io.BytesIO(mask_png)).convert("L")
         if mask.size != frame.size:
-            mask = mask.resize(frame.size, Image.NEAREST)
+            raise ValueError("the edit mask must match the source image size")
         mask = mask.point(lambda v: 255 if v >= 128 else 0)
         m = mask.crop(box)
         if feather > 0:
-            m = m.filter(ImageFilter.BoxBlur(feather))
+            m = ImageChops.multiply(m.filter(ImageFilter.BoxBlur(feather)), m)
         frame.paste(result, (box[0], box[1]), m)
+    if alpha is not None:
+        frame.putalpha(alpha)
     out = io.BytesIO()
     frame.save(out, format="PNG")
     return out.getvalue()

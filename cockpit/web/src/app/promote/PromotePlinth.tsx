@@ -50,7 +50,7 @@ import {
 } from "./promote";
 import s from "./Promote.module.css";
 
-function Browser({
+export function Browser({
   target,
   busy,
   onPick,

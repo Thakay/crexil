@@ -1,0 +1,108 @@
+"""Exact run membership shares project accounting without changing charge truth."""
+
+import pytest
+
+from app.crexil_budget import accounting
+from test_db import opened
+
+pytestmark = pytest.mark.anyio
+
+
+async def make_run(db, wid, *amounts):
+    return await db.create_turn_with_slots(wid, 'request', {}, [
+        {'engine': 'provider/model', 'external': {'model': 'provider/model'},
+         'committed_usd': amount} for amount in amounts])
+
+
+async def test_multiple_runs_deduplicate_and_exclude_other_runs_and_projects(tmp_path):
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace('selected project')
+        other = await db.create_workspace('other project')
+        a = await make_run(db, ws['id'], .04, .06)
+        b = await make_run(db, ws['id'], .1)
+        await make_run(db, ws['id'], .2)
+        foreign = await make_run(db, other['id'], .3)
+        await db.dispatch_slot(a['slots'][0]['id'])
+        await db.fail_slot(a['slots'][0]['id'], cause='charged failure', charged_usd=.03)
+        await db.transition_slot(a['slots'][1]['id'], 'held', payload={'pause': True})
+        await db.dispatch_slot(b['slots'][0]['id'])
+        await db.transition_slot(b['slots'][0]['id'], 'late')
+        await db.dispatch_slot(foreign['slots'][0]['id'])
+        await db.fail_slot(foreign['slots'][0]['id'], cause='other project charge', charged_usd=.25)
+
+        selected = await accounting(db, ws['id'], turn_ids=[a['id'], b['id']])
+        assert selected == {'attempts': 3, 'charged_usd': .03, 'reserved_usd': .16,
+                            'unresolved_attempts': 2, 'unbounded_attempts': 0, 'tariff_attempts': 2}
+        assert await accounting(db, ws['id'], turn_ids=[b['id'], a['id'], a['id'], b['id']]) == selected
+        assert await accounting(db, ws['id'], turn_ids=[a['id'], foreign['id'], b['id'], 'missing']) == selected
+        assert (await accounting(db, ws['id']))['reserved_usd'] == .36
+        assert (await accounting(db, other['id']))['charged_usd'] == .25
+        for run in (a, b):
+            assert await accounting(db, ws['id'], turn_ids=[run['id']]) == await accounting(db, ws['id'], turn_id=run['id'])
+
+
+async def test_empty_or_foreign_selection_has_no_project_charges_or_reservations(tmp_path):
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace('project')
+        other = await db.create_workspace('other')
+        await make_run(db, ws['id'], .1)
+        foreign = await make_run(db, other['id'], .2)
+        await db.append_event('project.charge', workspace_id=ws['id'], charged_usd=.05)
+        zero = {'attempts': 0, 'charged_usd': 0, 'reserved_usd': 0,
+                'unresolved_attempts': 0, 'unbounded_attempts': 0, 'tariff_attempts': 0}
+        for selected in ([], ['missing'], [foreign['id']]):
+            assert await accounting(db, ws['id'], turn_ids=selected) == zero
+        assert (await accounting(db, ws['id']))['charged_usd'] == .05
+        assert (await accounting(db, ws['id']))['reserved_usd'] == .1
+
+
+async def test_both_accounting_scopes_are_rejected_even_for_empty_selection(tmp_path):
+    async with opened(tmp_path) as db:
+        for selected in ([], ['another-run']):
+            with pytest.raises(ValueError, match='both accounting scopes'):
+                await accounting(db, 'project', turn_id='run', turn_ids=selected)
+
+
+async def test_multiple_runs_preserve_old_attempt_reservations_and_late_charge_corrections(tmp_path):
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace('project')
+        a = await make_run(db, ws['id'], .04)
+        b = await make_run(db, ws['id'], .1)
+        sid = a['slots'][0]['id']
+        await db.dispatch_slot(sid)
+        await db.fail_slot(sid, cause='first request unresolved', kind='timeout')
+        await db.reroll_slot(sid, new_seed=2, committed_usd=.06)
+        second = await db.dispatch_slot(sid)
+        await db.report_provider_charge(second, .05, 'second-job')
+        await db.fail_slot(sid, cause='second response has no image', charged_usd=.05)
+        await db.dispatch_slot(b['slots'][0]['id'])
+        await db.transition_slot(b['slots'][0]['id'], 'late')
+        selected = [a['id'], b['id'], a['id']]
+        before = await accounting(db, ws['id'], turn_ids=selected)
+        assert before == {'attempts': 3, 'charged_usd': .05, 'reserved_usd': .14,
+                          'unresolved_attempts': 2, 'unbounded_attempts': 0, 'tariff_attempts': 2}
+        # An older verification lacking attempt identity cannot settle the
+        # outstanding first attempt after that slot has already been reused.
+        await db.append_event('slot.charge_verified', workspace_id=ws['id'], turn_id=a['id'], slot_id=sid,
+                              payload={'charged_usd': 0})
+        assert await accounting(db, ws['id'], turn_ids=selected) == before
+        await db.record_charge(sid, .02, attempt=1, note='first request later verified')
+        corrected = await accounting(db, ws['id'], turn_ids=selected)
+        assert corrected['charged_usd'] == .07 and corrected['reserved_usd'] == .1
+        assert corrected['attempts'] == 3 and corrected['unresolved_attempts'] == 1
+        await db.record_charge(b['slots'][0]['id'], 0, attempt=1, note='provider confirmed no charge')
+        settled = await accounting(db, ws['id'], turn_ids=selected)
+        assert settled['charged_usd'] == .07 and settled['reserved_usd'] == 0
+        assert settled['attempts'] == 3 and settled['unresolved_attempts'] == 0
+
+
+async def test_unknown_commitments_stay_unbounded_across_selected_runs(tmp_path):
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace('project')
+        a = await make_run(db, ws['id'], None)
+        b = await make_run(db, ws['id'], None)
+        await db.dispatch_slot(a['slots'][0]['id'])
+        await db.transition_slot(a['slots'][0]['id'], 'late')
+        result = await accounting(db, ws['id'], turn_ids=[a['id'], b['id']])
+        assert result == {'attempts': 2, 'charged_usd': 0, 'reserved_usd': 0,
+                          'unresolved_attempts': 0, 'unbounded_attempts': 2, 'tariff_attempts': 2}

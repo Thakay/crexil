@@ -1,4 +1,14 @@
 {
+  "execution_cost": {
+    "maximum_usd_per_attempt": 0,
+    "workflow_sha256": {
+      "txt2img": "5e512fec142299b14ff029d3d13f93a4dd733caa53f3ad5736fdd64dc7da34b0",
+      "img2img": "e8857beec00a7c2ea0f58c675b214e8da214c7c1be13f82beb131da6809b2a56",
+      "inpaint_modify": "e8857beec00a7c2ea0f58c675b214e8da214c7c1be13f82beb131da6809b2a56",
+      "inpaint_replace": "e8857beec00a7c2ea0f58c675b214e8da214c7c1be13f82beb131da6809b2a56",
+      "remove": "0b248e6f37320f999b1521e380d602d5b74e8dccdca259148add879e09270ca4"
+    }
+  },
   "id": "raw-flux2",
   "display_name": "Raw · FLUX.2 klein",
   "description": "No framing, all handles: freeform experiments on klein-4B. Put style language directly in the prompt (there is no style bank yet).",

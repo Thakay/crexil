@@ -256,7 +256,7 @@ async def test_b4_an_answer_that_differs_corrects_the_ledger_once(tmp_path):
         assert len(ver) == 1
         assert ver[0]["payload"] == {"charged_usd": 0.05,
                                      "reported_usd": 0.04, "asks": 2,
-                                     "job_ref": "gen-abc"}
+                                     "job_ref": "gen-abc", "attempt": 1}
         charged = await events_of(db, "slot.charged")
         assert len(charged) == 1 and charged[0]["charged_usd"] == 0.01
         assert "bill check" in charged[0]["payload"]["note"]

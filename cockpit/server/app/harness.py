@@ -1,41 +1,19 @@
-"""Scripted-executor harness mode: the law tests' engine room.
+"""Scripted executors for browser journeys, gated by the harness environment.
 
-Activated ONLY by COCKPIT_HARNESS_EXECUTORS=1 (set by the playwright
-webServer env — never by compose or deploy, so the shipped image carries
-this inert). wiring.start then builds these two executors in place of the
-real pair (same names, so route_engine is untouched) and the e2e stack can
-no longer reach real ComfyUI or OpenRouter by construction.
+The real scheduler, store, events and collectors own every state transition.
+Only engine transports are scripted. Per-slot FIFO directives permit tests to
+land or fail work before or after dispatch without reaching real runtimes.
 
-Each take blocks inside wait() until a directive arrives over the control
-routes below; the Playwright specs land/fail slots one at a time and assert
-the laws while the batch is genuinely mid-flight — real scheduler, real
-store, real events; only the engines are scripted.
+Output directives report valid fixture bytes or missing descriptors through the
+ordinary collector. Separately scripted retrieval can recover the same files;
+start and retrieval counters expose accidental resubmission. Unscripted restart
+reconciliation reports no known runtime work. These fixtures never qualify real
+engine support or artistic output.
 
-Directives are a per-slot FIFO: posting before the lane picks the slot up is
-fine (no race), and a reroll's attempt 2 consumes the next one. A fail
-directive's `message`/`detail` are what the engine "said" — the face shows
-the scheduler's plain line for the kind (law 3) and the scripted text lands
-behind the cell's DETAILS, where the specs assert it. Cancel mirrors
-tests/fakes.py lane semantics — local raises EngineFailure("interrupted"),
-external raises CancelledError. Scripted failure kinds ride the REAL
-retry/bench tables: rate_limit/unreachable auto-retry once (law 9) and
-consume a second directive, so specs script with error/model_down unless
-the retry path is the point.
-
-The trust and high-probability cases ride the same directives: a local
-`land` with a black plate (`color: [0,0,0]`) goes through the REAL blank
-detector (`executors.blank_frame`) — the spec injects the fault, the product
-finds it; a `fail` with `kind: charged_blank` carries `charged_usd` and
-`job_id`, and `bill` scripts the answers to the three re-asks in order
-(null = no answer yet); `kind: oom` reads the request's frame and the
-record — the harness invents nothing; `retry_after_s` on a `rate_limit`
-fail is the provider's window; `POST /api/harness/gpu` scripts the card
-reading the scheduler's probe returns (`foreign_bytes` at or over the
-threshold makes the next OOM a foreign hold).
-
-Every route is include_in_schema=False: the committed OpenAPI contract must
-not flap with an env var; specs call these with plain requests, never the
-typed client.
+Cancellation follows each lane's behavior. Failures use the real retry and bench
+policies, and the real blank detector inspects local PNG fixtures. GPU and charge
+responses are also explicit test directives. Control routes are absent from the
+normal application and its published API schema.
 """
 
 from __future__ import annotations
@@ -53,8 +31,23 @@ from fastapi import APIRouter
 from PIL import Image
 from pydantic import BaseModel
 
-from .executors import (DispatchRequest, EngineFailure, ExecutionResult,
+from .executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult,
                         GpuReading, Handle, Lane, Reconciliation, blank_frame)
+
+
+class HarnessOutput(BaseModel):
+    identity: str
+    filename: str
+    role: str = 'unclassified'
+    missing: bool = False
+    transparent: bool = False
+    color: tuple[int, int, int] = (82, 130, 168)
+
+
+class CollectionDirective(BaseModel):
+    kind: Literal['landed', 'failed', 'gone', 'unverifiable', 'running'] = 'landed'
+    outputs: list[HarnessOutput] = []
+    cause: str | None = None
 
 
 class Directive(BaseModel):
@@ -67,6 +60,7 @@ class Directive(BaseModel):
     job_id: str | None = None           # charged_blank: the generation id
     bill: list[float | None] = []       # charged_blank: answers per re-ask
     retry_after_s: float | None = None  # rate_limit: the provider's window
+    outputs: list[HarnessOutput] = []
 
 
 class GpuScript(BaseModel):
@@ -93,6 +87,9 @@ class HarnessRegistry:
         self.waiting: set[str] = set()
         self.bills: dict[str, deque] = {}       # job_id -> scripted answers
         self.gpu: GpuScript = GpuScript()       # the card, as scripted
+        self.collections: dict[str, CollectionDirective] = {}
+        self.starts: dict[str, int] = {}
+        self.retrievals: dict[str, int] = {}
 
     def channel(self, slot_id: str) -> _Channel:
         return self._channels.setdefault(slot_id, _Channel())
@@ -211,6 +208,30 @@ class HarnessHandle(Handle):
     # the real one, which is what the e2e specs read.
     kind: str = "generate"
     engine: str = "harness"
+    request: DispatchRequest | None = None
+
+
+async def _collect_outputs(request: DispatchRequest, outputs: list[HarnessOutput]) -> ExecutionResult | None:
+    """Script runtime descriptors and bytes through the real collector callback."""
+    primary = None
+    for item in outputs:
+        blob = _png(request.slot_id + ':' + item.identity, item.color)
+        if item.transparent:
+            image = Image.open(io.BytesIO(blob)).convert('RGBA')
+            alpha = Image.new('L', image.size, 0)
+            alpha.paste(190, (16, 16, image.width - 16, image.height - 16))
+            image.putalpha(alpha)
+            buffer = io.BytesIO()
+            image.save(buffer, 'PNG')
+            blob = buffer.getvalue()
+        output = CollectedOutput(identity=item.identity, filename=item.filename, role=item.role,
+            data=None if item.missing else blob, descriptor={'harness': True, 'identity': item.identity},
+            error='Scripted download unavailable.' if item.missing else None)
+        if request.on_output:
+            await request.on_output(output)
+        if not item.missing and primary is None:
+            primary = ExecutionResult(data=blob, filename=item.filename, primary_identity=item.identity)
+    return primary
 
 
 class HarnessExecutor:
@@ -229,10 +250,11 @@ class HarnessExecutor:
 
     async def start(self, req: DispatchRequest) -> HarnessHandle:
         job = (req.submitted_graph or {}).get("mesh_job") or {}
+        REGISTRY.starts[req.slot_id] = REGISTRY.starts.get(req.slot_id, 0) + 1
         return HarnessHandle(job_ref=f"harness-{req.slot_id}",
                              slot_id=req.slot_id,
                              kind=job.get("kind") or "generate",
-                             engine=job.get("engine") or "harness")
+                             engine=job.get("engine") or "harness", request=req)
 
     async def wait(self, h: HarnessHandle) -> ExecutionResult:
         REGISTRY.waiting.add(h.slot_id)
@@ -244,12 +266,16 @@ class HarnessExecutor:
             if self.lane == "external":
                 raise asyncio.CancelledError()
             raise EngineFailure("interrupted", "interrupted by cancel")
+        primary = await _collect_outputs(h.request, d.outputs) if h.request and d.outputs else None
         if d.outcome == "fail":
             if d.kind == "charged_blank" and d.job_id:
                 REGISTRY.bills[d.job_id] = deque(d.bill)
             raise EngineFailure(d.kind, d.message, detail=d.detail,
                                 charged_usd=d.charged_usd, job_ref=d.job_id,
                                 retry_after_s=d.retry_after_s)
+        if primary:
+            primary.charged_usd = d.charged_usd
+            return primary
         if self.payload == "3d":
             return ExecutionResult(data=_glb(h.slot_id), payload="3d",
                                    filename=f"{h.slot_id}.glb",
@@ -292,8 +318,13 @@ class HarnessExecutor:
             return None
         return answers.popleft()
 
-    async def reconcile(self, _slot: dict) -> Reconciliation:
-        return Reconciliation("gone")    # restart recovery stays pytest-land
+    async def reconcile(self, slot: dict, *, request=None) -> Reconciliation:
+        REGISTRY.retrievals[slot['id']] = REGISTRY.retrievals.get(slot['id'], 0) + 1
+        directive = REGISTRY.collections.get(slot['id'])
+        if directive is None:
+            return Reconciliation('gone')
+        result = await _collect_outputs(request, directive.outputs) if request else None
+        return Reconciliation(directive.kind, result=result, cause=directive.cause)
 
 
 def build_executors() -> list[HarnessExecutor]:
@@ -330,7 +361,13 @@ async def resolve_slot(slot_id: str, body: Directive) -> dict:
 
 @router.get("/state", include_in_schema=False)
 async def harness_state() -> dict:
-    return {"waiting": sorted(REGISTRY.waiting)}
+    return {"waiting": sorted(REGISTRY.waiting), 'starts': REGISTRY.starts, 'retrievals': REGISTRY.retrievals}
+
+
+@router.post('/slots/{slot_id}/collection', include_in_schema=False)
+async def script_collection(slot_id: str, body: CollectionDirective) -> dict:
+    REGISTRY.collections[slot_id] = body
+    return {'slot_id': slot_id, 'kind': body.kind}
 
 
 @router.post("/gpu", include_in_schema=False)

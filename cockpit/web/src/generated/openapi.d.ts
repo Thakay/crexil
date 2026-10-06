@@ -27,6 +27,847 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/crexil/archive-uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reserve Archive */
+        post: operations["reserve_archive_api_crexil_archive_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/archive-uploads/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Archive Upload State */
+        get: operations["archive_upload_state_api_crexil_archive_uploads__uid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/archive-uploads/{uid}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload Archive */
+        put: operations["upload_archive_api_crexil_archive_uploads__uid__file_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/archive-uploads/{uid}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Archive */
+        post: operations["restore_archive_api_crexil_archive_uploads__uid__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/attempts/{sid}/collect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Collect Execution */
+        post: operations["collect_execution_api_crexil_attempts__sid__collect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/backups/{bid}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backup File */
+        get: operations["backup_file_api_crexil_backups__bid__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/deliveries/{did}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Delivery State */
+        get: operations["delivery_state_api_crexil_deliveries__did__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/deliveries/{did}/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transfer Delivery */
+        post: operations["transfer_delivery_api_crexil_deliveries__did__transfer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/directions/{did}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Direction */
+        patch: operations["update_direction_api_crexil_directions__did__patch"];
+        trace?: never;
+    };
+    "/api/crexil/directions/{did}/image-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review Image Preparation */
+        get: operations["review_image_preparation_api_crexil_directions__did__image_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/directions/{did}/prepare-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Image */
+        post: operations["prepare_image_api_crexil_directions__did__prepare_image_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/directions/{did}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review Direction */
+        get: operations["review_direction_api_crexil_directions__did__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/directions/{did}/selection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Display Selection */
+        put: operations["display_selection_api_crexil_directions__did__selection_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/directions/{did}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Direction State */
+        post: operations["direction_state_api_crexil_directions__did__state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/directions/{did}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Direction */
+        post: operations["submit_direction_api_crexil_directions__did__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/execution/{scope}/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Execution Control State */
+        get: operations["execution_control_state_api_crexil_execution__scope___target_id__get"];
+        put?: never;
+        /** Control Execution */
+        post: operations["control_execution_api_crexil_execution__scope___target_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/masks/{mid}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mask Image */
+        get: operations["mask_image_api_crexil_masks__mid__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/material/{nid}/files/{fid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Retained Material File */
+        get: operations["retained_material_file_api_crexil_material__nid__files__fid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/material/{nid}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Material Record */
+        get: operations["material_record_api_crexil_material__nid__record_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/operation-requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operation Requirements */
+        get: operations["operation_requirements_api_crexil_operation_requirements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operations */
+        get: operations["operations_api_crexil_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/outputs/{oid}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Output File */
+        get: operations["output_file_api_crexil_outputs__oid__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projects */
+        get: operations["projects_api_crexil_projects_get"];
+        put?: never;
+        /** Create Project */
+        post: operations["create_project_api_crexil_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Snapshot */
+        get: operations["project_snapshot_api_crexil_projects__wid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Project */
+        patch: operations["update_project_api_crexil_projects__wid__patch"];
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Assessment */
+        post: operations["record_assessment_api_crexil_projects__wid__assessments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Backup */
+        post: operations["create_backup_api_crexil_projects__wid__backups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Deliveries */
+        get: operations["list_deliveries_api_crexil_projects__wid__deliveries_get"];
+        put?: never;
+        /** Prepare Delivery */
+        post: operations["prepare_delivery_api_crexil_projects__wid__deliveries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/deliveries.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Delivery Csv */
+        get: operations["delivery_csv_api_crexil_projects__wid__deliveries_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/deliveries/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Delivery */
+        post: operations["review_delivery_api_crexil_projects__wid__deliveries_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/directions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Direction */
+        post: operations["create_direction_api_crexil_projects__wid__directions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/imports/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Import Receipt */
+        get: operations["import_receipt_api_crexil_projects__wid__imports__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/mask-source/{nid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mask Source */
+        get: operations["mask_source_api_crexil_projects__wid__mask_source__nid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/masks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved Masks */
+        get: operations["saved_masks_api_crexil_projects__wid__masks_get"];
+        put?: never;
+        /** Save Mask */
+        post: operations["save_mask_api_crexil_projects__wid__masks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/material": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Material */
+        post: operations["import_material_api_crexil_projects__wid__material_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Record */
+        get: operations["project_record_api_crexil_projects__wid__record_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/reuse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reuse Material */
+        post: operations["reuse_material_api_crexil_projects__wid__reuse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/reuse/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Reuse */
+        post: operations["review_reuse_api_crexil_projects__wid__reuse_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/sequences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Sequence */
+        post: operations["create_sequence_api_crexil_projects__wid__sequences_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Registrations */
+        get: operations["registrations_api_crexil_registrations_get"];
+        put?: never;
+        /** Import Operation */
+        post: operations["import_operation_api_crexil_registrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/registrations/{rid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Registration */
+        get: operations["registration_api_crexil_registrations__rid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Operation */
+        patch: operations["update_operation_api_crexil_registrations__rid__patch"];
+        trace?: never;
+    };
+    "/api/crexil/registrations/{rid}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Operation */
+        get: operations["export_operation_api_crexil_registrations__rid__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/registrations/{rid}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inspect Operation */
+        post: operations["inspect_operation_api_crexil_registrations__rid__inspect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/sequences/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sequence State */
+        get: operations["sequence_state_api_crexil_sequences__sid__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Sequence */
+        patch: operations["update_sequence_api_crexil_sequences__sid__patch"];
+        trace?: never;
+    };
+    "/api/crexil/sequences/{sid}/reuse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reuse Sequence */
+        post: operations["reuse_sequence_api_crexil_sequences__sid__reuse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/sequences/{sid}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review Sequence */
+        get: operations["review_sequence_api_crexil_sequences__sid__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/sequences/{sid}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Sequence */
+        post: operations["start_sequence_api_crexil_sequences__sid__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/sequences/{sid}/steps/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Sequence Step */
+        patch: operations["update_sequence_step_api_crexil_sequences__sid__steps__key__patch"];
+        trace?: never;
+    };
+    "/api/crexil/sequences/{sid}/steps/{key}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sequence Decision */
+        post: operations["sequence_decision_api_crexil_sequences__sid__steps__key__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Setup Overview */
+        get: operations["setup_overview_api_crexil_setup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dials": {
         parameters: {
             query?: never;
@@ -833,12 +1674,54 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Actor */
+        Actor: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "human" | "agent";
+            /** Name */
+            name: string;
+        };
         /** Anchor */
         Anchor: {
             /** X */
             x: number;
             /** Y */
             y: number;
+        };
+        /** ArchiveRestoreResult */
+        ArchiveRestoreResult: {
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string;
+            /** Unavailable Files */
+            unavailable_files: number;
+        };
+        /** ArchiveUpload */
+        ArchiveUpload: {
+            actor: components["schemas"]["Actor"];
+            /** Created At */
+            created_at: string;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /** Review */
+            review: {
+                [key: string]: unknown;
+            } | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "waiting" | "ready";
         };
         /** BackfillRefusal */
         BackfillRefusal: {
@@ -911,6 +1794,38 @@ export interface components {
          * @enum {string}
          */
         Capability: "txt2img" | "img2img" | "region";
+        /** CollectExecution */
+        CollectExecution: {
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+            /** Take */
+            take: number;
+        };
+        /** Command */
+        Command: {
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+        };
+        /** ControlExecution */
+        ControlExecution: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "pause" | "resume" | "cancel";
+            actor: components["schemas"]["Actor"];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+        };
         /**
          * Costs
          * @description The corner: today and this month, CHARGED only — summed
@@ -931,10 +1846,213 @@ export interface components {
             /** Tz Minutes */
             tz_minutes: number;
         };
+        /** CreateDelivery */
+        CreateDelivery: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Destination
+             * @default
+             */
+            destination: string;
+            /** Node Ids */
+            node_ids: string[];
+            /** Request Id */
+            request_id: string;
+            /** Review Token */
+            review_token: string;
+        };
+        /** CreateDirection */
+        CreateDirection: {
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+            /** Row Idx */
+            row_idx?: number | null;
+            setup?: components["schemas"]["Preparation"];
+            /**
+             * Title
+             * @default New direction
+             */
+            title: string;
+        };
+        /** CreateProject */
+        CreateProject: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Brief
+             * @default
+             */
+            brief: string;
+            /** Name */
+            name: string;
+            /** Request Id */
+            request_id: string;
+        };
+        /** CreateReuse */
+        CreateReuse: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Explanation
+             * @default
+             */
+            explanation: string;
+            /** Node Id */
+            node_id: string;
+            /** Request Id */
+            request_id: string;
+            /** Review Token */
+            review_token: string;
+            /** Source Project Id */
+            source_project_id: string;
+        };
+        /** CreateSequence */
+        CreateSequence: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            limits?: components["schemas"]["ProjectLimits"];
+            /** Request Id */
+            request_id: string;
+            /** Steps */
+            steps: components["schemas"]["SequenceStep"][];
+            /** Title */
+            title: string;
+        };
         /** CreateWorkspace */
         CreateWorkspace: {
             /** Name */
             name: string;
+        };
+        /** DecideSequence */
+        DecideSequence: {
+            actor: components["schemas"]["Actor"];
+            /** Candidate Token */
+            candidate_token: string;
+            /** Direction Revision */
+            direction_revision: number;
+            /** Reason */
+            reason: string;
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+            /** Selections */
+            selections: {
+                [key: string]: string[];
+            };
+        };
+        /** DecisionView */
+        DecisionView: {
+            actor: components["schemas"]["Actor"] | null;
+            /** Created At */
+            created_at: string;
+            /** Direction Id */
+            direction_id: string | null;
+            /** Event Id */
+            event_id: string;
+            /** Historical */
+            historical: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "selection" | "sequence_choice" | "assessment";
+            /** Node Ids */
+            node_ids: string[];
+            /** Previous Id */
+            previous_id: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Revised By */
+            revised_by: string | null;
+            /** Seq */
+            seq: number;
+            /** Sequence Id */
+            sequence_id: string | null;
+            /** Turn Id */
+            turn_id: string | null;
+        };
+        /** DeliveryFile */
+        DeliveryFile: {
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** DeliveryItem */
+        DeliveryItem: {
+            /** Asset Id */
+            asset_id: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Filename */
+            filename: string;
+            /** Files */
+            files: components["schemas"]["DeliveryFile"][];
+            /** Missing */
+            missing?: string[];
+            /** Node Id */
+            node_id: string;
+            /**
+             * Requires Review
+             * @default false
+             */
+            requires_review: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "prepared" | "incomplete" | "complete";
+        };
+        /** DeliveryReview */
+        DeliveryReview: {
+            /** Destination */
+            destination: string;
+            /** Errors */
+            errors: string[];
+            /** Items */
+            items: components["schemas"]["DeliveryItem"][];
+            /** Ready */
+            ready: boolean;
+            /** Target */
+            target: {
+                [key: string]: unknown;
+            };
+            /** Token */
+            token: string;
+        };
+        /** DeliverySelection */
+        DeliverySelection: {
+            /**
+             * Destination
+             * @default
+             */
+            destination: string;
+            /** Node Ids */
+            node_ids: string[];
+        };
+        /** DeliveryView */
+        DeliveryView: {
+            actor: components["schemas"]["Actor"];
+            /** Created At */
+            created_at: string;
+            /** Destination */
+            destination: string;
+            /** Id */
+            id: string;
+            /** Items */
+            items: components["schemas"]["DeliveryItem"][];
+            /** Workspace Id */
+            workspace_id: string;
         };
         /** Dial */
         Dial: {
@@ -1005,6 +2123,76 @@ export interface components {
             position: components["schemas"]["DialPosition"];
             /** Updated */
             updated: string;
+        };
+        /** DirectionState */
+        DirectionState: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "set_aside" | "restore" | "discard" | "reuse";
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+        };
+        /** DirectionView */
+        DirectionView: {
+            actor: components["schemas"]["Actor"] | null;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            latest_decision?: components["schemas"]["DecisionView"] | null;
+            /** Node Ids */
+            node_ids: string[];
+            /** Revision */
+            revision: number;
+            /** Row Idx */
+            row_idx: number;
+            /** Selection */
+            selection: string[];
+            /** Sequence Id */
+            sequence_id?: string | null;
+            /** Sequence Step Key */
+            sequence_step_key?: string | null;
+            /**
+             * Sequence Template
+             * @default false
+             */
+            sequence_template: boolean;
+            /** Set Aside */
+            set_aside: boolean;
+            /** Setup */
+            setup: {
+                [key: string]: unknown;
+            };
+            /** State */
+            state: string;
+            /** Title */
+            title: string;
+            /** Turn Ids */
+            turn_ids: string[];
+            /** Updated At */
+            updated_at: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** DisplaySelection */
+        DisplaySelection: {
+            actor: components["schemas"]["Actor"];
+            /** Node Ids */
+            node_ids: string[];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
         };
         /**
          * Engine
@@ -1161,6 +2349,122 @@ export interface components {
             /** Seq */
             seq: number;
         };
+        /** ExecutionControlView */
+        ExecutionControlView: {
+            actor: components["schemas"]["Actor"] | null;
+            /**
+             * Cancel Requested
+             * @default 0
+             */
+            cancel_requested: number;
+            /** Last Action */
+            last_action: string | null;
+            /** Paused */
+            paused: boolean;
+            /** Reason */
+            reason: string;
+            /** Requested At */
+            requested_at: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "project" | "run" | "sequence";
+            /** Target Id */
+            target_id: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** ExecutionGroupView */
+        ExecutionGroupView: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Job Ref */
+            job_ref: string | null;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Outputs */
+            outputs: components["schemas"]["ExecutionOutputView"][];
+            /** Slot Id */
+            slot_id: string;
+            /** State */
+            state: string;
+            /** Take */
+            take: number;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** ExecutionOutputView */
+        ExecutionOutputView: {
+            /** Available */
+            available: boolean;
+            /** Created At */
+            created_at: string;
+            /** Descriptor */
+            descriptor: {
+                [key: string]: unknown;
+            };
+            /** Error */
+            error: string | null;
+            /** Filename */
+            filename: string;
+            /** Group Id */
+            group_id: string;
+            /** Id */
+            id: string;
+            /** Identity */
+            identity: string;
+            /** Media Type */
+            media_type: string;
+            /** Node Id */
+            node_id: string | null;
+            /** Ordinal */
+            ordinal: number;
+            /** Purged At */
+            purged_at: string | null;
+            /** Role */
+            role: string;
+            /** Sha256 */
+            sha256: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+        };
+        /** ExecutionReview */
+        ExecutionReview: {
+            /** Attempts */
+            attempts: number;
+            /** Blocked Attempts */
+            blocked_attempts: number;
+            /** Direction Id */
+            direction_id: string;
+            /** Errors */
+            errors: string[];
+            /** Maximum Usd */
+            maximum_usd: number | null;
+            /** Ready */
+            ready: boolean;
+            /** Ready Attempts */
+            ready_attempts: number;
+            /**
+             * Reserved Usd
+             * @default 0
+             */
+            reserved_usd: number;
+            /** Revision */
+            revision: number;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+            /** Token */
+            token: string;
+        };
         /**
          * ExternalBatch
          * @description One external model's share of a Run — `takes` slots of it, each a
@@ -1271,6 +2575,19 @@ export interface components {
             /** Rechecking */
             rechecking: boolean;
         };
+        /** GraphTarget */
+        GraphTarget: {
+            /**
+             * Field
+             * @default
+             */
+            field: string;
+            /**
+             * Node Id
+             * @default
+             */
+            node_id: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1341,6 +2658,11 @@ export interface components {
             preset_count: number;
             /** Presets */
             presets: string[];
+            /**
+             * Preview
+             * @default false
+             */
+            preview: boolean;
             promote_dir: components["schemas"]["HealthPromoteDir"];
             workflows_dir: components["schemas"]["HealthDir"];
         };
@@ -1350,6 +2672,115 @@ export interface components {
             mounted: boolean;
             /** Path */
             path: string;
+        };
+        /** ImageBox */
+        ImageBox: {
+            /** Height */
+            height: number;
+            /** Width */
+            width: number;
+            /**
+             * X
+             * @default 0
+             */
+            x: number;
+            /**
+             * Y
+             * @default 0
+             */
+            y: number;
+        };
+        /** ImagePlacement */
+        ImagePlacement: {
+            crop?: components["schemas"]["ImageBox"] | null;
+            /** Node Id */
+            node_id: string;
+            placement?: components["schemas"]["ImageBox"] | null;
+        };
+        /** ImagePreparation */
+        ImagePreparation: {
+            /**
+             * Background
+             * @default transparent
+             * @enum {string}
+             */
+            background: "transparent" | "white" | "black";
+            /**
+             * Height
+             * @default 1024
+             */
+            height: number;
+            /** Items */
+            items?: components["schemas"]["ImagePlacement"][];
+            /**
+             * Mode
+             * @default crop
+             * @enum {string}
+             */
+            mode: "crop" | "resize" | "arrange";
+            /**
+             * Resample
+             * @default lanczos
+             * @enum {string}
+             */
+            resample: "nearest" | "lanczos";
+            /**
+             * Width
+             * @default 1024
+             */
+            width: number;
+        };
+        /** ImportMaterial */
+        ImportMaterial: {
+            actor: components["schemas"]["Actor"];
+            /** Data Base64 */
+            data_base64: string;
+            /** Direction Id */
+            direction_id?: string | null;
+            /**
+             * Explanation
+             * @default
+             */
+            explanation: string;
+            /** Filename */
+            filename: string;
+            /** Parents */
+            parents?: string[];
+            /** Request Id */
+            request_id: string;
+            /**
+             * Tool
+             * @default
+             */
+            tool: string;
+        };
+        /** ImportOperation */
+        ImportOperation: {
+            actor: components["schemas"]["Actor"];
+            /** Name */
+            name: string;
+            /** Request Id */
+            request_id: string;
+            /**
+             * Source Name
+             * @default
+             */
+            source_name: string;
+            /** Source Node Id */
+            source_node_id?: string | null;
+            /**
+             * Source Text
+             * @default
+             */
+            source_text: string;
+        };
+        /** ImportResult */
+        ImportResult: {
+            direction: components["schemas"]["DirectionView"];
+            /** Node */
+            node: {
+                [key: string]: unknown;
+            };
         };
         /** InFlight */
         InFlight: {
@@ -1398,6 +2829,14 @@ export interface components {
             /** Node Title */
             node_title: string;
         };
+        /** InspectOperation */
+        InspectOperation: {
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+        };
         /** Lanes */
         Lanes: {
             external: components["schemas"]["ExternalLane"];
@@ -1441,6 +2880,160 @@ export interface components {
             label: string;
             /** Slots */
             slots: components["schemas"]["SlotView"][];
+        };
+        /** MaskAdjustment */
+        MaskAdjustment: {
+            crop?: components["schemas"]["ImageBox"] | null;
+            /** Explanation */
+            explanation: string;
+            /**
+             * Resize To Source
+             * @default false
+             */
+            resize_to_source: boolean;
+        };
+        /** MaskSourceView */
+        MaskSourceView: {
+            /** Coordinates */
+            coordinates: string;
+            /** Height */
+            height: number;
+            /** Node Id */
+            node_id: string;
+            /** Sha256 */
+            sha256: string;
+            /** Width */
+            width: number;
+        };
+        /** MaskView */
+        MaskView: {
+            actor: components["schemas"]["Actor"];
+            /** Available */
+            available: boolean;
+            /** Created At */
+            created_at: string;
+            /** Height */
+            height: number;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Original Sha256 */
+            original_sha256: string;
+            /** Previous Mask Id */
+            previous_mask_id: string | null;
+            /** Sha256 */
+            sha256: string;
+            /** Source Node Id */
+            source_node_id: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Transform */
+            transform: {
+                [key: string]: unknown;
+            };
+            /** Width */
+            width: number;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /** MaterialInfo */
+        MaterialInfo: {
+            /** Filename */
+            filename: string;
+            /** Height */
+            height: number | null;
+            /** Media Type */
+            media_type: string;
+            /** Node Id */
+            node_id: string;
+            /** Origin */
+            origin: {
+                [key: string]: unknown;
+            };
+            /** Sha256 */
+            sha256: string;
+            /** Width */
+            width: number | null;
+        };
+        /** MaterialNode */
+        MaterialNode: {
+            /** Available */
+            available: boolean;
+            /** Charged Usd */
+            charged_usd: number | null;
+            /** Committed Usd */
+            committed_usd: number | null;
+            /** Created At */
+            created_at: string;
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Engine */
+            engine: string | null;
+            /** Id */
+            id: string;
+            material: components["schemas"]["MaterialInfo"] | null;
+            mesh?: components["schemas"]["NodeMesh"] | null;
+            /** Output Index */
+            output_index: number;
+            /** Parents */
+            parents: string[];
+            /**
+             * Payload
+             * @enum {string}
+             */
+            payload: "image" | "3d";
+            /** Promoted At */
+            promoted_at?: string | null;
+            /** Prompt */
+            prompt: string | null;
+            /** Purged At */
+            purged_at: string | null;
+            /** Retained Files */
+            retained_files?: components["schemas"]["RetainedFile"][];
+            /** Seed */
+            seed: number | null;
+            /** Set Aside */
+            set_aside: boolean;
+            /** Slot Id */
+            slot_id: string | null;
+            /** Slot Pos */
+            slot_pos: number | null;
+            /** Take */
+            take: number | null;
+            /** Turn Id */
+            turn_id: string | null;
+            /** Turn Idx */
+            turn_idx: number | null;
+            /** Verb */
+            verb: string;
+            /** Workspace Id */
+            workspace_id: string;
+            /** X */
+            x: number | null;
+            /** Y */
+            y: number | null;
+        };
+        /** MaterialRecord */
+        MaterialRecord: {
+            /** Controls */
+            controls: {
+                [key: string]: unknown;
+            };
+            /** Node Id */
+            node_id: string;
+            /** Regions */
+            regions: {
+                [key: string]: unknown;
+            } | null;
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            } | null;
+            /** Submitted */
+            submitted: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * MeshBatch
@@ -1556,11 +3149,12 @@ export interface components {
         };
         /**
          * Node
-         * @description A landed generation on the canvas (PRD §2). Blobs and server
-         *     paths (output_path, submitted_graph, external, dials) never leave the
-         *     server — same rule as Slot; slimming lives in api_v4._node_view.
-         *     `turn_idx` + `slot_pos` feed the card footer (`12b · FLUX…`: the card's
-         *     letters are slot letters).
+         * @description A compact landed-material view, slimmed by api_v4._node_view.
+         *
+         *     This view omits paths, submitted graphs, external envelopes and dials.
+         *     Explicit Crexil provenance reads expose saved requests and settings separately;
+         *     current runtime definitions never substitute for a take's historical facts.
+         *     The card footer uses turn_idx and slot_pos; its letters identify slots.
          */
         Node: {
             /** Charged Usd */
@@ -1694,6 +3288,187 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** OperationBinding */
+        OperationBinding: {
+            /**
+             * Cost Note
+             * @default
+             */
+            cost_note: string;
+            /**
+             * Cost Review
+             * @default unknown
+             * @enum {string}
+             */
+            cost_review: "unknown" | "unmetered" | "paid";
+            /**
+             * Dependency Note
+             * @default
+             */
+            dependency_note: string;
+            /**
+             * Downloads
+             * @default unknown
+             * @enum {string}
+             */
+            downloads: "unknown" | "none" | "ready" | "required";
+            /**
+             * Runtime
+             * @default comfy
+             * @constant
+             */
+            runtime: "comfy";
+        };
+        /** OperationChoice */
+        OperationChoice: {
+            /** Controls */
+            controls?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+            /** Operation Id */
+            operation_id: string;
+            /** Revision */
+            revision: string;
+        };
+        /** OperationDefinition */
+        OperationDefinition: {
+            /** Actions */
+            actions?: ("generate" | "continue" | "combine" | "custom")[];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Graph */
+            graph?: {
+                [key: string]: unknown;
+            };
+            /** Inputs */
+            inputs?: components["schemas"]["PublicControl"][];
+            /** Outputs */
+            outputs?: components["schemas"]["OutputPort"][];
+            /**
+             * Requirements
+             * @default
+             */
+            requirements: string;
+            /** Sources */
+            sources?: components["schemas"]["SourcePort"][];
+        };
+        /** OperationRequirements */
+        OperationRequirements: {
+            /** Checked At */
+            checked_at: string;
+            /** Findings */
+            findings: {
+                [key: string]: unknown;
+            }[];
+            /** Gaps */
+            gaps: string[];
+            /** Limitations */
+            limitations: string[];
+            /** Operation Id */
+            operation_id: string;
+            /** Revision */
+            revision: string;
+            /** Runtime Url */
+            runtime_url: string;
+            /** State */
+            state: string;
+        };
+        /** OperationView */
+        OperationView: {
+            /** Actions */
+            actions: string[];
+            /**
+             * Attempt Max
+             * @default 16
+             */
+            attempt_max: number;
+            /** Availability */
+            availability: string;
+            /** Cost Basis */
+            cost_basis: string;
+            /** Data Destination */
+            data_destination: string;
+            /** Evidence */
+            evidence: string;
+            /** Execution Location */
+            execution_location: string;
+            /** Id */
+            id: string;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            }[];
+            /** Label */
+            label: string;
+            /** Limitations */
+            limitations?: string[];
+            /** Maximum Usd Per Attempt */
+            maximum_usd_per_attempt: number | null;
+            /**
+             * Output Payload
+             * @default image
+             */
+            output_payload: string;
+            /** Price Usd */
+            price_usd: number | null;
+            /** Reasons */
+            reasons: string[];
+            /** Revision */
+            revision: string;
+            /** Source Limit */
+            source_limit: number;
+            /** Source Roles */
+            source_roles?: string[];
+        };
+        /** OutputPort */
+        OutputPort: {
+            /**
+             * Field
+             * @default images
+             */
+            field: string;
+            /**
+             * Node Id
+             * @default
+             */
+            node_id: string;
+            /** Ordinal */
+            ordinal?: number | null;
+            /**
+             * Payload
+             * @default image
+             * @enum {string}
+             */
+            payload: "image" | "3d" | "file";
+            /**
+             * Primary
+             * @default false
+             */
+            primary: boolean;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /**
+             * Role
+             * @default unclassified
+             * @enum {string}
+             */
+            role: "final" | "alternative" | "layer" | "mask" | "preview" | "companion" | "intermediate" | "unclassified";
+            /** When */
+            when?: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * Passes
          * @description A region take's pipeline position: pass `current` of
@@ -1704,6 +3479,65 @@ export interface components {
             current: number;
             /** Total */
             total: number;
+        };
+        /** Preparation */
+        Preparation: {
+            /**
+             * Action
+             * @default generate
+             * @enum {string}
+             */
+            action: "generate" | "continue" | "combine" | "region" | "custom" | "mesh" | "decimate" | "texture" | "import" | "prepare";
+            /**
+             * Attempt Limit
+             * @default 16
+             */
+            attempt_limit: number;
+            /** Controls */
+            controls?: {
+                [key: string]: unknown;
+            };
+            image_preparation?: components["schemas"]["ImagePreparation"] | null;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            /** Operations */
+            operations?: components["schemas"]["OperationChoice"][];
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /**
+             * Purpose
+             * @default creative_request
+             * @enum {string}
+             */
+            purpose: "creative_request" | "operation_test";
+            /** References */
+            references?: components["schemas"]["Reference"][];
+            /** Region Overlap Policy */
+            region_overlap_policy?: "nd3-v1" | null;
+            /**
+             * Region Regenerate Unclaimed
+             * @default false
+             */
+            region_regenerate_unclaimed: boolean;
+            /** Regions */
+            regions?: components["schemas"]["RegionInstruction"][];
+            /**
+             * Spending Limit Usd
+             * @default 0
+             */
+            spending_limit_usd: number;
+            /**
+             * Spending Policy
+             * @default hard_cap
+             * @enum {string}
+             */
+            spending_policy: "hard_cap" | "published_tariff";
         };
         /** Preset */
         Preset: {
@@ -1729,6 +3563,114 @@ export interface components {
             };
         } & {
             [key: string]: unknown;
+        };
+        /** ProjectBackup */
+        ProjectBackup: {
+            /** Created At */
+            created_at: string;
+            /** Files */
+            files: {
+                [key: string]: unknown;
+            }[];
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Records */
+            records: {
+                [key: string]: number;
+            };
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** ProjectLimits */
+        ProjectLimits: {
+            /** Attempt Limit */
+            attempt_limit?: number | null;
+            /** Spending Limit Usd */
+            spending_limit_usd?: number | null;
+            /**
+             * Spending Policy
+             * @default hard_cap
+             * @enum {string}
+             */
+            spending_policy: "hard_cap" | "published_tariff";
+        };
+        /** ProjectRecord */
+        ProjectRecord: {
+            /** Decisions */
+            decisions: components["schemas"]["DecisionView"][];
+            /** Direction Ids */
+            direction_ids: string[];
+            /** Material Ids */
+            material_ids: string[];
+            /** Next Before */
+            next_before: number | null;
+            /** Turn Ids */
+            turn_ids: string[];
+        };
+        /** ProjectSnapshot */
+        ProjectSnapshot: {
+            /** Accounting */
+            accounting?: {
+                [key: string]: unknown;
+            };
+            /** Charged Usd */
+            charged_usd: number;
+            /** Directions */
+            directions: components["schemas"]["DirectionView"][];
+            /** Event Seq */
+            event_seq: number;
+            /** Execution Controls */
+            execution_controls?: components["schemas"]["ExecutionControlView"][];
+            /** Execution Groups */
+            execution_groups: components["schemas"]["ExecutionGroupView"][];
+            /** Nodes */
+            nodes: components["schemas"]["MaterialNode"][];
+            project: components["schemas"]["ProjectView"];
+            /** Restoration */
+            restoration?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sequences */
+            sequences?: components["schemas"]["SequenceView"][];
+            /** Turns */
+            turns: components["schemas"]["Turn"][];
+        };
+        /** ProjectView */
+        ProjectView: {
+            /** Brief */
+            brief: string;
+            /** Created At */
+            created_at: string;
+            /** Dials */
+            dials: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Instructions */
+            instructions: string;
+            /** Limits */
+            limits: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+            /** Slug */
+            slug: string;
+            /** Updated At */
+            updated_at: string;
+            /** Viewport */
+            viewport: {
+                [key: string]: unknown;
+            };
         };
         /**
          * PromoteBrowse
@@ -1876,8 +3818,20 @@ export interface components {
         ProviderModel: {
             /** Description */
             description?: string | null;
+            /** Discovered Model */
+            discovered_model?: {
+                [key: string]: unknown;
+            } | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Endpoint Discovery Error */
+            endpoint_discovery_error?: string | null;
+            /** Endpoints */
+            endpoints?: {
+                [key: string]: unknown;
+            }[];
+            /** Endpoints Fetched At */
+            endpoints_fetched_at?: string | null;
             /** Id */
             id: string;
             /** Label */
@@ -1918,6 +3872,46 @@ export interface components {
             models: components["schemas"]["ProviderModel"][];
             /** Transport */
             transport: string;
+        };
+        /** PublicControl */
+        PublicControl: {
+            /** Choices */
+            choices?: unknown[];
+            /** Default */
+            default?: unknown;
+            /**
+             * Key
+             * @default
+             */
+            key: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Max */
+            max?: number | null;
+            /** Min */
+            min?: number | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Step */
+            step?: number | null;
+            /** Targets */
+            targets?: components["schemas"]["GraphTarget"][];
+            /**
+             * Type
+             * @default text
+             * @enum {string}
+             */
+            type: "text" | "int" | "float" | "enum" | "seed" | "bool";
+            /** When */
+            when?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * Purge
@@ -1960,6 +3954,36 @@ export interface components {
             retries: components["schemas"]["RetryWait"][];
             /** Seq */
             seq: number;
+        };
+        /** RecordAssessment */
+        RecordAssessment: {
+            actor: components["schemas"]["Actor"];
+            /** Direction Id */
+            direction_id?: string | null;
+            /** Node Ids */
+            node_ids?: string[];
+            /** Previous Id */
+            previous_id?: string | null;
+            /** Reason */
+            reason: string;
+            /** Request Id */
+            request_id: string;
+            /** Turn Id */
+            turn_id?: string | null;
+        };
+        /** Reference */
+        Reference: {
+            /**
+             * Contribution
+             * @default
+             */
+            contribution: string;
+            /** Node Id */
+            node_id: string;
+            /** Role */
+            role?: string | null;
+            /** Strength */
+            strength?: number | null;
         };
         /**
          * Region
@@ -2014,6 +4038,26 @@ export interface components {
              * @default 1
              */
             takes: number;
+        };
+        /** RegionInstruction */
+        RegionInstruction: {
+            /**
+             * Action
+             * @default modify
+             * @enum {string}
+             */
+            action: "keep" | "modify" | "replace" | "delete";
+            /** Key */
+            key: string;
+            /** Mask Id */
+            mask_id?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
         };
         /** RegionList */
         RegionList: {
@@ -2072,6 +4116,52 @@ export interface components {
             /** Prompt */
             prompt?: string | null;
         };
+        /** RegistrationView */
+        RegistrationView: {
+            actor: components["schemas"]["Actor"];
+            /** Adaptation Note */
+            adaptation_note: string;
+            binding: components["schemas"]["OperationBinding"];
+            /** Created At */
+            created_at: string;
+            definition: components["schemas"]["OperationDefinition"];
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            }[];
+            /** Gaps */
+            gaps: string[];
+            /** Id */
+            id: string;
+            /** Inspection */
+            inspection: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name: string;
+            /** Operation Revision */
+            operation_revision: string;
+            /** Revision */
+            revision: number;
+            /** Revisions */
+            revisions: {
+                [key: string]: unknown;
+            }[];
+            /** Source */
+            source: {
+                [key: string]: unknown;
+            };
+            /** Source Kind */
+            source_kind: string;
+            /** Source Name */
+            source_name: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Source Text */
+            source_text: string;
+            /** Updated At */
+            updated_at: string;
+        };
         /**
          * RenameWorkspace
          * @description the slug is the promote path and never moves, so a rename is
@@ -2115,6 +4205,49 @@ export interface components {
             seq: number;
             slot: components["schemas"]["Slot"];
         };
+        /** ReserveArchive */
+        ReserveArchive: {
+            actor: components["schemas"]["Actor"];
+            /** Filename */
+            filename: string;
+            /** Request Id */
+            request_id: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** RestoreArchive */
+        RestoreArchive: {
+            actor: components["schemas"]["Actor"];
+            /** Name */
+            name?: string | null;
+            /** Request Id */
+            request_id: string;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** RetainedFile */
+        RetainedFile: {
+            /** Available */
+            available: boolean;
+            /** Error */
+            error: string | null;
+            /** File */
+            file: string | null;
+            /** Filename */
+            filename: string;
+            /** Id */
+            id: string;
+            /** Media Type */
+            media_type: string;
+            /** Required */
+            required: boolean;
+            /** Role */
+            role: string;
+            /** Sha256 */
+            sha256: string | null;
+            /** Size Bytes */
+            size_bytes: number | null;
+        };
         /**
          * RetryWait
          * @description B2: a queued take waiting for its next automatic attempt;
@@ -2141,6 +4274,47 @@ export interface components {
              * @enum {string}
              */
             window: "provider" | "cockpit";
+        };
+        /** ReuseFile */
+        ReuseFile: {
+            /** Filename */
+            filename: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** ReuseReview */
+        ReuseReview: {
+            /** Errors */
+            errors: string[];
+            /** Filename */
+            filename: string;
+            /** Files */
+            files: components["schemas"]["ReuseFile"][];
+            /** Missing */
+            missing: string[];
+            /** Payload */
+            payload: string;
+            /** Ready */
+            ready: boolean;
+            /** Source Node Id */
+            source_node_id: string;
+            /** Source Project Id */
+            source_project_id: string;
+            /** Source Project Name */
+            source_project_name: string;
+            /** Token */
+            token: string;
+            /** Total Bytes */
+            total_bytes: number;
+        };
+        /** ReuseSelection */
+        ReuseSelection: {
+            /** Node Id */
+            node_id: string;
+            /** Source Project Id */
+            source_project_id: string;
         };
         /**
          * Run
@@ -2205,10 +4379,155 @@ export interface components {
             seq: number;
             turn: components["schemas"]["Turn"];
         };
+        /** SaveMask */
+        SaveMask: {
+            actor: components["schemas"]["Actor"];
+            adjustment?: components["schemas"]["MaskAdjustment"] | null;
+            /** Data Base64 */
+            data_base64?: string | null;
+            /** Name */
+            name: string;
+            /** Previous Mask Id */
+            previous_mask_id?: string | null;
+            /** Request Id */
+            request_id: string;
+            /** Source Node Id */
+            source_node_id: string;
+            /** Source Sha256 */
+            source_sha256: string;
+        };
+        /** SequenceDependency */
+        SequenceDependency: {
+            /**
+             * Contribution
+             * @default
+             */
+            contribution: string;
+            /**
+             * Placement
+             * @default after_fixed
+             * @enum {string}
+             */
+            placement: "before_fixed" | "after_fixed";
+            /**
+             * Selection
+             * @enum {string}
+             */
+            selection: "all_successful" | "chosen";
+            /** Step Key */
+            step_key: string;
+        };
+        /** SequenceReview */
+        SequenceReview: {
+            /** Errors */
+            errors: string[];
+            /** Ready */
+            ready: boolean;
+            /** Revision */
+            revision: number;
+            /** Sequence Id */
+            sequence_id: string;
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+            /** Token */
+            token: string;
+        };
+        /** SequenceStep */
+        SequenceStep: {
+            /** Dependencies */
+            dependencies?: components["schemas"]["SequenceDependency"][];
+            /** Direction Id */
+            direction_id: string;
+            /**
+             * Input Mode
+             * @default together
+             * @enum {string}
+             */
+            input_mode: "together" | "each";
+            /** Key */
+            key: string;
+            /** Revision */
+            revision: number;
+        };
+        /** SequenceStepView */
+        SequenceStepView: {
+            /** Binding */
+            binding: {
+                [key: string]: unknown;
+            } | null;
+            /** Candidate Token */
+            candidate_token: string;
+            /** Candidates */
+            candidates: {
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
+            };
+            /** Decision */
+            decision: {
+                [key: string]: unknown;
+            } | null;
+            /** Dependencies */
+            dependencies: components["schemas"]["SequenceDependency"][];
+            /** Direction Id */
+            direction_id: string;
+            /** Input Mode */
+            input_mode: string;
+            /** Key */
+            key: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Reason */
+            reason: string;
+            /** Runs */
+            runs: {
+                [key: string]: unknown;
+            }[];
+            /** State */
+            state: string;
+        };
+        /** SequenceView */
+        SequenceView: {
+            /** Accounting */
+            accounting: {
+                [key: string]: unknown;
+            };
+            actor: components["schemas"]["Actor"];
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Instructions */
+            instructions: string;
+            limits: components["schemas"]["ProjectLimits"];
+            /** Revision */
+            revision: number;
+            /** State */
+            state: string;
+            /** Steps */
+            steps: components["schemas"]["SequenceStepView"][];
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
         /** SetupKey */
         SetupKey: {
             /** Api Key */
             api_key: string;
+        };
+        /** SetupOverview */
+        SetupOverview: {
+            comfyui: components["schemas"]["HealthComfy"];
+            /** Comfyui Url */
+            comfyui_url: string;
+            openrouter: components["schemas"]["SetupStatus"];
+            /** Preview */
+            preview: boolean;
         };
         /** SetupStatus */
         SetupStatus: {
@@ -2327,6 +4646,67 @@ export interface components {
             /** Workspace Id */
             workspace_id: string;
         };
+        /** SourcePort */
+        SourcePort: {
+            /**
+             * Field
+             * @default
+             */
+            field: string;
+            /**
+             * Kind
+             * @default image
+             * @enum {string}
+             */
+            kind: "image" | "mask";
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Node Id
+             * @default
+             */
+            node_id: string;
+            /**
+             * Role
+             * @default
+             */
+            role: string;
+            /** When */
+            when?: {
+                [key: string]: unknown;
+            };
+        };
+        /** StartSequence */
+        StartSequence: {
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+            /** Review Token */
+            review_token: string;
+            /** Revision */
+            revision: number;
+        };
+        /** SubmitDirection */
+        SubmitDirection: {
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+            /** Review Token */
+            review_token: string;
+            /** Revision */
+            revision: number;
+        };
+        /** SubmittedDirection */
+        SubmittedDirection: {
+            direction: components["schemas"]["DirectionView"];
+            /** Review Token */
+            review_token: string;
+            /** Turn Id */
+            turn_id: string;
+        };
         /** Tray */
         Tray: {
             /** Bytes */
@@ -2437,6 +4817,86 @@ export interface components {
             cleared: boolean;
             /** Scope */
             scope: string;
+        };
+        /** UpdateDirection */
+        UpdateDirection: {
+            actor: components["schemas"]["Actor"];
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+            setup: components["schemas"]["Preparation"];
+            /** Title */
+            title: string;
+        };
+        /** UpdateOperation */
+        UpdateOperation: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Adaptation Note
+             * @default
+             */
+            adaptation_note: string;
+            binding: components["schemas"]["OperationBinding"];
+            definition: components["schemas"]["OperationDefinition"];
+            /** Name */
+            name: string;
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+        };
+        /** UpdateProject */
+        UpdateProject: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Brief
+             * @default
+             */
+            brief: string;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            limits?: components["schemas"]["ProjectLimits"] | null;
+            /** Name */
+            name: string;
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+        };
+        /** UpdateSequence */
+        UpdateSequence: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            limits: components["schemas"]["ProjectLimits"];
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
+            /** Title */
+            title: string;
+        };
+        /** UpdateSequenceStep */
+        UpdateSequenceStep: {
+            actor: components["schemas"]["Actor"];
+            /** Dependencies */
+            dependencies?: components["schemas"]["SequenceDependency"][];
+            /**
+             * Input Mode
+             * @enum {string}
+             */
+            input_mode: "together" | "each";
+            /** Request Id */
+            request_id: string;
+            /** Revision */
+            revision: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -2580,6 +5040,1856 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reserve_archive_api_crexil_archive_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReserveArchive"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveUpload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_upload_state_api_crexil_archive_uploads__uid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveUpload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_archive_api_crexil_archive_uploads__uid__file_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveUpload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_archive_api_crexil_archive_uploads__uid__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreArchive"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveRestoreResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collect_execution_api_crexil_attempts__sid__collect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectExecution"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionGroupView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backup_file_api_crexil_backups__bid__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delivery_state_api_crexil_deliveries__did__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transfer_delivery_api_crexil_deliveries__did__transfer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Command"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_direction_api_crexil_directions__did__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDirection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_image_preparation_api_crexil_directions__did__image_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_image_api_crexil_directions__did__prepare_image_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitDirection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_direction_api_crexil_directions__did__review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    display_selection_api_crexil_directions__did__selection_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisplaySelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    direction_state_api_crexil_directions__did__state_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DirectionState"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_direction_api_crexil_directions__did__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitDirection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmittedDirection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execution_control_state_api_crexil_execution__scope___target_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: "project" | "run" | "sequence";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionControlView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    control_execution_api_crexil_execution__scope___target_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: "project" | "run" | "sequence";
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlExecution"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionControlView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mask_image_api_crexil_masks__mid__image_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retained_material_file_api_crexil_material__nid__files__fid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nid: string;
+                fid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    material_record_api_crexil_material__nid__record_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operation_requirements_api_crexil_operation_requirements_get: {
+        parameters: {
+            query: {
+                operation_id: string;
+                revision: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationRequirements"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operations_api_crexil_operations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationView"][];
+                };
+            };
+        };
+    };
+    output_file_api_crexil_outputs__oid__file_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                oid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    projects_api_crexil_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"][];
+                };
+            };
+        };
+    };
+    create_project_api_crexil_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_snapshot_api_crexil_projects__wid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_api_crexil_projects__wid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProject"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_assessment_api_crexil_projects__wid__assessments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordAssessment"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_backup_api_crexil_projects__wid__backups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Command"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectBackup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_deliveries_api_crexil_projects__wid__deliveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_delivery_api_crexil_projects__wid__deliveries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDelivery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delivery_csv_api_crexil_projects__wid__deliveries_csv_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_delivery_api_crexil_projects__wid__deliveries_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeliverySelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_direction_api_crexil_projects__wid__directions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDirection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_receipt_api_crexil_projects__wid__imports__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mask_source_api_crexil_projects__wid__mask_source__nid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                nid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaskSourceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    saved_masks_api_crexil_projects__wid__masks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaskView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_mask_api_crexil_projects__wid__masks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveMask"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaskView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_material_api_crexil_projects__wid__material_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportMaterial"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_record_api_crexil_projects__wid__record_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                node_id?: string | null;
+                direction_id?: string | null;
+                turn_id?: string | null;
+                before?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reuse_material_api_crexil_projects__wid__reuse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReuse"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_reuse_api_crexil_projects__wid__reuse_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReuseSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReuseReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_sequence_api_crexil_projects__wid__sequences_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSequence"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    registrations_api_crexil_registrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationView"][];
+                };
+            };
+        };
+    };
+    import_operation_api_crexil_registrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportOperation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    registration_api_crexil_registrations__rid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_operation_api_crexil_registrations__rid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOperation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_operation_api_crexil_registrations__rid__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_operation_api_crexil_registrations__rid__inspect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InspectOperation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sequence_state_api_crexil_sequences__sid__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_sequence_api_crexil_sequences__sid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSequence"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reuse_sequence_api_crexil_sequences__sid__reuse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Command"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_sequence_api_crexil_sequences__sid__review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_sequence_api_crexil_sequences__sid__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartSequence"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_sequence_step_api_crexil_sequences__sid__steps__key__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSequenceStep"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sequence_decision_api_crexil_sequences__sid__steps__key__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideSequence"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SequenceView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_overview_api_crexil_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupOverview"];
                 };
             };
         };

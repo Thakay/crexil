@@ -1,27 +1,17 @@
-"""Stack composition: the one place the store, the two-lane scheduler, the
-real executors, the preset catalogue and the shared OpenRouter client meet the
-app lifespan (the sole stack).
+"""Compose the store, scheduler, executors and catalogues for the app lifespan.
 
-Two hard-won rules live here:
-- Every executor that talks to ComfyUI gets its OWN ComfyClient.
-  `start_ws_mirror` replaces the client's handler, so two executors on one
-  client would silently steal each other's mirror — and one `close()` would
-  close the other's HTTP client mid-teardown. ComfyUI happily serves multiple
-  WS clients. `/api/health` probes through the ComfyExecutor's client (a
-  plain `system_stats`, no handler involved).
-- The OpenRouterClient IS shared (one key, one place; the setup route's
-  `set_key` then propagates to the executor, and `OpenRouterExecutor.close()`
-  is a no-op so nothing double-closes).
+Each ComfyUI executor owns its client: a shared client's WebSocket handler
+would be overwritten and teardown would close another executor's connection.
+The OpenRouter client is shared so key changes reach its executor immediately;
+the stack owns its close. Health probes use the image executor's ComfyClient.
 
-Startup runs checks: a down ComfyUI or a missing key BENCHES the lane with
-actionable copy — the cockpit always boots (keyless/offline is a valid
-local-only deployment). Two loud exceptions: a broken preset file
-(`PresetError`) and a misconfigured COCKPIT_DB (`SchemaVersionError`) fail
-boot with their own remediation message — degraded modes would silently run
-a cockpit that lies about what it can do.
+Unavailable engines and missing credentials bench their lane without
+preventing startup. Invalid presets or an incompatible database fail startup
+with remediation. Tests can inject executors and inspect the current stack.
 
-Tests inject scripted executors through `EXECUTOR_FACTORY` and reach the
-running stack through `current`.
+Preview takes precedence over test factories and supplies only unavailable
+executors plus a network-denying provider transport. Removing a bench cannot
+enable generation. Records remain real; no generated results are simulated.
 """
 
 from __future__ import annotations
@@ -32,13 +22,14 @@ from typing import Callable, Sequence
 from typing import Awaitable
 
 import asyncio
+import httpx
 
 from . import config, secrets_store
 from .capture import Capture
 from .comfy import ComfyClient
 from .db import Database
-from .executors import (ComfyExecutor, Executor, GpuReading,
-                        OpenRouterExecutor, read_gpu)
+from .executors import (ComfyExecutor, EngineFailure, Executor, GpuReading,
+                        OpenRouterExecutor, Reconciliation, read_gpu)
 from .mesh import MESH_ENGINES, MeshExecutor
 from .openrouter import OpenRouterClient
 from .presets import load_presets
@@ -82,6 +73,57 @@ current: Stack | None = None
 # mid-run dead_key bench clears only on a SUCCESSFUL key probe, never on
 # mere key presence.
 AUTO_CLEAR = {"no_key", "unreachable"}
+PREVIEW_UNAVAILABLE = (
+    "Generation is unavailable in this preview. Sources and preparation "
+    "are saved locally; no GPU work or paid requests are sent.")
+
+
+class PreviewTransport(httpx.AsyncBaseTransport):
+    """Deny all provider requests, including key checks and bill lookups."""
+
+    async def handle_async_request(self, request):
+        raise httpx.ConnectError(PREVIEW_UNAVAILABLE, request=request)
+
+
+class PreviewOpenRouter(OpenRouterClient):
+    """The ordinary provider interface with no credentials or network path."""
+
+    def __init__(self):
+        self.base_url = "http://127.0.0.1:9"
+        self.api_key = ""
+        self.key_source = None
+        self.requests_total = 0
+        self._client = httpx.AsyncClient(
+            base_url=self.base_url, transport=PreviewTransport())
+
+
+@dataclass
+class UnavailableExecutor:
+    """A real refusal boundary, never a generator or a successful test double."""
+    name: str
+    lane: str
+
+    async def open(self):
+        pass
+
+    async def close(self):
+        pass
+
+    async def start(self, _req):
+        raise EngineFailure("model_down", PREVIEW_UNAVAILABLE)
+
+    async def wait(self, _handle):
+        raise EngineFailure("model_down", PREVIEW_UNAVAILABLE)
+
+    async def cancel(self, _handle):
+        pass
+
+    async def reconcile(self, _slot, *, request=None):  # noqa: ARG002
+        return Reconciliation("failed", cause=PREVIEW_UNAVAILABLE,
+                              failure_kind="model_down")
+
+    async def verify_charge(self, _job_ref):
+        return None
 
 
 @dataclass
@@ -96,12 +138,15 @@ class Stack:
     comfy: ComfyClient | None      # the ComfyExecutor's own client; None with fakes
     gpu_probe: Callable[[], Awaitable[GpuReading | None]] | None = None
     capture: Capture | None = None  # the unhandled-failure door
+    sequences: object | None = None
 
 
 def build_openrouter() -> OpenRouterClient:
     """The one shared OpenRouter client. Key precedence: env/.env
     wins; the UI-stored secret fills in; neither = a keyless client, which
     the startup check turns into a bench, never a crash."""
+    if config.CREXIL_PREVIEW:
+        return PreviewOpenRouter()
     env_key = config.OPENROUTER_API_KEY
     stored_key = secrets_store.get_secret("openrouter_api_key")
     openrouter = OpenRouterClient(api_key=env_key or stored_key or "")
@@ -117,7 +162,8 @@ async def start(on_event: OnEvent | None = None) -> Stack:
     provider_catalog = ProviderCatalog(openrouter)
     # warm the live model catalogue now, so Run's validation and the picker
     # have the full bench without waiting for the first /api/providers hit
-    asyncio.create_task(provider_catalog.get())
+    if not config.CREXIL_PREVIEW:
+        asyncio.create_task(provider_catalog.get())
     db = Database()                # config.DB_PATH
     try:
         await db.open()            # SchemaVersionError -> loud boot failure
@@ -128,7 +174,12 @@ async def start(on_event: OnEvent | None = None) -> Stack:
     comfy: ComfyClient | None = None
     scripted = EXECUTOR_FACTORY is not None or config.HARNESS_EXECUTORS
     probe = GPU_PROBE
-    if EXECUTOR_FACTORY is not None:
+    if config.CREXIL_PREVIEW:
+        executors = [UnavailableExecutor(name, lane) for name, lane in (
+            ("comfy", "local"), ("region", "local"), ("mesh", "local"),
+            ("openrouter", "external"))]
+        probe = None
+    elif EXECUTOR_FACTORY is not None:
         executors = list(EXECUTOR_FACTORY(openrouter))
     elif config.HARNESS_EXECUTORS:
         from .harness import build_executors, gpu_probe   # e2e mode
@@ -151,7 +202,11 @@ async def start(on_event: OnEvent | None = None) -> Stack:
                       gpu_probe=probe, capture=capture)
     try:
         await sched.start()        # recovers, then opens the lanes
-        if not scripted:
+        if config.CREXIL_PREVIEW:
+            for lane in ("local", "external"):
+                await sched.bench(f"lane:{lane}", kind="preview",
+                                  cause=PREVIEW_UNAVAILABLE)
+        elif not scripted:
             await startup_checks(sched, comfy, openrouter)
     except BaseException:
         # a boot that fails here must still release the store — an open
@@ -168,6 +223,9 @@ async def start(on_event: OnEvent | None = None) -> Stack:
     current = Stack(db=db, scheduler=sched, openrouter=openrouter,
                     provider_catalog=provider_catalog, catalog=catalog,
                     comfy=comfy, gpu_probe=probe, capture=capture)
+    from .crexil_sequences import Coordinator
+    current.sequences = Coordinator(current)
+    current.sequences.start()
     return current
 
 
@@ -251,6 +309,8 @@ async def probe_mesh_runner() -> bool:
     whether a systemd unit happens to be running on this machine,
     which is the coupling the harness exists to cut. `startup_checks`
     already stands down the same way."""
+    if config.CREXIL_PREVIEW:
+        return False
     if EXECUTOR_FACTORY is not None or config.HARNESS_EXECUTORS:
         return True
     import httpx
@@ -268,7 +328,7 @@ async def stop(stack: Stack) -> None:
     # the store closes; its stop() also closes the executor-owned ComfyClients.
     # In-flight external takes ride the shared openrouter client, so it
     # closes after them; one failed step must not skip the rest.
-    steps = [stack.scheduler.stop]
+    steps = ([stack.sequences.stop] if stack.sequences else []) + [stack.scheduler.stop]
     if stack.capture is not None:
         # scheduled captures land before the store closes; after this a
         # straggler goes to the log only (the capture says so)

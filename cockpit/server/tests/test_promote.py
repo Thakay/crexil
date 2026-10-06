@@ -380,3 +380,31 @@ def test_the_turntable_rides_beside_the_mesh_not_under_inputs(tmp_path,
     assert art == root / "_3d" / "props" / "m2.glb"
     assert (root / "_3d" / "props" / "m2.turntable.webp").read_bytes() \
         == b"orbit"
+
+
+def test_missing_planned_related_file_refuses_the_whole_delivery(tmp_path, staged):
+    image, mask = staged
+    root = tmp_path / 'delivery'
+    root.mkdir()
+    mask.unlink()
+    with pytest.raises(PromoteTargetError):
+        promote_candidate(image, {'asset': 'missing-related'}, 'project', 'missing-related',
+                          [(mask, 'missing-related.outputs/mask.png')], root=root)
+    assert not list((root / 'project').rglob('*.png'))
+    assert not list((root / 'project').rglob('*.json'))
+
+
+@pytest.mark.parametrize('corrupt_primary', [False, True])
+def test_delivery_refuses_bytes_that_differ_from_collected_receipts(tmp_path, staged, corrupt_primary):
+    import hashlib
+    image, mask = staged
+    root = tmp_path / 'checked-delivery'
+    root.mkdir()
+    manifest = {'material': {'sha256': hashlib.sha256(image.read_bytes()).hexdigest()},
+                'execution': {'outputs': [{'file': 'checked.outputs/mask.png',
+                                          'sha256': hashlib.sha256(mask.read_bytes()).hexdigest()}]}}
+    (image if corrupt_primary else mask).write_bytes(b'changed after collection')
+    with pytest.raises(promote.PromoteMaterialError, match='Nothing was delivered'):
+        promote_candidate(image, manifest, 'project', 'checked', [(mask, 'checked.outputs/mask.png')], root=root)
+    assert not list((root / 'project').rglob('*.png'))
+    assert not list((root / 'project').rglob('*.json'))

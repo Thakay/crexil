@@ -1,0 +1,183 @@
+{
+  "12": {
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "model_loader"
+    },
+    "inputs": {
+      "unet_name": "qwen_image_edit_2511_fp8mixed.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "67": {
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "model_sampling"
+    },
+    "inputs": {
+      "shift": 3.1,
+      "model": [
+        "12",
+        0
+      ]
+    }
+  },
+  "61": {
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "clip_loader"
+    },
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "10": {
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "vae_loader"
+    },
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "41": {
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "source_image"
+    },
+    "inputs": {
+      "image": "cockpit-smoke-src.png"
+    }
+  },
+  "68": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "prompt_positive"
+    },
+    "inputs": {
+      "prompt": "recolor the red square to blue; keep everything else exactly the same",
+      "clip": [
+        "61",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ],
+      "image1": [
+        "41",
+        0
+      ],
+      "image2": [
+        "42",
+        0
+      ]
+    }
+  },
+  "69": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "prompt_negative"
+    },
+    "inputs": {
+      "prompt": "",
+      "clip": [
+        "61",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ],
+      "image1": [
+        "41",
+        0
+      ],
+      "image2": [
+        "42",
+        0
+      ]
+    }
+  },
+  "66": {
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "latent_size"
+    },
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    }
+  },
+  "65": {
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "sampler"
+    },
+    "inputs": {
+      "seed": 42,
+      "steps": 20,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "67",
+        0
+      ],
+      "positive": [
+        "68",
+        0
+      ],
+      "negative": [
+        "69",
+        0
+      ],
+      "latent_image": [
+        "66",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "vae_decode"
+    },
+    "inputs": {
+      "samples": [
+        "65",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "save"
+    },
+    "inputs": {
+      "filename_prefix": "qwen-edit-2511-2source",
+      "images": [
+        "8",
+        0
+      ]
+    }
+  },
+  "42": {
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "source_image_2"
+    },
+    "inputs": {
+      "image": "crexil-source-2.png"
+    }
+  }
+}

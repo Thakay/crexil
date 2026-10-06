@@ -61,6 +61,39 @@ artefact: node ids, lineage, engine, seed, the prompt as typed and as submitted,
 hash, cost, the submitted graph. **v4 is the public format, frozen; changes are versioned,
 additive and documented.**
 
+Three additive manifest extensions exist, each with its own version:
+
+- `shared_request` (version 1) keeps the accepted preparation, its source contributions, the
+  matching operation revision, who asked, and the original attempt controls where they were
+  recorded. A take from a sequence also keeps the frozen binding and the authorization event
+  that preceded acceptance. Missing history stays missing: the current project, direction,
+  operation or sequence never stands in for it.
+- `restoration` (version 1) names the source backup and project, the original node, any earlier
+  restore chain and the node aliases that matter. A restored export keeps its historical
+  requests and never checks old model hashes against the current installation's files.
+- `related_files_version` (version 1) on a material lists its independently owned companion
+  files with hashes, media types, roles, whether each is required and whether it is available.
+  Portable file names replace live ownership paths; a nested source record is history and
+  never grants access to old paths or runtimes.
+
+Imported material has unknown creation provenance: its transport, provider, capability,
+local-only claim and observed prompt are null, and its replay tier is record only. A local mesh
+claims no ComfyUI provider or job identity.
+
+**Reuse across projects.** An explicit, reviewed import copies the chosen original and its
+available related files into another project. The copy keeps its known source project, node,
+participant and frozen provenance, attaches no foreign live parents and inherits no permission to
+execute. A missing required file refuses the copy; missing optional history stays visibly
+missing. Replaying the acceptance returns the same imported node, even after the source is purged.
+
+**Project portability.** A project backup is a versioned ZIP holding a sealed database and the
+available material, with missing or purged files named. Restoring creates a separate project with
+its own bytes and explicit identity mappings. Requests, graphs, authorship, charges and decisions
+stay history: unfinished attempts do not resume, earlier deliveries are not sent again, and
+continuing needs a new reviewed preparation. Restored charges count in the project's history
+without adding spending to the current installation. Installation settings, secrets and model
+weights stay out of the backup.
+
 **Execution model.** Local engines share one GPU and run **strictly sequentially, across
 executors**. External engines run **concurrently** and cost money. A single Run mixes both, so
 slots complete out of order.
@@ -82,10 +115,13 @@ needs a commit that states why it failed.
 
 Binding invariants. **Numbers are names: code cites them as `law N`; never renumber.**
 
-A law binds new work even where today's code falls short of it. Known gaps: hosted engines
-take a text brief only, so a take cannot yet feed a hosted engine (law 21); a run has no spend
-cap yet (law 22); events do not yet record an author, and picks with the Keep view over them
-are not built yet (law 23 and §2). View state (canvas positions, viewport and dials) is stored
+A law binds new work even where today's code falls short of it. Known gaps: the legacy canvas
+(`#/w`) keeps the older limits: its hosted engines take a text brief only, so a take cannot feed
+a hosted engine there (law 21); its runs have no spend cap (law 22); and its events record no
+author (law 23). The project surface (`#/projects`) prepares hosted continuations and
+multi-source requests, states run and project limits before dispatch, and records the
+participant behind each preparation, selection, assessment and execution control; an assessment
+carries its reason. View state (canvas positions, viewport and dials) is stored
 without events, and engine definitions carry no `provider` field yet (§2). The downloader shows
 no licence class, its default groups include non-commercial and unconfirmed weights, and the
 SDXL reference graphs load a checkpoint whose card now says non-commercial (§2, what ships; see

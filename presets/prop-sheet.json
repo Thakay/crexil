@@ -1,4 +1,15 @@
 {
+  "execution_cost": {
+    "maximum_usd_per_attempt": 0,
+    "workflow_sha256": {
+      "txt2img": "5e512fec142299b14ff029d3d13f93a4dd733caa53f3ad5736fdd64dc7da34b0",
+      "img2img": "212acd0493b9b3ea0566278191287c0f0d9097add47e220734ddf096fb69f445",
+      "inpaint_modify": "044dda2b615266042616f2779a832c496ab5b8476b41df44b9eccf34029b1229",
+      "inpaint_replace": "d3cfd549d4bf8a1bd509f58f9b450b4546cbfde308e42728276902d44e12766a",
+      "remove": "0b248e6f37320f999b1521e380d602d5b74e8dccdca259148add879e09270ca4",
+      "composite": "de6c0cb9ccb06e44df968db1c2d1b470e55665503aaa00a961c78d65e1c21a4c"
+    }
+  },
   "id": "prop-sheet",
   "display_name": "Prop Sheet",
   "description": "3D-ready prop: neutral background, consistent framing. Starter preset on FLUX.2 klein-4B.",

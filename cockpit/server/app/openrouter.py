@@ -1,38 +1,46 @@
-"""OpenRouter image adapter (the
-documented `/api/v1/images` contract driven through httpx — the same proven
-client comfy.py uses; no hand-rolled HTTP semantics, no per-provider SDKs).
+"""Transport native OpenRouter images and preserve exact dispatch receipts.
 
-Verifiability: every outbound attempt is counted and logged on the
-`cockpit.external` logger BEFORE the request leaves, and a local-only turn
-never reaches this module (the Run route refuses it, api_v4.py). Failures map to
-per-slot errors — a bad model route (402/429/502/503 on one slug) degrades
-only that slot; a dead key surfaces the same way on every external
-slot of the turn and never touches local ones.
+Frozen requests are copied and sent without parameter merging or retries.
+Every output is independently validated, with original raster bytes and full
+provider metadata retained. An optional callback durably collects each result
+before the next output is fetched. HTTPS output retrieval never carries the
+OpenRouter key and rejects private destinations and redirects.
 
-Billing note (recorded from OpenRouter docs 2026-07-17): generation billing
-is all-or-nothing — failed or cancelled generations are not billed.
-
-B4: a 200 that carries `usage.cost` but no
-image is "charged, nothing returned" — its own kind, `charged_blank`,
-carrying the amount the response reported and the generation id. There is
-no way to re-fetch the IMAGE (the endpoint never re-serves one), so the
-free re-ask is the BILL: `generation_cost` reads GET /generation?id= —
-the generation record, whose `total_cost` is the billed truth and which
-lags the response by seconds — and the scheduler asks it three times over
-about a minute before calling the amount unverified.
+Legacy generate returns one verified PNG. Errors retain the request, response
+and reported charge when available; transport failure never proves no charge.
+This adapter supplies no spending guarantee: tariff selection, authorization
+and reservations belong to the caller before dispatch.
 """
 
 from __future__ import annotations
 
 import base64
+import asyncio
+import binascii
+import copy
+import io
+import ipaddress
+import json
 import logging
+import math
+import socket
 import time
+from collections.abc import Awaitable, Callable
+from urllib.parse import urlsplit
 
 import httpx
+from PIL import Image, UnidentifiedImageError
 
 from . import config
 
 log = logging.getLogger("cockpit.external")
+
+_MAX_OUTPUT_BYTES = 64 * 1024 * 1024
+_RASTER_FORMATS = {"PNG": ("image/png", ".png"),
+                   "JPEG": ("image/jpeg", ".jpg"),
+                   "WEBP": ("image/webp", ".webp")}
+_LEGACY_PROTECTED = {"model", "prompt", "n", "output_format", "seed",
+                     "input_references", "stream"}
 
 # error kinds, coarse on purpose: the UI shows the message, the e2e asserts
 # the kind. "dead_key" covers invalid key AND exhausted credits — both kill
@@ -51,13 +59,71 @@ class ExternalJobError(Exception):
     def __init__(self, kind: str, message: str, status: int | None = None,
                  *, charged_usd: float | None = None,
                  job_id: str | None = None,
-                 retry_after_s: float | None = None):
+                 retry_after_s: float | None = None,
+                 receipt: dict | None = None):
         super().__init__(message)
         self.kind = kind
         self.status = status
         self.charged_usd = charged_usd   # charged_blank: what the response said
         self.job_id = job_id             # the generation id, when one came back
         self.retry_after_s = retry_after_s   # B2: the provider's own window
+        self.receipt = receipt or {}
+
+
+def _reported_cost(body) -> float | None:
+    usage = body.get("usage") if isinstance(body, dict) else None
+    cost = usage.get("cost") if isinstance(usage, dict) else None
+    if isinstance(cost, bool):
+        return None
+    try:
+        parsed = float(cost)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return parsed if math.isfinite(parsed) and parsed >= 0 else None
+
+
+def _validated_image(raw: bytes, metadata: dict) -> dict:
+    """Keep original bytes; the detected encoding determines the extension."""
+    if len(raw) > _MAX_OUTPUT_BYTES:
+        raise ExternalJobError("invalid_output", "image exceeds the 64 MiB output limit")
+    try:
+        with Image.open(io.BytesIO(raw)) as im:
+            actual = _RASTER_FORMATS.get(im.format)
+            if actual is None:
+                raise ExternalJobError("invalid_output", "unsupported image encoding")
+            width, height = im.size
+            im.verify()
+        with Image.open(io.BytesIO(raw)) as im:
+            im.load()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ExternalJobError("invalid_output", f"invalid image bytes: {exc}")
+    media_type, extension = actual
+    declared = metadata.get("media_type")
+    if declared and declared != media_type:
+        raise ExternalJobError("invalid_output", "image media_type does not match its bytes")
+    return {"bytes": raw, "media_type": media_type, "extension": extension,
+            "width": width, "height": height, "metadata": metadata}
+
+
+async def _public_https_url(url: str) -> tuple[httpx.URL, str]:
+    """Validate each download destination before the unauthenticated request."""
+    try:
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or not parsed.hostname
+                or parsed.username is not None or parsed.password is not None
+                or parsed.port not in (None, 443)):
+            raise ValueError("output URL must be public HTTPS without credentials")
+        addresses = await asyncio.to_thread(
+            socket.getaddrinfo, parsed.hostname, 443, type=socket.SOCK_STREAM)
+        if not addresses or any(not ipaddress.ip_address(rec[4][0]).is_global
+                                for rec in addresses):
+            raise ValueError("output URL points to a non-public address")
+        # Pin the resolved address so a second DNS lookup cannot switch the
+        # download to a private host. TLS still verifies the original hostname.
+        original = httpx.URL(url)
+        return original.copy_with(host=addresses[0][4][0]), original.raw_host.decode("ascii")
+    except (ValueError, OSError, httpx.InvalidURL) as exc:
+        raise ExternalJobError("invalid_output", f"unsafe output URL: {exc}")
 
 
 def retry_after_from(headers, now: float | None = None) -> float | None:
@@ -138,82 +204,214 @@ class OpenRouterClient:
         kind, fallback = _STATUS_KINDS.get(status, ("error", "external call failed"))
         msg = fallback
         if isinstance(body, dict):
-            msg = (body.get("error") or {}).get("message") or fallback
+            error = body.get("error")
+            if isinstance(error, dict):
+                msg = error.get("message") or fallback
         wait = retry_after_from(headers) if kind == "rate_limit" else None
         return ExternalJobError(kind, f"{msg} (HTTP {status})", status,
                                 retry_after_s=wait)
 
+    async def _download_output(self, url: str) -> bytes:
+        destination, hostname = await _public_https_url(url)
+        # This client has no API key, cookies, proxy credentials or redirects.
+        async with (
+            httpx.AsyncClient(timeout=60.0, trust_env=False) as client,
+            client.stream("GET", destination, follow_redirects=False,
+                          headers={"Host": f"[{hostname}]" if ":" in hostname else hostname},
+                          extensions={"sni_hostname": hostname}) as response,
+        ):
+            raw = bytearray()
+            async for chunk in response.aiter_bytes():
+                raw.extend(chunk)
+                if len(raw) > _MAX_OUTPUT_BYTES:
+                    raise ExternalJobError("invalid_output", "image exceeds the 64 MiB output limit")
+            if response.status_code != 200:
+                try:
+                    body = json.loads(raw)
+                except (ValueError, UnicodeDecodeError):
+                    body = raw.decode("utf-8", errors="replace")
+                raise ExternalJobError(
+                    "invalid_output", f"image download returned HTTP {response.status_code}",
+                    receipt={"download_url": url, "status": response.status_code,
+                             "headers": dict(response.headers), "response": body})
+            return bytes(raw)
+
+    async def _output_bytes(self, item: dict) -> bytes:
+        encoded = item.get("b64_json")
+        if encoded is None:
+            url = item.get("url")
+            if not isinstance(url, str):
+                raise ExternalJobError("invalid_output", "output has no image bytes or supported URL")
+            if url.startswith("data:"):
+                prefix, separator, encoded = url.partition(",")
+                if not separator or not prefix.startswith("data:image/") or not prefix.endswith(";base64"):
+                    raise ExternalJobError("invalid_output", "unsupported image data URL")
+            else:
+                return await self._download_output(url)
+        try:
+            if not isinstance(encoded, str) or len(encoded) > 4 * ((_MAX_OUTPUT_BYTES + 2) // 3):
+                raise ValueError("missing or oversized base64 image")
+            return base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ExternalJobError("invalid_output", f"invalid base64 image: {exc}")
+
+    async def generate_frozen(
+        self, request: dict, *,
+        on_output: Callable[[dict], Awaitable[None]] | None = None,
+    ) -> dict:
+        """Send a precompiled native request without merging controls or retrying.
+
+        Returns every valid raster in outputs (bytes, actual media_type,
+        extension, dimensions, index, original metadata), plus output_errors
+        and the complete JSON-safe receipt. Callback events carry kind=output
+        or output_error, the matching record and receipt. An initial kind=receipt
+        event precedes status handling and output retrieval. Collection failures
+        and cancellation propagate; prior callback receipts remain usable.
+        """
+        try:
+            payload = json.loads(json.dumps(request, allow_nan=False))
+            if not isinstance(payload, dict) or payload != request:
+                raise ValueError("request must be a JSON object")
+            if any(not isinstance(payload.get(k), str) or not payload[k]
+                   for k in ("model", "prompt")):
+                raise ValueError("model and prompt must be nonempty strings")
+            count = payload.get("n", 1)
+            if type(count) is not int or not 1 <= count <= 10:
+                raise ValueError("n must be an integer from 1 to 10")
+            if payload.get("stream", False) is not False:
+                raise ValueError("frozen image transport requires a buffered response")
+            if payload.get("output_format", "png") not in ("png", "jpeg", "webp"):
+                raise ValueError("frozen image transport supports PNG, JPEG and WebP")
+            refs = payload.get("input_references", [])
+            if not isinstance(refs, list) or len(refs) > 16:
+                raise ValueError("input_references must be an array of up to 16 images")
+            for ref in refs:
+                if (not isinstance(ref, dict) or ref.get("type") != "image_url"
+                        or not isinstance(ref.get("image_url"), dict)
+                        or not isinstance(ref["image_url"].get("url"), str)
+                        or not ref["image_url"]["url"].startswith(("data:image/", "https://", "http://"))):
+                    raise ValueError("references require type=image_url and image_url.url")
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ExternalJobError("invalid_request", str(exc), charged_usd=0)
+
+        receipt = {"request": payload, "response": None, "response_status": None,
+                   "cost_usd": None, "created": None, "id": None}
+        self.requests_total += 1
+        log.info("openrouter request -> model=%s prompt_chars=%d seed=%s",
+                 payload["model"], len(payload["prompt"]), payload.get("seed"))
+        try:
+            response = await self._client.post("/images", json=payload)
+        except httpx.TimeoutException as exc:
+            raise ExternalJobError("timeout", f"no response within the read timeout: {exc}",
+                                   receipt=receipt)
+        except httpx.HTTPError as exc:
+            raise ExternalJobError("unreachable", f"OpenRouter unreachable: {exc}",
+                                   receipt=receipt)
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = response.text
+        receipt.update(response=body, response_status=response.status_code,
+                       response_headers=dict(response.headers), cost_usd=_reported_cost(body))
+        if isinstance(body, dict):
+            receipt.update(id=body.get("id"), created=body.get("created"))
+        return await self.collect_receipt(receipt, on_output=on_output)
+
+    async def collect_receipt(
+        self, receipt: dict, *,
+        on_output: Callable[[dict], Awaitable[None]] | None = None,
+    ) -> dict:
+        """Collect a retained response without generation or paid-request counting.
+
+        Base64 bytes replay locally; URL outputs use the same unauthenticated
+        validated download path. The original receipt callback is unchanged on
+        every replay. Collection errors belong to the result, never the supplied
+        receipt or its callback, so durable receipt bytes keep their identity.
+        """
+        receipt = copy.deepcopy(receipt)
+        body, status = receipt.get("response"), receipt.get("response_status")
+        if on_output is not None:
+            await on_output({"kind": "receipt", "receipt": receipt})
+        if status != 200:
+            error = self._error_from(status, body, httpx.Headers(receipt.get("response_headers") or {}))
+            error.receipt = receipt
+            error.charged_usd = receipt["cost_usd"]
+            error.job_id = receipt["id"]
+            raise error
+        if not isinstance(body, dict):
+            raise ExternalJobError("error", "response was not a JSON object", 200, receipt=receipt)
+
+        outputs, errors = [], []
+        if body.get("error") is not None:
+            provider_error = body["error"]
+            error = {"index": None, "kind": "provider_error",
+                     "message": (provider_error.get("message", "generation failed")
+                                 if isinstance(provider_error, dict) else str(provider_error)),
+                     "metadata": provider_error, "details": {}}
+            errors.append(error)
+            if on_output is not None:
+                await on_output({"kind": "output_error", "output_error": error, "receipt": receipt})
+        items = body.get("data") or []
+        if not isinstance(items, list):
+            items = [items]  # retain a malformed output record as a visible error
+        for index, item in enumerate(items):
+            try:
+                if not isinstance(item, dict):
+                    raise ExternalJobError("invalid_output", "image output was not an object")
+                raw = await self._output_bytes(item)
+                output = {"index": index, **_validated_image(raw, item)}
+            except (ExternalJobError, httpx.HTTPError) as exc:
+                error = {"index": index, "kind": getattr(exc, "kind", "invalid_output"),
+                         "message": str(exc), "metadata": item,
+                         "details": getattr(exc, "receipt", {})}
+                errors.append(error)
+                event = {"kind": "output_error", "output_error": error, "receipt": receipt}
+            else:
+                outputs.append(output)
+                event = {"kind": "output", "output": output, "receipt": receipt}
+            if on_output is not None:
+                await on_output(event)
+
+        collected_receipt = {**receipt, "output_errors": errors}
+        if not outputs:
+            cost = receipt["cost_usd"]
+            provider_error = body.get("error")
+            message = (provider_error.get("message")
+                       if isinstance(provider_error, dict) else None)
+            kind = "charged_blank" if cost is not None and cost > 0 else "error"
+            if not message:
+                message = (f"billed {cost:.4f} USD but the response carried no usable image"
+                           if kind == "charged_blank" else "response contained no usable image")
+            raise ExternalJobError(kind, message, status,
+                                   charged_usd=cost, job_id=receipt["id"], receipt=collected_receipt)
+        log.info("openrouter done <- model=%s cost=%s outputs=%d",
+                 receipt["request"]["model"], receipt["cost_usd"], len(outputs))
+        return {**collected_receipt, "outputs": outputs}
+
     async def generate(self, *, model: str, prompt: str,
                        seed: int | None = None,
                        params: dict | None = None) -> dict:
-        """One image via POST /images. Returns
-        {png, cost_usd, created, request} — `request` is the EXACT body sent
-        (the manifest records what actually went out)."""
-        payload: dict = {"model": model, "prompt": prompt, "n": 1,
-                         "output_format": "png"}
-        if params:
-            payload.update(params)
+        """Legacy one-PNG entry point, with exact request and result receipts.
+
+        Display config can supply optional image controls but cannot replace
+        the requested model, prompt, count, format, seed or source references.
+        """
+        if params and _LEGACY_PROTECTED.intersection(params):
+            raise ExternalJobError("invalid_request", "params cannot override protected image request fields",
+                                   charged_usd=0)
+        payload = {"model": model, "prompt": prompt, "n": 1,
+                   "output_format": "png", **(params or {})}
         if seed is not None:
             payload["seed"] = seed
-
-        self.requests_total += 1
-        log.info("openrouter request -> model=%s prompt_chars=%d seed=%s",
-                 model, len(prompt), seed)
-        try:
-            resp = await self._client.post("/images", json=payload)
-        except httpx.TimeoutException as e:
-            # subclass of HTTPError — must be caught first. Its own kind so
-            # the scheduler can bench the engine (a 300 s silence is
-            # model_down-adjacent) and mark the charge unverified.
-            raise ExternalJobError("timeout",
-                                   f"no response within the read timeout: {e}")
-        except httpx.HTTPError as e:
-            raise ExternalJobError("unreachable", f"OpenRouter unreachable: {e}")
-
-        if resp.status_code != 200:
-            try:
-                body = resp.json()
-            except ValueError:
-                body = None
-            err = self._error_from(resp.status_code, body, resp.headers)
-            log.warning("openrouter error <- model=%s kind=%s: %s",
-                        model, err.kind, err)
-            raise err
-
-        data = resp.json()
-        # error-in-200 shape (per OpenRouter error docs)
-        if isinstance(data.get("error"), dict):
-            err = ExternalJobError(
-                "error", data["error"].get("message", "generation failed"),
-                resp.status_code)
-            log.warning("openrouter error <- model=%s: %s", model, err)
-            raise err
-        items = data.get("data") or []
-        cost = (data.get("usage") or {}).get("cost")
-        gid = data.get("id")
-        if not items or not items[0].get("b64_json"):
-            if cost is not None and float(cost) > 0:
-                # B4: the provider took the job and billed it, and nothing
-                # came back. The amount and the id ride the error so the
-                # slot's ledger entry and its receipt are the response's
-                # own words, never a guess.
-                log.warning("openrouter charged_blank <- model=%s cost=%s "
-                            "id=%s", model, cost, gid)
-                raise ExternalJobError(
-                    "charged_blank",
-                    f"billed {float(cost):.4f} USD but the response carried "
-                    "no image", resp.status_code,
-                    charged_usd=float(cost), job_id=gid)
-            raise ExternalJobError("error", "response contained no image",
-                                   resp.status_code, job_id=gid)
-        log.info("openrouter done <- model=%s cost=%s", model, cost)
-        return {
-            "png": base64.b64decode(items[0]["b64_json"]),
-            "cost_usd": float(cost) if cost is not None else None,
-            "created": data.get("created"),
-            "id": gid,
-            "request": payload,
-        }
+        result = await self.generate_frozen(payload)
+        first = result["outputs"][0]
+        if first["media_type"] != "image/png":
+            receipt = {k: v for k, v in result.items() if k != "outputs"}
+            raise ExternalJobError("invalid_output", "legacy image request returned a non-PNG image",
+                                   charged_usd=result["cost_usd"], job_id=result["id"],
+                                   receipt=receipt)
+        return {**result, "png": first["bytes"]}
 
     async def generation_cost(self, generation_id: str) -> float | None:
         """B4's free re-ask: the generation record's `total_cost` (GET

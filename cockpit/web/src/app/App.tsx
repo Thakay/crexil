@@ -16,6 +16,7 @@ import { $api } from "../api/client";
 import { href, useHashRoute } from "./routes";
 import { Shell } from "./shell/Shell";
 import styles from "./App.module.css";
+import { Crexil } from "./crexil/Filmstrip";
 
 // Drift detector: bundle id against the server's /api/health build id.
 // Server unreachable → bundle id alone, never a crash.
@@ -43,6 +44,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <HotkeysProvider>
+        {location.hash.startsWith('#/projects') || location.hash.startsWith('#/operations') || import.meta.env.VITE_CREXIL_PREVIEW === '1' ? <Crexil /> :
         <div className={styles.page}>
           {route.view === "unknown" ? (
             <div className={styles.pad}>
@@ -57,7 +59,7 @@ export default function App() {
             />
           )}
           <DriftFooter />
-        </div>
+        </div>}
       </HotkeysProvider>
     </QueryClientProvider>
   );

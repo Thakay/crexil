@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from . import (api, api_v4, api_v4_mesh, api_v4_promote, api_v4_regions, config,
+from . import (api, api_crexil, api_v4, api_v4_mesh, api_v4_promote, api_v4_regions, config,
                wiring)
 
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
@@ -94,6 +94,7 @@ app.add_middleware(TrustedHostMiddleware,
                    allowed_hosts=["localhost", "127.0.0.1", "[::1]"])
 app.add_middleware(LocalOriginMiddleware)
 app.include_router(api.router)
+app.include_router(api_crexil.router)
 app.include_router(api_v4.router)
 app.include_router(api_v4_regions.router)
 app.include_router(api_v4_promote.router)

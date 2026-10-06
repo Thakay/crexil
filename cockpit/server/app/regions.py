@@ -10,6 +10,9 @@ MODIFY; within the same action the later-created region wins (z-order);
 unclaimed pixels regenerate under the turn prompt iff at least one KEEP
 region exists (a KEEP says what stays), otherwise they are preserved (the
 regions say what changes).
+
+KEEP restoration preserves original channel values and source alpha. It
+requires matching source, result and mask geometry, never a hidden resize.
 """
 
 from __future__ import annotations
@@ -84,7 +87,8 @@ def effective_masks(regions: list[dict], masks: dict[str, Image.Image],
 
 
 def build_pipeline(regions: list[dict], masks: dict[str, Image.Image],
-                   size: tuple[int, int], turn_prompt: str | None) -> dict:
+                   size: tuple[int, int], turn_prompt: str | None, *,
+                   regenerate_unclaimed: bool = True) -> dict:
     """Plan the deterministic pass list for one region turn.
 
     Pass order: DELETE (one LaMa pass over the union) -> each REPLACE ->
@@ -135,7 +139,7 @@ def build_pipeline(regions: list[dict], masks: dict[str, Image.Image],
             add(kind, eff[r["id"]], region_ids=[r["id"]], prompt_=rp,
                 uses_denoise=(action == "modify"))
 
-    if keeps and prompt and not is_empty(unclaimed):
+    if regenerate_unclaimed and keeps and prompt and not is_empty(unclaimed):
         add("regen_rest", unclaimed,
             region_ids=[r["id"] for r in keeps], prompt_=prompt)
 
@@ -161,13 +165,21 @@ def build_pipeline(regions: list[dict], masks: dict[str, Image.Image],
 
 def apply_keep(result_png: bytes, original_png: bytes,
                keep_mask_png: bytes) -> bytes:
-    """Verbatim KEEP restore: paste original pixels through the binary keep
-    mask onto the generated result. Byte-exact by construction."""
-    result = Image.open(io.BytesIO(result_png)).convert("RGB")
-    original = Image.open(io.BytesIO(original_png)).convert("RGB")
-    mask = load_mask(keep_mask_png, result.size)
+    """Restore protected pixels and source alpha without resampling either."""
+    original = Image.open(io.BytesIO(original_png))
+    mode = ("RGBA" if "A" in original.getbands()
+            or "transparency" in original.info else "RGB")
+    original = original.convert(mode)
+    result = Image.open(io.BytesIO(result_png)).convert(mode)
     if original.size != result.size:
-        original = original.resize(result.size, Image.LANCZOS)
+        raise RegionError("the result must match the source image size "
+                          "before protected pixels can be restored")
+    mask = Image.open(io.BytesIO(keep_mask_png))
+    if mask.size != original.size:
+        raise RegionError("the protected mask must match the source image size")
+    mask = load_mask(keep_mask_png, original.size)
+    if mode == "RGBA":
+        result.putalpha(original.getchannel("A"))
     result.paste(original, (0, 0), mask)
     out = io.BytesIO()
     result.save(out, format="PNG")

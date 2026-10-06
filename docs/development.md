@@ -46,16 +46,19 @@ scripts/check.sh ruff --fix                  # ruff only; arguments after "ruff"
 (cd cockpit/web && npx tsc -b)
 
 (cd cockpit/server && uv run uvicorn app.main:app --reload)   # server on 127.0.0.1:8000
-(cd cockpit/web && npm run dev)              # hot reload on :5173, proxies /api to 127.0.0.1:8000
+COCKPIT_DEV_API=http://127.0.0.1:8000 \
+  npm --prefix cockpit/web run dev           # hot reload on :5173; without the variable it proxies to the preview on :8010
 (cd cockpit/web && npm run build)            # tsc -b, then vite build into cockpit/web/dist
 (cd cockpit/web && npm run e2e)              # Playwright; needs the build above
 
 scripts/gen-api-types.sh                     # after any route or wire-model change
+scripts/preview.sh [port]                    # isolated preview on 127.0.0.1:8010 (or port); cannot generate or spend
+scripts/crexil.py --help                     # the artist and agent client of the shared HTTP actions
 scripts/deploy.sh                            # optional local Docker build and start
 ```
 
-**Baseline.** On a clean checkout ruff passes, pytest reports 561 passed and 1 skipped in about 30
-seconds, vitest reports 422 passed in 34 files, and `tsc -b` and `vite build` pass. The skipped test
+**Baseline.** On a clean checkout ruff passes, pytest reports 948 passed and 1 skipped in about 90
+seconds, vitest reports 441 passed in 36 files, and `tsc -b` and `vite build` pass. The skipped test
 compares the provider catalogue with the live OpenRouter API; `LIVE_CATALOG=1` turns it on (network,
 no key, no cost). Ruff's rules live in `cockpit/server/pyproject.toml`.
 
@@ -69,6 +72,18 @@ routes and models, then `cockpit/web/src/generated/openapi.d.ts` from that file.
 `cockpit/server/tests/test_openapi_snapshot.py` fails until the committed document matches the code.
 Docstrings of routes and models are part of the document, so a docstring edit there counts.
 Afterwards `tsc -b` flags every stale call site in the client.
+
+**Preview.** `scripts/preview.sh` builds the client and serves an isolated instance with
+`CREXIL_PREVIEW=1`. Its store, staging, built client and promote folder live under `.preview/` in
+the checkout; it ignores `.env` and every path override, has no key, and points every engine at a
+closed port, so it can prepare and record work but never generate or spend. It refuses port 8000.
+It waits until `/api/health` confirms the preview, the store, the matching build and zero provider
+requests, then serves until stopped.
+
+**Agent client.** `scripts/crexil.py` drives the same HTTP actions as the artist interface, for
+people and agents alike. `--actor` names the participant recorded with each change, mutations print
+a delivery ID to reuse when retrying after a connection failure, and `--url` picks the instance
+(the preview by default). It never writes the store or staging itself (law 19).
 
 **Docker.** `scripts/deploy.sh` is opt-in. It bakes the git revision and the build time into the
 image, runs `docker compose up -d` and polls `/api/health`. A plain `docker compose up -d --build`
@@ -104,7 +119,8 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
   looked up once, at start, so build first.
 - The port is uvicorn's `--port`; no variable sets it for a run from source. Docker publishes
   `127.0.0.1:8000` (or `COCKPIT_PORT`), Playwright uses 8123, and `scripts/bench.py` and
-  `scripts/e2e_region_fanout.py` expect 8001. The Vite proxy always targets port 8000.
+  `scripts/e2e_region_fanout.py` expect 8001. The Vite proxy targets the preview on port 8010
+  unless `COCKPIT_DEV_API` names another server, and `scripts/preview.sh` defaults to 8010.
 - `COMFYUI_URL` and `THREED_URL` choose the engines. Two instances that share one ComfyUI share one
   GPU queue. Point both at a closed port to keep an instance away from real engines.
 - `.env` at the checkout root is read by every instance started from that checkout. A process
@@ -125,6 +141,7 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 | Variable | Default | Meaning |
 |---|---|---|
 | `COCKPIT_REPO_ROOT` | the checkout root, found from the location of `config.py` (`/repo` in the image) | Base of the default paths. `.env` is read from here |
+| `CREXIL_PREVIEW` | unset | `1` runs an isolated preview: store, staging, built client and promote folder under `<root>/.preview`, `.env` and path overrides ignored, no key, every engine URL closed. Generation and spending are impossible |
 | `COMFYUI_URL` | `http://127.0.0.1:8188` | ComfyUI base URL |
 | `THREED_URL` | `http://127.0.0.1:8189` | 3D runner base URL |
 | `COCKPIT_THREED_POLL_S` | `2` | Seconds between polls of a running 3D job |

@@ -86,7 +86,7 @@ async def test_fresh_create_stamps_the_current_rung(tmp_path):
     async with opened(tmp_path) as db:
         cur = await db.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'")
-        assert (await cur.fetchone())["value"] == SCHEMA_VERSION == "7"
+        assert (await cur.fetchone())["value"] == SCHEMA_VERSION == "12"
 
 
 async def test_a_v4_file_climbs_the_whole_ladder_on_open(tmp_path):
@@ -107,7 +107,7 @@ async def test_a_v4_file_climbs_the_whole_ladder_on_open(tmp_path):
     async with opened(tmp_path) as db:
         cur = await db.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'")
-        assert (await cur.fetchone())["value"] == "7"
+        assert (await cur.fetchone())["value"] == SCHEMA_VERSION
         slot = await db.get_slot(turn["slots"][0]["id"])
         assert slot["detail"] is None and slot["retry_of"] is None
         assert slot["kind"] is None
@@ -133,7 +133,7 @@ async def test_a_v5_file_climbs_to_rung_6_on_open(tmp_path):
     async with opened(tmp_path) as db:
         cur = await db.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'")
-        assert (await cur.fetchone())["value"] == "7"
+        assert (await cur.fetchone())["value"] == SCHEMA_VERSION
         slot = await db.get_slot(sid)
         assert slot["cause"] == "c" and slot["detail"] == "d"
         assert slot["kind"] is None           # pre-rung failures carry none
@@ -157,7 +157,7 @@ async def test_a_v6_file_climbs_to_rung_7_on_open(tmp_path):
     async with opened(tmp_path) as db:
         cur = await db.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'")
-        assert (await cur.fetchone())["value"] == "7"
+        assert (await cur.fetchone())["value"] == SCHEMA_VERSION
         slot = await db.get_slot(sid)
         assert slot["cause"] == "c" and slot["kind"] == "error"
         assert slot["frame"] is None and slot["facts"] is None
@@ -208,7 +208,7 @@ async def test_open_refuses_a_stamp_newer_than_the_code(tmp_path):
     conn = sqlite3.connect(p)
     conn.executescript(
         "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);"
-        "INSERT INTO meta VALUES('schema_version','8');")
+        "INSERT INTO meta VALUES('schema_version','999');")
     conn.close()
     db = Database(p)
     with pytest.raises(SchemaVersionError, match="newer than this code"):
@@ -1075,3 +1075,228 @@ async def test_tray_entries_carry_card_labels_and_children_counts(tmp_path):
         assert await db.children_counts([]) == {}
         await db.purge_node(child["id"])            # a purged child stops counting
         assert await db.children_counts(ids) == {}
+
+
+async def test_several_collected_images_share_one_attempt_and_one_charge(tmp_path):
+    db = Database(tmp_path / 'group.sqlite')
+    await db.open()
+    try:
+        workspace = await db.create_workspace('Related outputs')
+        parent = await db.import_node(workspace['id'], output_path='/original.png')
+        turn = await db.create_turn_with_slots(workspace['id'], 'Separate layers', {}, [{'engine':'example'}])
+        slot = turn['slots'][0]
+        await db.dispatch_slot(slot['id'], submitted_graph={'original':'graph'}, committed_usd=.2)
+        first = await db.land_node(slot['id'], payload='image', verb='run', output_path='/body.png',
+                                   output_index=0, complete=False, expected_attempt=1, parents=[parent['id']])
+        second = await db.land_node(slot['id'], payload='image', verb='run', output_path='/coat.png',
+                                    output_index=1, complete=False, expected_attempt=1, parents=[parent['id']])
+        assert first['id'] != second['id']
+        assert (await db.get_slot(slot['id']))['status'] == 'running'
+        assert await db.workspace_charged(workspace['id']) == 0
+        replay = await db.land_node(slot['id'], payload='image', verb='run', output_path='/coat.png',
+                                    output_index=1, complete=False, expected_attempt=1)
+        assert replay['id'] == second['id']
+        assert replay['parents'] == [parent['id']]
+        with pytest.raises(ValueError, match='different material'):
+            await db.land_node(slot['id'], payload='image', verb='run', output_path='/changed.png',
+                               output_index=1, complete=False, expected_attempt=1)
+        completed = await db.land_node(slot['id'], payload='image', verb='run', output_path='/body.png',
+                                       output_index=0, charged_usd=.15, expected_attempt=1)
+        assert completed['id'] == first['id'] and completed['charged_usd'] == .15
+        assert await db.workspace_charged(workspace['id']) == .15
+        with pytest.raises(ValueError):
+            await db.land_node(slot['id'], payload='image', verb='run', output_path='/coat.png',
+                               output_index=1, charged_usd=.15, expected_attempt=1)
+        assert await db.workspace_charged(workspace['id']) == .15
+        await db.set_aside_node(first['id'])
+        assert (await db.get_slot(slot['id']))['status'] == 'landed'
+        await db.set_aside_node(second['id'])
+        assert (await db.get_slot(slot['id']))['status'] == 'set_aside'
+        await db.restore_node(first['id'])
+        assert (await db.get_slot(slot['id']))['status'] == 'landed'
+        events = await db.slot_events(slot['id'])
+        assert sum(e['type'] == 'node.collected' for e in events) == 2
+        assert sum(e['type'] == 'node.landed' for e in events) == 1
+    finally:
+        await db.close()
+
+
+async def _legacy_v8_fixture(tmp_path):
+    """A populated v8 file with the actual old node column and unique index."""
+    from PIL import Image
+
+    primary = tmp_path / 'legacy.png'
+    Image.new('RGBA', (3, 2), (21, 45, 87, 113)).save(primary)
+    source = tmp_path / 'legacy-v8.sqlite'
+    async with opened(tmp_path, source.name) as db:
+        workspace = await mk_ws(db)
+        parent = await db.import_node(workspace['id'], output_path=str(primary))
+        turn = await mk_turn(db, workspace)
+        await dispatch(db, turn['slots'][0], committed_usd=.2)
+        child = await land(db, turn['slots'][0], output_path=str(primary),
+                           parents=[parent['id']], charged_usd=.15,
+                           prompt='migration sentinel')
+        await db.set_aside_node(child['id'])
+        await dispatch(db, turn['slots'][1])
+    conn = sqlite3.connect(source)
+    try:
+        conn.executescript(
+            'DROP TABLE execution_outputs;'
+            'DROP TABLE execution_groups;'
+            'DROP INDEX idx_nodes_slot_take;'
+            'ALTER TABLE nodes DROP COLUMN output_index;'
+            'CREATE UNIQUE INDEX idx_nodes_slot_take ON nodes(slot_id,take) '
+            'WHERE slot_id IS NOT NULL;'
+            "UPDATE meta SET value='8' WHERE key='schema_version';")
+        conn.commit()
+    finally:
+        conn.close()
+    return source, primary, turn['slots'][1]['id']
+
+
+def _legacy_record_snapshot(path):
+    """Project only old fields, so an additive migration cannot hide rewrites."""
+    conn = sqlite3.connect(f'file:{path}?mode=ro&immutable=1', uri=True)
+    try:
+        snapshot = {}
+        for table in ('workspaces', 'turns', 'slots', 'nodes', 'node_parents',
+                      'regions', 'events'):
+            columns = [r[1] for r in conn.execute(f'PRAGMA table_info({table})')
+                       if r[1] != 'output_index']
+            names = ','.join(f'"{column}"' for column in columns)
+            snapshot[table] = conn.execute(
+                f'SELECT {names} FROM {table} ORDER BY rowid').fetchall()
+        return snapshot
+    finally:
+        conn.close()
+
+
+async def test_v8_copy_migrates_without_rewriting_records_or_primary_bytes(tmp_path):
+    import shutil
+
+    source, primary, running_sid = await _legacy_v8_fixture(tmp_path)
+    source_bytes = source.read_bytes()
+    image_bytes = primary.read_bytes()
+    before = _legacy_record_snapshot(source)
+    copy = tmp_path / 'migrated-v9.sqlite'
+    shutil.copy2(source, copy)
+
+    # Opening twice proves both the real v8 rung and its restart idempotence.
+    for _ in range(2):
+        async with opened(tmp_path, copy.name) as db:
+            stamp = await db._one("SELECT value FROM meta WHERE key='schema_version'")
+            assert stamp['value'] == SCHEMA_VERSION
+            assert [r['name'] for r in await db._all(
+                'PRAGMA index_info(idx_nodes_slot_take)')] == [
+                    'slot_id', 'take', 'output_index']
+            assert {r['output_index'] for r in await db._all(
+                'SELECT output_index FROM nodes')} == {0}
+            assert await db._all('PRAGMA foreign_key_check') == []
+            assert (await db._one('PRAGMA integrity_check'))['integrity_check'] == 'ok'
+            matches = await db._all(
+                "SELECT rowid FROM node_fts WHERE node_fts MATCH 'sentinel'")
+            assert len(matches) == 1
+        assert _legacy_record_snapshot(copy) == before
+        assert source.read_bytes() == source_bytes
+        assert primary.read_bytes() == image_bytes
+
+    # The migrated index permits siblings, while keeping identity and geometry.
+    async with opened(tmp_path, copy.name) as db:
+        first = await db.land_node(running_sid, payload='image', verb='run',
+                                   output_path='/first.png', output_index=0,
+                                   complete=False, expected_attempt=1)
+        second = await db.land_node(running_sid, payload='image', verb='run',
+                                    output_path='/second.png', output_index=1,
+                                    complete=False, expected_attempt=1)
+        assert first['id'] != second['id']
+        assert (await db.get_slot(running_sid))['status'] == 'running'
+        with pytest.raises(sqlite3.IntegrityError, match='UNIQUE constraint'):
+            await db.conn.execute('UPDATE nodes SET output_index=0 WHERE id=?',
+                                  (second['id'],))
+        with pytest.raises(sqlite3.IntegrityError, match='frozen'):
+            await db.conn.execute('UPDATE slots SET pos=99 WHERE id=?',
+                                  (running_sid,))
+        with pytest.raises(sqlite3.IntegrityError, match='append-only'):
+            await db.conn.execute('UPDATE events SET type=type')
+    assert source.read_bytes() == source_bytes
+    assert primary.read_bytes() == image_bytes
+
+
+async def test_v8_index_failure_rolls_back_column_and_stamp_then_can_resume(tmp_path,
+                                                                        monkeypatch):
+    import shutil
+
+    import aiosqlite
+
+    source, primary, _ = await _legacy_v8_fixture(tmp_path)
+    source_bytes = source.read_bytes()
+    image_bytes = primary.read_bytes()
+    before = _legacy_record_snapshot(source)
+    copy = tmp_path / 'interrupted-v9.sqlite'
+    shutil.copy2(source, copy)
+    original_execute = aiosqlite.Connection.execute
+
+    async def fail_index(connection, sql, *args, **kwargs):
+        if sql.startswith('CREATE UNIQUE INDEX idx_nodes_slot_take'):
+            raise sqlite3.OperationalError('injected replacement index failure')
+        return await original_execute(connection, sql, *args, **kwargs)
+
+    db = Database(copy)
+    with monkeypatch.context() as patch:
+        patch.setattr(aiosqlite.Connection, 'execute', fail_index)
+        try:
+            with pytest.raises(sqlite3.OperationalError, match='replacement index'):
+                await db.open()
+            stamp = await db._one("SELECT value FROM meta WHERE key='schema_version'")
+            assert stamp['value'] == '8'
+            assert 'output_index' not in {r['name'] for r in await db._all(
+                'PRAGMA table_info(nodes)')}
+            assert [r['name'] for r in await db._all(
+                'PRAGMA index_info(idx_nodes_slot_take)')] == ['slot_id', 'take']
+            assert not db.conn.in_transaction
+        finally:
+            await db.close()
+    assert _legacy_record_snapshot(copy) == before
+    async with opened(tmp_path, copy.name) as db:
+        stamp = await db._one("SELECT value FROM meta WHERE key='schema_version'")
+        assert stamp['value'] == SCHEMA_VERSION
+    assert _legacy_record_snapshot(copy) == before
+    assert source.read_bytes() == source_bytes
+    assert primary.read_bytes() == image_bytes
+
+
+async def test_v11_copy_adds_sequence_storage_without_changing_retained_work(tmp_path):
+    import shutil
+
+    from app.crexil_store import CreativeStore
+    from app.execution_controls import record
+
+    source = tmp_path / 'before-sequences.sqlite'
+    image = tmp_path / 'retained-source.png'
+    image.write_bytes(b'retained source bytes')
+    async with opened(tmp_path, source.name) as db:
+        workspace = await mk_ws(db)
+        await db.import_node(workspace['id'], output_path=str(image))
+        await CreativeStore(db).new_direction(workspace['id'], 'Waiting preparation',
+            {'action': 'generate', 'prompt': 'Retain these words.'}, {'kind': 'human', 'name': 'Artist'})
+        await record(db, 'project', workspace['id'], {'revision': 0, 'action': 'pause',
+            'reason': 'Keep work held.', 'actor': {'kind': 'human', 'name': 'Artist'}})
+        await db.conn.executescript("DROP TABLE sequence_runs; DROP TABLE sequence_steps; DROP TABLE sequences;"
+            "UPDATE meta SET value='11' WHERE key='schema_version';")
+    source_bytes = source.read_bytes()
+    with sqlite3.connect(source) as db:
+        tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+        before = {table: sorted(db.execute(f'SELECT * FROM "{table}"').fetchall(), key=repr) for table in tables if table != 'meta'}
+    target = tmp_path / 'with-sequences.sqlite'
+    shutil.copy2(source, target)
+    for _ in range(2):
+        async with opened(tmp_path, target.name) as db:
+            assert (await db._one("SELECT value FROM meta WHERE key='schema_version'"))['value'] == '12'
+            for table, rows in before.items():
+                assert sorted([tuple(row) for row in await db._all(f'SELECT * FROM "{table}"')], key=repr) == rows
+            for table in ('sequences', 'sequence_steps', 'sequence_runs'):
+                assert await db._all(f'SELECT * FROM {table}') == []
+            assert await db._all('PRAGMA foreign_key_check') == []
+            assert (await db._one('PRAGMA integrity_check'))['integrity_check'] == 'ok'
+        assert source.read_bytes() == source_bytes
+        assert image.read_bytes() == b'retained source bytes'

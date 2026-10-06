@@ -1,6 +1,11 @@
 """Central config. Everything env-driven with dev defaults derived from the
 repo layout; the Docker image overrides via environment (all paths are
-WSL/ext4-native except PROMOTE_DIR, the one promotion boundary)."""
+WSL/ext4-native except PROMOTE_DIR, the one promotion boundary).
+
+CREXIL_PREVIEW isolates writable state beneath this checkout's .preview,
+ignores local secrets, and selects unavailable runtime adapters. A preview
+can preserve real preparation and records but cannot execute generation.
+"""
 
 from __future__ import annotations
 
@@ -18,9 +23,11 @@ def _dev_repo_root() -> Path:
 
 
 REPO_ROOT = Path(os.environ.get("COCKPIT_REPO_ROOT") or _dev_repo_root())
+CREXIL_PREVIEW = os.environ.get("CREXIL_PREVIEW", "") == "1"
 
 #.env at the repo root is the single local-secrets file
-load_dotenv(REPO_ROOT / ".env", override=False)
+if not CREXIL_PREVIEW:
+    load_dotenv(REPO_ROOT / ".env", override=False)
 
 COMFYUI_URL = os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188").rstrip("/")
 # The 3D engine runner: the second native GPU service, reached
@@ -119,8 +126,21 @@ DISK_MARGIN_BYTES = int(os.environ.get("COCKPIT_DISK_MARGIN_BYTES",
                                        str(64 << 20)))
 # Law-test harness: scripted executors + control routes. Set only by
 # playwright.config.ts's webServer env — never in compose/deploy.
-HARNESS_EXECUTORS = os.environ.get("COCKPIT_HARNESS_EXECUTORS", "") == "1"
+HARNESS_EXECUTORS = (not CREXIL_PREVIEW
+                     and os.environ.get("COCKPIT_HARNESS_EXECUTORS", "") == "1")
 COMFY_POLL_S = float(os.environ.get("COCKPIT_COMFY_POLL_S", "1.0"))
 HISTORY_CONFIRM_TRIES = int(os.environ.get("COCKPIT_HISTORY_CONFIRM_TRIES", "20"))
 HISTORY_CONFIRM_INTERVAL_S = float(
     os.environ.get("COCKPIT_HISTORY_CONFIRM_INTERVAL_S", "0.5"))
+
+if CREXIL_PREVIEW:
+    # Overrides are deliberately ignored: inherited production environment
+    # must never move preview writes or credentials into the live system.
+    _preview = REPO_ROOT / ".preview"
+    DB_PATH = _preview / "state" / "cockpit.sqlite"
+    STAGING_DIR = _preview / "staging"
+    STATIC_DIR = _preview / "static"
+    PROMOTE_DIR = (_preview / "promote").resolve()
+    PROMOTE_ROOTS = [PROMOTE_DIR]
+    OPENROUTER_API_KEY = ""
+    COMFYUI_URL = THREED_URL = OPENROUTER_URL = "http://127.0.0.1:9"

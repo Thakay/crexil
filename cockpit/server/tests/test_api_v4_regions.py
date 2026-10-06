@@ -427,14 +427,18 @@ async def test_region_slot_survives_a_restart(tmp_path, monkeypatch):
     async with booted_regions(tmp_path, monkeypatch, fakes) as (client, f):
         ws = await make_ws(client)
         node = await make_source(client, f, ws["id"])
-        r = await run_regions(client, ws["id"], node["id"])
+        r = await run_regions(client, ws["id"], node["id"],
+                              local=[{"preset_id": "regionsdxl", "takes": 2}])
         turn_id = r.json()["turn"]["id"]
         slot_id = r.json()["turn"]["slots"][0]["id"]
         await wait_running(slot_id)
-    # stopped mid-take (crash-equivalent). Reboot on the same store: the
-    # envelope rides the slot row, recovery requeues and redispatches.
+    # The accepted envelope survives. Only the still-queued slot can start;
+    # uncertain in-flight work remains visible without another submission.
     fakes2 = region_fakes()
     async with booted_regions(tmp_path, monkeypatch, fakes2) as (client, f):
-        settled = await settle_turn(turn_id, until={"landed"})
-        assert all(s["status"] == "landed" for s in settled["slots"])
-        assert fakes2["region"].starts  # the region executor took it again
+        settled = await settle_turn(turn_id, until={'landed', 'failed'})
+        assert [s['status'] for s in settled['slots']] == ['failed', 'landed']
+        assert settled['slots'][0]['kind'] == 'uncertain'
+        assert slot_id not in fakes2['region'].starts
+        assert fakes2['region'].starts == [settled['slots'][1]['id']]
+        assert settled['slots'][0]['attempt'] == settled['slots'][1]['attempt'] == 1

@@ -1,27 +1,14 @@
-"""External provider catalog (OpenRouter, single key).
+"""Cache OpenRouter discovery and merge display pins without filtering models.
 
-Two layers, so the bench stays current without ever trusting staleness for
-billing (the authoritative cost is always the per-generation `usage.cost`
-in the response — the prices here are pre-generation display estimates):
+Original model and endpoint descriptions survive discovery and offline
+snapshots, including provider identity, capability bounds and every pricing
+variant. Endpoint timestamps advance only after successful endpoint discovery;
+a failed refresh preserves the prior facts and marks the failure.
 
-- LIVE: OpenRouter's discovery API (`GET /images/models`, unauthenticated)
-  is cached with a TTL and persisted as a snapshot in staging, so the full
-  model list + price estimates track OpenRouter without code or config
-  churn; offline the last snapshot keeps serving.
-- CONFIG: providers.json is not *the* list. It is the pinned bench
-  (models surfaced at the top of the picker; `enabled: true` = pinned),
-  per-model overrides (label, supports_seed, params; a pinned per-image
-  price WINS over the live estimate: the single-source rule, the live
-  number/note demotes to secondary display), and the offline fallback
-  when no snapshot exists yet.
-
-Per-model price estimates come from the per-endpoint pricing records:
-`unit == "image"` maps directly; token-priced models (the Gemini image
-family bills per token) get a "$X/M tok" note instead of a made-up
-per-image number; megapixel pricing is estimated at ~1MP (1024²).
-`supports_seed` is derived live (any serving endpoint declaring a `seed`
-parameter) unless the config overrides it — the request records what was
-actually sent either way.
+Legacy display estimates and config prices remain separate from these facts.
+They are neither endpoint tariffs nor provider-enforced spending ceilings.
+Token pricing gets a per-token note; megapixel estimates assume about 1MP.
+The catalogue supplies evidence, never spending authorization or paid calls.
 """
 
 from __future__ import annotations
@@ -30,6 +17,7 @@ import asyncio
 import json
 import logging
 import time
+from copy import deepcopy
 from datetime import datetime, timezone
 
 from . import config
@@ -137,6 +125,8 @@ class ProviderCatalog:
     # --- refresh ---
 
     async def _refresh(self) -> None:
+        if config.CREXIL_PREVIEW:
+            return  # Preview serves config/snapshots, including forced refresh.
         try:
             listing = await self.client.list_models()
         except Exception as e:
@@ -146,18 +136,29 @@ class ProviderCatalog:
         sem = asyncio.Semaphore(8)
 
         async def enrich(m: dict) -> dict:
+            previous = self._live.get(m["id"], {})
             entry = {"id": m["id"], "name": m.get("name") or m["id"],
                      "provider": m["id"].split("/", 1)[0],
-                     "description": (m.get("description") or "")[:200]}
+                     "description": (m.get("description") or "")[:200],
+                     "discovered_model": deepcopy(m),
+                     "endpoints": deepcopy(previous.get("endpoints", [])),
+                     "endpoints_fetched_at": previous.get("endpoints_fetched_at"),
+                     "endpoint_discovery_error": None}
             try:
                 async with sem:
                     eps = await self.client.model_endpoints(m["id"])
+                if not isinstance(eps, list) or any(not isinstance(ep, dict) for ep in eps):
+                    raise ValueError("endpoint discovery returned an invalid list")
+                entry["endpoints"] = deepcopy(eps)
+                entry["endpoints_fetched_at"] = datetime.now(timezone.utc).isoformat()
                 entry["price_usd_per_image"], entry["price_note"] = \
                     _price_estimate(eps)
                 entry["supports_seed"] = _supports_seed(eps)
-            except Exception:
-                entry["price_usd_per_image"] = entry["price_note"] = None
-                entry["supports_seed"] = False
+            except Exception as exc:
+                entry["endpoint_discovery_error"] = str(exc)
+                entry["price_usd_per_image"] = previous.get("price_usd_per_image")
+                entry["price_note"] = previous.get("price_note")
+                entry["supports_seed"] = previous.get("supports_seed", False)
             return entry
 
         enriched = await asyncio.gather(*(enrich(m) for m in listing
@@ -203,7 +204,9 @@ class ProviderCatalog:
             out.append({**pin, "name": pin["label"], "pinned": pin["enabled"],
                         "price_note": None, "source": "config"})
         out.sort(key=lambda m: (not m.get("pinned"), m["provider"], m["id"]))
-        return out
+        # Consumers compile frozen requests from these facts. Mutating a returned
+        # nested endpoint must never rewrite the catalogue's cached evidence.
+        return deepcopy(out)
 
     def selectable(self) -> dict[str, dict]:
         """id -> entry for everything a turn may dispatch to (sync, cached)."""

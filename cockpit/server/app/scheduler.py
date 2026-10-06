@@ -1,77 +1,36 @@
-"""Two-lane scheduler: the cockpit owns slot lifecycle, lane concurrency,
-cancel and retry — in-process asyncio, no broker, no second service.
+"""Own slot transitions, one shared local lane and concurrent external lanes.
 
-Lanes. ONE local worker task awaits takes inline, so local serialism is
-structural and spans every local executor (one GPU: image, region and mesh
-takes take turns). External takes run concurrently under a semaphore cap.
-Executors never touch the DB; every transition goes through the store,
-whose `_tx` + `ALLOWED` guards arbitrate races — exactly one finaliser
-wins, losers catch the illegal-transition ValueError and reconcile money
-only.
+Every dispatch records its request before the runtime call. Queued work can be
+adopted after restart; running work must reconcile with runtime evidence. Missing
+history or a missing response does not prove that submission failed, so uncertain
+work is never automatically resubmitted. Known active work is watched in its
+original slot without creating another request.
 
-Leases. A single process needs no lease columns: the in-memory take
-registry is the live lease, the row triple status='running' + job_ref +
-attempt the durable one. Dispatch happens BEFORE submit, so
-running-without-job_ref always means "crashed pre-submit, safe to
-requeue", and every re-dispatch bumps `attempt`. recover() turns those rows
-back into work. stop() is deliberately crash-equivalent: tasks die, running
-rows stay running, the next start() recovers — one recovery story, not two.
-
-Money (charge-once). Committed flows spec → dispatch → node; charged is
-written ONLY through land_node / fail_slot / record_charge. A cancelled or
-restart-orphaned external take never fabricates a charge — it appends
-`slot.charge_unverified` stating the committed amount.
-
-Late. Cancelling a RUNNING EXTERNAL take never shoots the ride — billing is
-all-or-nothing and the money is already in flight — so the slot rests
-`late` (amount stated once) while the call keeps riding, detached, inside
-the external semaphore (the permit caps real in-flight HTTP calls). A ride
-that completes lands late → landed into its own original frozen cell
-(laws 7 + 8, `slot.late_landed`); one that dies leaves the slot `late`
-(`slot.late_failed`, not billed, no bench). Timeout is NOT late: a dead
-socket cannot deliver bytes, and `failed` keeps the slot rerollable where
-`late` reserves its cell for its own arrival.
-
-Failure copy (law 3). `plain_cause` words every terminal failure per kind —
-the cell's face — and `raw_detail` keeps what the engine said for the
-collapsed DETAILS and the ledger. A retry marks its slot (`retry_of`,
-law 9) so the running cell says so, not only the events. Each kind's face
-and remedy is stated beside the code that decides it: `blank` (an empty
-frame reported as success — bytes kept, same-seed rerun is the artist's
-button, never automatic), `charged_blank` (billed and nothing returned —
-the reported amount enters the ledger, then the bill is re-asked three
-times, `_bill_check`, every ask an event), cancel (`cancel_turn`: landed
-kept, queued/held skipped free, running local interrupted, running
-external detached late), `oom` (fails at ITS frame; the record picks the
-remedy), `gpu_held` (an OOM while something else holds the card: the
-local lane benches and re-checks every GPU_RECHECK_S), `repeat` (a second
-engine-level failure in one turn benches that engine FOR THAT TURN ONLY),
-`rate_limit` (retried on the provider's clock, the permit RELEASED while
-it waits so one provider never starves the others).
-
-Wiring lives in `app/wiring.py`: the lifespan's `wiring.start()` opens the
-store (refusing a pre-v4 file), builds the executors, recovers, then opens
-the lanes; startup benches down engines with actionable copy. Tests inject
-FakeExecutors through `wiring.EXECUTOR_FACTORY`.
+The database arbitrates landing, cancellation and charges. A late external result
+keeps its original cell; missing billing evidence stays unverified. Shared actions
+freeze their attempt bounds and do not inherit legacy automatic retry policies.
+Executors return transport facts and bytes; only the scheduler writes outcomes.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
 from collections import deque
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Mapping, Sequence
 
-from . import config
+from . import config, execution_outputs
 from .capture import Capture, describe
 from .db import Database
-from .executors import (DispatchRequest, EngineFailure, ExecutionResult,
-                        Executor, GpuReading, Handle, is_region_payload)
+from .executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult,
+                        Executor, GpuReading, Handle, SourceImage, is_region_payload)
 from .mesh import MESH_ENGINES
 
 log = logging.getLogger("cockpit.scheduler")
@@ -80,8 +39,10 @@ OnEvent = Callable[[dict], Awaitable[None]]
 
 RESTING = {"landed", "failed", "skipped", "set_aside", "late"}
 
-ORPHAN_COPY = ("cockpit restarted during the external call; re-run "
-               "(incomplete generations are not billed)")
+ORPHAN_COPY = ("The cockpit restarted during the external call. Its outcome and charge "
+               "are unverified. Check the provider record before deciding to run again.")
+UNCERTAIN_COPY = ("The runtime may have accepted this request, but its outcome could not "
+                  "be confirmed. It was not submitted again. Reconcile the runtime record first.")
 
 
 @dataclass(frozen=True)
@@ -159,6 +120,12 @@ def plain_cause(kind: str, *, lane: str, engine: str,
                 frame: tuple[int, int] | None = None,
                 held_before: dict | None = None,
                 tries: int | None = None) -> str:
+    if kind == 'collection':
+        return 'Some runtime files are missing. Collected files are kept. Collect again to retrieve this same attempt without generating.'
+    if kind == 'source_changed':
+        return 'A prepared source changed. Review its current bytes before trying again.'
+    if kind == 'source_missing':
+        return 'A prepared source is unavailable. Restore it before trying again.'
     external = lane == "external"
     mesh = engine in MESH_ENGINES        # the 3D lane's own words
     if mesh:
@@ -297,6 +264,7 @@ class _Take:
     cancel_requested: bool = False
     detached: bool = False           # cancelled but the ride lives on
     started_mono: float | None = None
+    recovered: bool = False
 
 
 class Scheduler:
@@ -370,6 +338,7 @@ class Scheduler:
             await ex.open()
         try:
             await self._recover()
+            await self.apply_execution_controls()
         except Exception as e:
             # a failed recovery fails the boot, loudly — but the store is
             # open, so the reason outlives the process
@@ -563,6 +532,40 @@ class Scheduler:
                                  turn_id=turn_id)
         await self._emit_new()
 
+    async def adopt_prepared_turn(self, turn_id: str) -> None:
+        """Idempotently enqueue a durably committed shared-action turn.
+
+        Slot payloads and slot.prepared events already exist in the transaction
+        that accepted the action. Recovery uses the same record. Replayed
+        delivery never reopens a resting or already registered slot.
+        """
+        if not self._started:
+            raise RuntimeError("scheduler not started")
+        async with self.db._locked():
+            turn = await self.db.get_turn(turn_id)
+            if turn is None:
+                raise ValueError(f"unknown turn {turn_id}")
+            for slot in turn['slots']:
+                if slot['status'] != 'queued' or slot['id'] in self._takes:
+                    continue
+                if await self._hold_if_paused(slot):
+                    continue
+                req = await self._rebuild_request(slot)
+                if req is None:
+                    raise ValueError('The committed request payload is missing.')
+                ex = self._executor_for(req.engine, req.submitted_graph)
+                self._takes[slot['id']] = _Take(request=req, executor=ex, lane=ex.lane, turn_id=turn_id)
+                bench = self.bench_for(req.engine, turn_id)
+                try:
+                    if bench:
+                        await self._hold(slot['id'], bench)
+                    else:
+                        self._enqueue(slot['id'])
+                except BaseException:
+                    self._takes.pop(slot['id'], None)
+                    raise
+        await self._emit_new()
+
     async def resubmit_slot(self, slot_id: str,
                             request: DispatchRequest) -> None:
         """Single-slot re-entry after the caller's reroll_slot (reroll or
@@ -592,11 +595,40 @@ class Scheduler:
             payload={"engine": req.engine, "payload": req.payload,
                      "verb": req.verb, "prompt": req.prompt,
                      "parents": list(req.parents), "x": req.x, "y": req.y})
+        if await self._hold_if_paused(slot):
+            self._takes.pop(slot['id'], None)
+            return
         b = self.bench_for(req.engine, turn_id)
         if b:
             await self._hold(slot["id"], b)
         else:
             self._enqueue(slot["id"])
+
+    async def _hold_if_paused(self, slot: dict) -> bool:
+        from .execution_controls import ExecutionCancelled, ExecutionPaused, guard_dispatch
+        try:
+            await guard_dispatch(self.db, slot)
+        except ExecutionCancelled:
+            await self._skip_cancelled_retry(slot)
+            return True
+        except ExecutionPaused as exc:
+            await self.db.transition_slot(slot['id'], 'held', payload={'pause': True, 'reason': str(exc)})
+            await self.db.conn.execute('UPDATE slots SET cause=? WHERE id=?', (str(exc), slot['id']))
+            return True
+        return False
+
+    async def _skip_cancelled_retry(self, slot: dict) -> None:
+        from .execution_controls import cancel_requested
+        async with self.db._tx():
+            current = await self.db.get_slot(slot['id'])
+            if (not current or current['attempt'] != slot['attempt']
+                    or current['status'] not in ('queued', 'held')
+                    or not current.get('retry_of') or not await cancel_requested(self.db, current)):
+                return
+            await self.db.transition_slot(slot['id'], 'skipped', payload={
+                'reason': 'Cancellation requested before automatic retry', 'attempt': slot['attempt']})
+            self._takes.pop(slot['id'], None)
+            self._retries.pop(slot['id'], None)
 
     # --- lanes ---
 
@@ -611,7 +643,7 @@ class Scheduler:
                 if take is None:
                     continue
                 b = self.bench_for(take.request.engine, take.turn_id)
-                if b:
+                if b and not take.recovered:
                     await self._hold(slot_id, b)
                     continue
                 await self._run_take_safely(slot_id)   # awaited inline: serialism
@@ -634,7 +666,7 @@ class Scheduler:
                     if take is None or take.cancel_requested:
                         return
                     b = self.bench_for(take.request.engine, take.turn_id)
-                    if b:
+                    if b and not take.recovered:
                         await self._hold(slot_id, b)
                         return
                     wait_s = await self._run_take_safely(slot_id)
@@ -717,26 +749,49 @@ class Scheduler:
                    else self._external_timeout)
         while True:
             self._retries.pop(slot_id, None)     # the wait, if any, is over
-            if take.cancel_requested:
+            if take.cancel_requested and not take.recovered:
                 await self._emit_new()
                 return None   # stays queued; cancel_slot's sweep will skip it
+            recovered = take.recovered
+            take.recovered = False
             try:
-                # dispatch BEFORE submit: running-without-job_ref is always
-                # "crashed pre-submit", which recovery may requeue safely
-                slot = await self.db.dispatch_slot(
-                    slot_id, job_ref=None,
-                    submitted_graph=req.submitted_graph, external=req.external,
-                    committed_usd=req.committed_usd, seed=req.seed,
-                    frame=frame_key(req.frame))
-            except ValueError:
+                if recovered:
+                    slot = await self.db.get_slot(slot_id)
+                    if slot['status'] != 'running':
+                        return None
+                else:
+                    # A crash between the call and receipt is uncertain, even
+                    # when the runtime reference has not yet been recorded.
+                    slot = await self.db.dispatch_slot(
+                        slot_id, job_ref=None,
+                        submitted_graph=req.submitted_graph, external=req.external,
+                        committed_usd=req.committed_usd, seed=req.seed,
+                        frame=frame_key(req.frame))
+                    take.started_mono = time.monotonic()
+            except ValueError as exc:
+                from .crexil_budget import BudgetExceeded
+                from .execution_controls import ExecutionCancelled, ExecutionPaused
+                if isinstance(exc, ExecutionCancelled):
+                    await self._skip_cancelled_retry(await self.db.get_slot(slot_id))
+                elif isinstance(exc, (BudgetExceeded, ExecutionPaused)):
+                    await self.db.transition_slot(slot_id, 'held', payload={'reason': str(exc),
+                        'limit': isinstance(exc, BudgetExceeded), 'pause': isinstance(exc, ExecutionPaused)})
+                    await self.db.conn.execute('UPDATE slots SET cause=? WHERE id=?', (str(exc), slot_id))
+                    self._takes.pop(slot_id, None)
                 await self._emit_new()
-                return None                  # lost to cancel/bench pre-dispatch
-            take.started_mono = time.monotonic()
+                return None
+            req = self._collecting_request(req, slot)
+            take.request = req
             await self._emit_new()
             try:
-                take.handle = await ex.start(req)
-                if take.handle.job_ref:
-                    await self.db.set_job_ref(slot_id, take.handle.job_ref)
+                if not recovered:
+                    take.handle = await ex.start(req)
+                    if take.handle.job_ref:
+                        await self.db.set_job_ref(slot_id, take.handle.job_ref)
+                    # A stop requested during source upload has no handle yet.
+                    # Apply it as soon as the runtime supplies that handle.
+                    if take.cancel_requested and take.lane == 'local':
+                        await ex.cancel(take.handle)
                 if timeout:
                     try:
                         result = await asyncio.wait_for(
@@ -758,6 +813,7 @@ class Scheduler:
                         self._finalize_late_failure(take, slot, e))
                     return None
                 if (e.kind == "oom" and take.lane == "local"
+                        and slot.get("dials", {}).get("crexil", {}).get("automatic_retry", True)
                         and not take.cancel_requested):
                     reading = await self._probe_gpu()
                     if reading is not None and \
@@ -767,7 +823,8 @@ class Scheduler:
                             self._gpu_held(take, slot, e, reading))
                         return None
                 rule = self._retry.get(e.kind)
-                if (rule and slot["attempt"] <= rule.max_retries
+                if (rule and slot.get("dials", {}).get("crexil", {}).get("automatic_retry", True)
+                        and slot["attempt"] <= rule.max_retries
                         and not take.cancel_requested):
                     wait_s = await self._retry_requeue(take, slot, e, rule)
                     if take.cancel_requested or wait_s is None:
@@ -799,20 +856,10 @@ class Scheduler:
         of = rule.max_retries + 1
         next_at = (datetime.now(timezone.utc)
                    + timedelta(seconds=wait_s)).isoformat()
-        ids = await self.db._slot_ids(slot)
-        await self.db.append_event(
-            "slot.retrying", **ids,
-            payload={"kind": e.kind, "attempt": slot["attempt"],
-                     "next_attempt": slot["attempt"] + 1, "of": of,
-                     "backoff_s": wait_s, "window": window,
-                     "next_try_at": next_at})
-        try:
-            await self.db.transition_slot(slot["id"], "queued",
-                                          payload={"retry_of": e.kind},
-                                          retry_of=e.kind)
-        except ValueError:
-            take.cancel_requested = True     # state moved under us; stand down
-            await self._emit_new()
+        if not await self._requeue_failed_attempt(take, slot, e, e.kind, {
+                "kind": e.kind, "attempt": slot["attempt"],
+                "next_attempt": slot["attempt"] + 1, "of": of,
+                "backoff_s": wait_s, "window": window, "next_try_at": next_at}):
             return None
         self._retries[slot["id"]] = {
             "kind": e.kind, "attempt": slot["attempt"] + 1, "of": of,
@@ -820,7 +867,174 @@ class Scheduler:
         await self._emit_new()
         return wait_s
 
+    async def _requeue_failed_attempt(self, take: _Take, slot: dict,
+                                      failure: EngineFailure, retry_of: str, payload: dict) -> bool:
+        """The failed attempt can retry only before a durable stop wins its transaction."""
+        from .execution_controls import cancel_requested
+        async with self.db._tx():
+            current = await self.db.get_slot(slot['id'])
+            same_attempt = current and current['attempt'] == slot['attempt']
+            stopped = take.cancel_requested or (same_attempt and await cancel_requested(self.db, current))
+            if same_attempt and current['status'] == 'running' and not stopped:
+                await self.db.append_event('slot.retrying', **await self.db._slot_ids(slot), payload=payload)
+                await self.db.transition_slot(slot['id'], 'queued',
+                    payload={'retry_of': retry_of}, retry_of=retry_of)
+                return True
+            if stopped:
+                take.cancel_requested = True
+        # The failure still needs a collector and its charge evidence. Never
+        # abandon a running row just because its next attempt was refused.
+        await self._shield(self._finalize_failure(take, slot, failure))
+        return False
+
     # --- finalisers (each shielded by the caller; DB is the arbiter) ---
+
+    async def collect_existing(self, slot_id: str, attempt: int) -> dict:
+        slot = await self.db.get_slot(slot_id)
+        if not slot or slot['attempt'] != attempt:
+            raise ValueError('This attempt changed. Refresh its record before collecting files.')
+        from .crexil_restore import guard as guard_restored
+        guard_restored(slot)
+        if slot['status'] not in {'failed', 'landed', 'set_aside', 'late'}:
+            raise ValueError('This request is still active. Its current collector owns the files.')
+        ex = self._executor_for(slot['engine'], slot['submitted_graph'])
+        req = await self._rebuild_request(slot)
+        if req is None:
+            raise ValueError('The saved execution request is missing. No work was repeated.')
+        req = self._collecting_request(req, slot)
+        if ex.name == 'openrouter' and (req.external or {}).get('transport') == 'openrouter-images':
+            receipt = await self.db._one('SELECT o.* FROM execution_outputs o JOIN execution_groups g ON g.id=o.group_id '
+                "WHERE g.slot_id=? AND g.take=? AND o.role='provider receipt'", (slot_id, attempt))
+            if not receipt or not receipt['output_path'] or not receipt['sha256'] or not execution_outputs.matches_receipt(Path(receipt['output_path']), receipt['sha256']):
+                raise ValueError('No intact provider response was retained. No paid request was repeated.')
+            try:
+                result = await ex.collect_receipt(req, json.loads(Path(receipt['output_path']).read_bytes()))
+                from .executors import Reconciliation
+                rec = Reconciliation('landed', result=result)
+            except EngineFailure as exc:
+                await execution_outputs.finish(self.db, slot, 'incomplete', {'failure_kind': exc.kind, 'cause': str(exc)})
+                return await execution_outputs.group(self.db, slot)
+        elif ex.name == 'comfy' and slot['job_ref']:
+            rec = await ex.reconcile(slot, request=req)
+        elif ex.name == 'mesh' and slot['job_ref']:
+            item = await execution_outputs.group(self.db, slot)
+            primary = await self.db._one("SELECT * FROM execution_outputs WHERE group_id=? AND identity='primary'", (item['id'],))
+            if primary and await execution_outputs.purged_at(self.db, primary):
+                raise ValueError('This mesh was purged. Collection cannot restore purged files.')
+            rec = await ex.collect_existing(slot, request=req)
+            if rec.kind == 'landed' and rec.result:
+                primary = await self.db._one("SELECT * FROM execution_outputs WHERE group_id=? AND identity='primary'", (item['id'],))
+                for suffix, blob in (rec.result.sidecars or {}).items():
+                    if not suffix.startswith('.') or '/' in suffix or len(suffix) > 16:
+                        raise ValueError('Invalid companion file extension.')
+                    companion = CollectedOutput(identity='companion:' + suffix, filename='companion' + suffix,
+                        data=blob, payload=None, role='companion')
+                    try:
+                        async with self.db._tx():
+                            if await execution_outputs.purged_at(self.db, primary):
+                                continue
+                            path = Path(primary['output_path']).with_suffix(suffix)
+                            await execution_outputs.collect(self.db, self._staging, slot, req, replace(companion, data=None), path=path)
+                            await execution_outputs.collect(self.db, self._staging, slot, req, companion, path=path)
+                    except OSError:
+                        await execution_outputs.collect(self.db, self._staging, slot, req,
+                            replace(companion, data=None, error='The companion file could not be stored.'))
+        else:
+            raise ValueError('This runtime has no supported retrieval reference for the attempt. No work was repeated.')
+        if rec.kind == 'landed':
+            state = await execution_outputs.finish(self.db, slot, 'complete')
+            if state == 'complete':
+                await self.db.recovered_collection(slot_id, attempt)
+        elif rec.kind == 'failed':
+            await execution_outputs.finish(self.db, slot, 'incomplete', {'failure_kind': rec.failure_kind, 'cause': rec.cause})
+        else:
+            await execution_outputs.finish(self.db, slot, 'uncertain', {'runtime_state': rec.kind,
+                'cause': 'The runtime has no completed result available for retrieval.'})
+        await self._emit_new()
+        return await execution_outputs.group(self.db, slot)
+
+    def _collecting_request(self, req: DispatchRequest, slot: dict) -> DispatchRequest:
+        async def before_send() -> None:
+            from .crexil_budget import guard_dispatch
+            from .execution_controls import cancel_requested
+            async with self.db._tx():
+                current = await self.db.get_slot(slot['id'])
+                if not current or current['attempt'] != slot['attempt'] or current['status'] != 'running':
+                    raise ValueError('The request was stopped before it reached the provider.')
+                if await cancel_requested(self.db, current):
+                    raise ValueError('Cancellation was requested before this request reached the provider.')
+                await guard_dispatch(self.db, current)
+                await self.db.append_event('slot.provider_sending', **await self.db._slot_ids(slot),
+                                           payload={'attempt': slot['attempt']})
+        async def collected(output: CollectedOutput) -> bytes | None:
+            # The callback persists facts through the server; engines own no DB.
+            if output.role == 'provider receipt' and (output.external or {}).get('reported_cost_usd') is not None:
+                await self._shield(self.db.report_provider_charge(slot, output.external['reported_cost_usd'],
+                                                                 output.external.get('generation_id')))
+            current = await self.db.get_slot(slot['id'])
+            recorded = {**slot, 'job_ref': current.get('job_ref') if current else slot.get('job_ref')}
+            if output.data is not None:
+                await self._shield(execution_outputs.collect(self.db, self._staging, recorded, req, replace(output, data=None)))
+            member = await self._shield(execution_outputs.collect(self.db, self._staging, recorded, req, output))
+            await self._emit_new()
+            if output.data is None and member['output_path'] and not await execution_outputs.purged_at(self.db, member):
+                with suppress(OSError):
+                    blob = await asyncio.to_thread(Path(member['output_path']).read_bytes)
+                    if hashlib.sha256(blob).hexdigest() == member['sha256']:
+                        return blob
+            return None
+        return replace(req, on_output=collected, before_send=before_send)
+
+    async def resume_budget_holds(self, workspace_id: str | None = None) -> None:
+        """Reconsider accepted, unsent work when its enclosing limits permit it."""
+        from .crexil_budget import BudgetExceeded, guard_dispatch
+        from .execution_controls import ExecutionCancelled, ExecutionPaused, guard_dispatch as guard_control
+        async with self.db._locked():
+            for slot in await self.db.slots_by_status('held'):
+                ids = await self.db._slot_ids(slot)
+                if workspace_id is not None and ids['workspace_id'] != workspace_id:
+                    continue
+                holds = [event for event in await self.db.slot_events(slot['id']) if event['type'] == 'slot.held']
+                if not holds or not any(holds[-1]['payload'].get(key) for key in ('limit', 'pause')):
+                    continue
+                try:
+                    await guard_control(self.db, slot)
+                    await guard_dispatch(self.db, slot)
+                except ExecutionCancelled:
+                    await self._skip_cancelled_retry(slot)
+                    continue
+                except (BudgetExceeded, ExecutionPaused):
+                    continue
+                if await self._rebuild_request(slot) is None:
+                    continue
+                await self.db.transition_slot(slot['id'], 'queued', payload={'reason': 'limits now permit this request'})
+                await self.db.conn.execute('UPDATE slots SET cause=NULL WHERE id=?', (slot['id'],))
+                if slot['id'] in self._takes:
+                    with suppress(ValueError):
+                        self._local_q.remove(slot['id'])
+                    self._enqueue(slot['id'])
+                else:
+                    await self.adopt_prepared_turn(slot['turn_id'])
+
+    async def apply_execution_controls(self) -> None:
+        from .execution_controls import cancellations
+        for sid in list(self._takes):
+            current = await self.db.get_slot(sid)
+            if current and current['status'] == 'skipped':
+                take = self._takes.pop(sid, None)
+                if take:
+                    take.cancel_requested = True
+                    if take.task and not take.task.done():
+                        take.task.cancel()
+                with suppress(ValueError):
+                    self._local_q.remove(sid)
+                self._retries.pop(sid, None)
+        for target in await cancellations(self.db):
+            current = await self.db.get_slot(target['slot_id'])
+            if current and current['attempt'] == target['attempt']:
+                await self.cancel_slot(target['slot_id'])
+        await self.resume_budget_holds()
+        await self._emit_new()
 
     def _staging_path(self, slot: dict, result: ExecutionResult) -> Path:
         suffix = Path(result.filename).suffix if result.filename else ".png"
@@ -832,33 +1046,59 @@ class Scheduler:
     async def _finalize_land(self, take: _Take, slot: dict,
                              result: ExecutionResult) -> None:
         req = take.request
-        path = self._staging_path(slot, result)
-        path.write_bytes(result.data)        # law 7: bytes first, whatever the race
+        output = CollectedOutput(identity=result.primary_identity or 'primary',
+            filename=result.filename or ('output.glb' if req.payload == '3d' else 'output.png'),
+            data=result.data, payload=None if req.payload == 'file' else req.payload, role='unclassified',
+            submitted_graph=result.submitted_graph, external=result.external)
+        await execution_outputs.collect(self.db, self._staging, slot, req, replace(output, data=None),
+            path=self._staging_path(slot, result) if not result.primary_identity else None)
+        member = await execution_outputs.collect(self.db, self._staging, slot, req, output,
+            path=self._staging_path(slot, result) if not result.primary_identity else None)
+        path = Path(member['output_path'])
+        missing = []
         for suffix, blob in (result.sidecars or {}).items():
-            # beside the artefact, never instead of it: a sidecar that fails
-            # to write costs a capability, never the take
+            # Legacy mesh consumers use these explicit sibling extensions.
+            if not suffix.startswith('.') or '/' in suffix or len(suffix) > 16:
+                raise ValueError('Invalid companion file extension.')
+            companion = CollectedOutput(identity='companion:' + suffix, filename='companion' + suffix,
+                data=blob, payload=None, role='companion')
             try:
-                path.with_suffix(suffix).write_bytes(blob)
-            except OSError:
-                log.warning("slot %s: could not write the %s sidecar",
-                            slot["id"], suffix)
+                await execution_outputs.collect(self.db, self._staging, slot, req, replace(companion, data=None),
+                                                path=path.with_suffix(suffix))
+                await execution_outputs.collect(self.db, self._staging, slot, req, companion,
+                                                path=path.with_suffix(suffix))
+            except OSError as exc:
+                missing.append(str(exc))
+                await execution_outputs.collect(self.db, self._staging, slot, req,
+                    replace(companion, data=None, error='The companion file could not be stored.'))
+        state = await execution_outputs.finish(self.db, slot, 'incomplete' if missing else 'complete',
+                                       {'collection_errors': missing, 'primary_output_id': member['id']})
+        if state != 'complete':
+            await self._finalize_failure(take, slot, EngineFailure('collection',
+                'Some reported outputs remain unavailable. Collected files were kept.', charged_usd=result.charged_usd))
+            return
         duration_ms = (int((time.monotonic() - take.started_mono) * 1000)
                        if take.started_mono is not None else None)
         charged = (round(result.charged_usd, 6)
                    if result.charged_usd is not None else None)
         node = None
         try:
-            node = await self.db.land_node(
-                slot["id"], payload=req.payload, verb=req.verb,
-                output_path=str(path), prompt=req.prompt,
-                parents=list(req.parents), external=result.external,
-                submitted_graph=result.submitted_graph,
-                duration_ms=duration_ms, charged_usd=charged,
-                x=req.x, y=req.y)
+            if req.payload == 'file':
+                await self.db.complete_files(slot['id'], slot['attempt'], charged_usd=charged)
+            else:
+                node = await self.db.land_node(
+                    slot["id"], payload=req.payload, verb=req.verb,
+                    output_path=str(path), prompt=req.prompt,
+                    parents=list(req.parents), external=result.external,
+                    submitted_graph=result.submitted_graph,
+                    duration_ms=duration_ms, charged_usd=charged,
+                    x=req.x, y=req.y, output_index=member["ordinal"],
+                    expected_attempt=slot["attempt"])
         except ValueError:
             # lost the race to another finaliser; the money still gets its
             # one ledger door and the artefact is kept (law 7)
             if charged is not None:
+                charged = await self.db._unrecorded_charge(slot, charged)
                 await self.db.record_charge(
                     slot["id"], charged,
                     note=f"generation completed after cancel; output kept at {path}")
@@ -903,12 +1143,29 @@ class Scheduler:
 
     async def _finalize_failure(self, take: _Take, slot: dict,
                                 e: EngineFailure) -> None:
+        from .execution_controls import cancel_requested
+        async with self.db._locked():
+            current = await self.db.get_slot(slot['id'])
+            if not current or current['attempt'] != slot['attempt']:
+                return
+            if current['status'] == 'late':
+                await self._finalize_late_failure(take, slot, e)
+                return
+            if current['status'] != 'running':
+                return
+            if await cancel_requested(self.db, current):
+                take.cancel_requested = True
+            await self._finalize_running_failure(take, slot, e)
+
+    async def _finalize_running_failure(self, take: _Take, slot: dict,
+                                        e: EngineFailure) -> None:
         req = take.request
+        await execution_outputs.finish(self.db, slot, 'incomplete', {'failure_kind': e.kind, 'cause': str(e)})
         cancelled = e.kind == "interrupted" and take.cancel_requested
         facts: dict | None = None
         if e.kind == "oom" and not cancelled:
             facts = await self._oom_facts(req.engine, req.frame)
-        cause = ("cancelled" if cancelled else
+        cause = ("cancelled" if cancelled else str(e) if e.kind == 'preflight' else
                  plain_cause(e.kind, lane=take.lane, engine=req.engine,
                              frame=req.frame,
                              held_before=(facts or {}).get("held_before"),
@@ -927,6 +1184,11 @@ class Scheduler:
             # already knows what happened.
             with suppress(ValueError):
                 await self.db.set_job_ref(slot["id"], e.job_ref)
+        scope = None if take.cancel_requested else bench_scope_for(e.kind, take.lane, req.engine)
+        if scope:
+            # Install the shared cause before publishing a terminal failure.
+            # Readers of the completed row must already see its queue gate.
+            await self.bench(scope, kind=e.kind, cause=cause)
         failed = False
         try:
             await self.db.fail_slot(slot["id"], cause=cause, detail=detail,
@@ -948,8 +1210,10 @@ class Scheduler:
                 turn_id=slot["turn_id"], engine=req.engine,
                 note="the bill re-asks stopped early; the amount stays as "
                      "the response reported it")
+        known_charge = await self.db._one("SELECT 1 FROM events WHERE slot_id=? AND type='slot.provider_charge_reported' "
+                                          "AND json_extract(payload_json,'$.attempt')=?", (slot['id'], slot['attempt']))
         if (failed and e.kind == "timeout" and take.lane == "external"
-                and slot["committed_usd"] is not None):
+                and slot["committed_usd"] is not None and not known_charge):
             # 300 s of silence: the call may have completed + billed server-side
             ids = await self.db._slot_ids(slot)
             await self.db.append_event(
@@ -961,12 +1225,8 @@ class Scheduler:
                                  "(unverified)"})
         self._takes.pop(slot["id"], None)
         await self._emit_new()
-        if not cancelled:
-            scope = bench_scope_for(e.kind, take.lane, req.engine)
-            if scope:
-                await self.bench(scope, kind=e.kind, cause=cause)
-            elif failed and e.kind in A9_KINDS:
-                await self._repeat_check(slot, req.engine)
+        if not take.cancel_requested and not scope and failed and e.kind in A9_KINDS:
+            await self._repeat_check(slot, req.engine)
 
     async def _repeat_check(self, slot: dict, engine: str) -> None:
         """A9: the second engine-level failure of one engine inside one
@@ -1009,24 +1269,15 @@ class Scheduler:
         the queue visibly (law 9) and the local lane benches under
         `gpu_held` — held takes, external takes untouched (law 10) — with
         the re-check loop watching for the card to come free."""
-        ids = await self.db._slot_ids(slot)
-        await self.db.append_event(
-            "slot.retrying", **ids,
-            payload={"kind": "gpu_held", "attempt": slot["attempt"],
+        if not await self._requeue_failed_attempt(take, slot, e, 'gpu_held', {
+                     "kind": "gpu_held", "attempt": slot["attempt"],
                      "next_attempt": slot["attempt"] + 1,
                      "foreign_bytes": reading.foreign,
                      "total_bytes": reading.total,
                      "detail": raw_detail(e),
                      "note": "ran out of memory while something else holds "
                              "the card; re-queued, the lane waits for the "
-                             "card to come free"})
-        try:
-            await self.db.transition_slot(slot["id"], "queued",
-                                          payload={"retry_of": "gpu_held"},
-                                          retry_of="gpu_held")
-        except ValueError:
-            take.cancel_requested = True
-            await self._emit_new()
+                             "card to come free"}):
             return
         await self._emit_new()
         # the loop is armed BEFORE the bench flag goes up: the flag is what
@@ -1127,11 +1378,11 @@ class Scheduler:
         try:
             for ask in range(1, BILL_CHECK_ASKS + 1):
                 asks = ask
-                self._checks[sid] = {"ask": ask, "of": BILL_CHECK_ASKS}
                 await self.db.append_event(
                     "slot.bill_check", **ids,
                     payload={"ask": ask, "of": BILL_CHECK_ASKS,
                              "job_ref": job_ref})
+                self._checks[sid] = {"ask": ask, "of": BILL_CHECK_ASKS}
                 await self._emit_new()
                 verify = getattr(executor, "verify_charge", None)
                 try:
@@ -1164,33 +1415,45 @@ class Scheduler:
         delta = round(answer - (reported or 0.0), 6)
         if delta != 0:
             await self.db.record_charge(
-                sid, delta,
+                sid, delta, attempt=slot['attempt'],
                 note=f"bill check: the provider's record says "
                      f"{answer:.4f} USD where the response reported "
                      f"{(reported or 0.0):.4f}")
         await self.db.append_event(
             "slot.charge_verified", **ids,
-            payload={"charged_usd": answer, "reported_usd": reported,
+            payload={"charged_usd": answer, "reported_usd": reported, 'attempt': slot['attempt'],
                      "asks": asks, "job_ref": job_ref})
         await self._emit_new()
 
     async def _finalize_late_failure(self, take: _Take, slot: dict,
                                      e: EngineFailure) -> None:
-        """a detached (cancelled, still-riding) take ended without a
-        result. No transition — the slot rests `late`; the amount was stated
-        once, at cancel. No bench: a genuinely down engine benches itself on
-        its next live take."""
+        """Retain unresolved stopped calls and their eventual charge evidence.
+
+        A verified unsent preflight stops without spending. Sent calls remain
+        late for recovery; failure alone does not establish the provider's bill.
+        """
+        await execution_outputs.finish(self.db, slot, 'incomplete', {'failure_kind': e.kind, 'cause': str(e)})
         ids = await self.db._slot_ids(slot)
+        if e.job_ref:
+            await self.db.conn.execute("UPDATE slots SET job_ref=? WHERE id=? AND attempt=? AND status='late'",
+                                       (e.job_ref, slot['id'], slot['attempt']))
+        if e.charged_usd is not None:
+            delta = await self.db._unrecorded_charge(slot, e.charged_usd)
+            await self.db.record_charge(slot['id'], delta, attempt=slot['attempt'], note='Final charge after stop')
+        unsent = e.kind == 'preflight' and e.charged_usd == 0
+        if unsent:
+            await self.db.confirm_unsent_stop(slot)
         await self.db.append_event(
             "slot.late_failed", **ids,
             payload={"kind": e.kind,
+                     "attempt": slot['attempt'], "job_ref": e.job_ref, "charged_usd": e.charged_usd,
                      "cause": plain_cause(e.kind, lane=take.lane,
                                           engine=take.request.engine),
                      "detail": raw_detail(e),
                      "committed_usd": slot["committed_usd"],
-                     "note": "the cancelled call ended without a result; "
-                             "incomplete generations are not billed — the "
-                             "stated amount stays unverified"})
+                     "note": "Stopped before sending. No paid request was made." if unsent else
+                             "The cancelled call ended without a result. Its charge remains unresolved "
+                             "unless a provider amount has been recorded."})
         self._takes.pop(slot["id"], None)
         await self._emit_new()
 
@@ -1377,17 +1640,23 @@ class Scheduler:
         for ev in await self.db.slot_events(slot["id"]):
             if ev["type"] == "slot.prepared":
                 land = ev["payload"]
+        sources = []
+        for source in slot.get('dials', {}).get('crexil', {}).get('source_uploads', []):
+            node = await self.db.get_node(source['node_id'])
+            sources.append(SourceImage(path=node['output_path'] if node and not node['purged_at'] else '',
+                                       sha256=source['sha256'], name=source['name']))
         return DispatchRequest(
             slot_id=slot["id"], engine=slot["engine"],
             submitted_graph=slot["submitted_graph"],
             external=slot["external"],
             committed_usd=slot["committed_usd"],
-            frame=parse_frame(slot["frame"]),
+            frame=parse_frame(slot["frame"]) or (tuple(land["frame"]) if land.get("frame") else None),
             payload=land.get("payload") or "image",
             verb=land.get("verb") or "run",
             prompt=land.get("prompt"),
             parents=tuple(land.get("parents") or ()),
-            seed=slot["seed"], x=land.get("x"), y=land.get("y"))
+            seed=slot["seed"], x=land.get("x"), y=land.get("y"), sources=tuple(sources),
+            output_ports=tuple(slot.get('dials', {}).get('crexil', {}).get('output_ports', [])))
 
     async def _recover(self) -> None:
         # 1) rebuild benches from the event log + park the emit cursor at the
@@ -1408,18 +1677,31 @@ class Scheduler:
         self._emit_cursor = seq
 
         counts = {"requeued": 0, "landed": 0, "failed": 0, "orphaned": 0,
-                  "skipped": 0, "unreachable": 0}
+                  "skipped": 0, "unreachable": 0, "resumed": 0, "uncertain": 0}
         to_start: list[str] = []
         for slot in await self.db.pending_slots():
             ex = self._executor_for(slot["engine"], slot["submitted_graph"])
             req = await self._rebuild_request(slot)
             ids = await self.db._slot_ids(slot)
             if slot["status"] == "running":
+                if req:
+                    await execution_outputs.recover_files(self.db, self._staging, slot, req)
                 if ex.lane == "external":
+                    from .execution_controls import cancel_requested
+                    stopped = await cancel_requested(self.db, slot)
+                    retained = await self.db._one("SELECT 1 FROM execution_outputs o JOIN execution_groups g ON g.id=o.group_id "
+                        "WHERE g.slot_id=? AND g.take=? AND o.role='provider receipt' AND o.sha256 IS NOT NULL", (slot['id'], slot['attempt']))
+                    cause = ('Provider response retained. Collect existing files to recover available results.'
+                             if retained else ORPHAN_COPY)
+                    await execution_outputs.finish(self.db, slot, 'uncertain', {'cause': cause})
                     # never auto-resubmit money, and say so
                     with suppress(ValueError):
-                        await self.db.fail_slot(slot["id"], cause=ORPHAN_COPY,
-                                                kind="restart")
+                        if stopped:
+                            await self.db.transition_slot(slot['id'], 'late',
+                                payload={'reason': 'Cancellation remains unresolved after restart',
+                                         'committed_usd': slot['committed_usd']})
+                        else:
+                            await self.db.fail_slot(slot["id"], cause=cause, kind="restart")
                     await self.db.append_event(
                         "slot.charge_unverified", **ids,
                         payload={"committed_usd": slot["committed_usd"],
@@ -1431,7 +1713,8 @@ class Scheduler:
                     continue
                 if slot["job_ref"]:
                     try:
-                        rec = await ex.reconcile(slot)
+                        req = self._collecting_request(req, slot) if req else None
+                        rec = await ex.reconcile(slot, request=req)
                     except EngineFailure as e:
                         # no truth available: bench the lane, leave the row
                         # running — unbench retries recovery via requeue
@@ -1447,6 +1730,7 @@ class Scheduler:
                         counts["landed"] += 1
                         continue
                     if rec.kind == "failed":
+                        await execution_outputs.finish(self.db, slot, 'incomplete', {'failure_kind': rec.failure_kind, 'cause': rec.cause})
                         facts = None
                         if rec.failure_kind == "oom":
                             facts = await self._oom_facts(
@@ -1463,30 +1747,18 @@ class Scheduler:
                                         "held_before")))
                         counts["failed"] += 1
                         continue
-                    # gone (or landed-but-unrebuildable): requeue
-                # running without job_ref: crashed pre-submit — safe requeue
-                if req is None:
-                    with suppress(ValueError):
-                        await self.db.transition_slot(
-                            slot["id"], "queued",
-                            payload={"recovered": True})
-                        await self.db.transition_slot(
-                            slot["id"], "skipped",
-                            payload={"reason": "prepared payload lost across "
-                                               "restart; reroll to re-run"})
-                    counts["skipped"] += 1
-                    continue
-                await self.db.transition_slot(
-                    slot["id"], "queued",
-                    payload={"recovered": True,
-                             "note": "resubmitting; the pre-restart "
-                                     "submission may still run (duplicate "
-                                     "GPU time, no money)"})
-                self._takes[slot["id"]] = _Take(request=req, executor=ex,
-                                                lane=ex.lane,
-                                                turn_id=slot["turn_id"])
-                to_start.append(slot["id"])
-                counts["requeued"] += 1
+                    if rec.kind == 'running' and rec.handle is not None and req is not None:
+                        self._takes[slot['id']] = _Take(request=req, executor=ex, lane=ex.lane,
+                            turn_id=slot['turn_id'], handle=rec.handle, recovered=True)
+                        to_start.insert(0, slot['id'])
+                        counts['resumed'] += 1
+                        continue
+                await execution_outputs.finish(self.db, slot, 'uncertain', {'cause': UNCERTAIN_COPY})
+                with suppress(ValueError):
+                    await self.db.fail_slot(slot['id'], kind='uncertain', cause=UNCERTAIN_COPY)
+                await self.db.append_event('slot.delivery_uncertain', **ids,
+                    payload={'job_ref': slot['job_ref'], 'note': UNCERTAIN_COPY})
+                counts['uncertain'] += 1
             else:                            # queued
                 if req is None:
                     with suppress(ValueError):

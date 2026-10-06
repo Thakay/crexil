@@ -1,4 +1,11 @@
 {
+  "execution_cost": {
+    "maximum_usd_per_attempt": 0,
+    "workflow_sha256": {
+      "txt2img": "ffc27e1a4719fc57af11eed547e3a007cb932282155340d6700e969e197fabb3",
+      "img2img": "de24f3f1ced5a6f0297f5dd61669ce048db8e096da4336be1a0276ac41c51f17"
+    }
+  },
   "id": "raw-zimage",
   "display_name": "Raw · Z-Image Base",
   "description": "Undistilled 6B Z-Image: full CFG, real negative prompting, img2img — and the family's LoRA-training target. Apache-2.0, 512–2048 any aspect.",
