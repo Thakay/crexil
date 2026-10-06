@@ -96,7 +96,7 @@ test('project edits compare concurrent changes and confirm an accepted save afte
  await form.getByRole('textbox',{name:'Instructions for participants',exact:true}).fill('Artist instructions retained in this tab.');
  await form.getByRole('spinbutton',{name:'Project spending limit · USD',exact:true}).fill('0.12');
  const agent=async(revision:number,instructions:string,amount:number)=>(await request.patch(`/api/crexil/projects/${project.id}`,{data:{
-  ...command(),actor:{kind:'agent',name:'Concurrent participant'},revision,name:project.name,brief:'Agent brief',instructions,
+  ...command(),actor:{kind:'human',name:'Concurrent participant'},revision,name:project.name,brief:'Agent brief',instructions,
   limits:{attempt_limit:2,spending_limit_usd:amount,spending_policy:'hard_cap'},
  }})).json();
  let current=await agent(project.revision,'Agent instructions to compare.',0.02);

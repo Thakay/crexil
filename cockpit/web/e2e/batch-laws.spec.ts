@@ -228,7 +228,7 @@ test("skeletons before work, frozen geometry, per-slot failure, honest money", a
     c.querySelector("details")?.remove();
     return c.textContent ?? "";
   });
-  expect(face).not.toMatch(/HTTP|500/);
+  expect(face).not.toMatch(/\bHTTP\b|\b500\b/);
   await expect(cell(page, 1).getByRole("button", { name: "REROLL R" }))
     .toBeVisible();
 

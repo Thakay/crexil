@@ -52,7 +52,9 @@ the run still fits its limits, submit accepts it without a new review.
 
 **Caps.** Every run states a spending limit, and the project has its own. A run whose known
 prices exceed either is refused before any engine is called. An unknown price counts as over the
-limit, never as zero. Free local engines reserve nothing.
+limit, never as zero, so a run that includes an engine with an unknown price is refused whole:
+nothing in it is sent. Free local engines reserve nothing. Only the artist changes a project's
+limits.
 
 ### What an agent may and may not do
 
@@ -61,6 +63,7 @@ limit, never as zero. Free local engines reserve nothing.
 | Discover engines, read projects, runs and the record | yes | `GET operations`, `GET projects/{id}`, `GET directions/{id}/run`, `GET projects/{id}/record` |
 | Create a project, prepare and review a run | yes | |
 | Submit a run | yes | Within the run's own limit and the project's |
+| Change a project's spending limits | no | `403`. A limit decides how much money may move. Other project edits stay open to agents |
 | Propose takes or comment on a run, with a reason | yes | `POST projects/{id}/assessments`. Never changes the pick |
 | Set the displayed selection | through HTTP only | The MCP door leaves picking to the artist |
 | Reveal a blind run | no | `403`. Revealing would end the artist's blind comparison |
@@ -72,6 +75,10 @@ address to fetch them. `GET directions/{id}/run` is the compact read of one run,
 It holds no file addresses or waveform data, and a blind run names no engine until the artist
 reveals it. ElevenLabs' terms forbid using its audio as input to any machine learning, and the
 model behind an agent is one, so no agent tool hands audio to a model.
+
+A blind run compares at least two engines and is sent whole or not at all. Until the artist
+reveals it, its takes show only the run's creation time, and continuing from or reusing one of
+its takes is refused with `422`: reveal first.
 
 ## The command-line client
 
