@@ -27,13 +27,13 @@ import {
   type APIRequestContext,
   type Page,
 } from "@playwright/test";
+import { DB, PROMOTED } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 
 const T = { timeout: 10_000 };
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const DB = path.resolve(HERE, "../../../.staging/e2e-harness/cockpit-v4.sqlite");
 
 function seed(): Seed {
   const name = `mesh-${Date.now()}`;
@@ -373,7 +373,7 @@ test("a mesh promotes into _3d/ as a GLB, with its orbit beside it", async ({
   const ws = (await (
     await request.get(`/api/workspaces/${s.workspace_id}`)
   ).json()) as { slug: string };
-  const folder = path.resolve(HERE, "../../../.staging/e2e-promote/_3d", ws.slug);
+  const folder = path.join(PROMOTED, "_3d", ws.slug);
   const files = readdirSync(folder);
   const glb = files.find((f) => f.endsWith(".glb"))!;
   expect(glb, `no GLB in ${files.join(", ")}`).toBeTruthy();

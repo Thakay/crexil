@@ -21,6 +21,7 @@ import {
   type APIRequestContext,
   type Page,
 } from "@playwright/test";
+import { DB } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 
@@ -35,7 +36,6 @@ test.use({ viewport: { width: 1280, height: 900 } });
 const T = { timeout: 10_000 };
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const DB = path.resolve(HERE, "../../../.staging/e2e-harness/cockpit-v4.sqlite");
 
 function seed(): Seed {
   const name = `regions-${Date.now()}`;

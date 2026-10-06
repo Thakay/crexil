@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {artifact} from './paths';
 
 const source=readFileSync(fileURLToPath(new URL('../../../bench/sources/rc-keep/source.png',import.meta.url))).toString('base64');
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Record verification'}});
@@ -45,7 +46,7 @@ test('finds attributed decisions, revises once after a lost response, and return
   for(const width of [1440,1920]){
     await page.setViewportSize({width,height:900});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-    await page.screenshot({path:`../../.preview/screenshots/record-decisions-${width}.png`});
+    await page.screenshot({path:artifact(`record-decisions-${width}.png`)});
   }
   await room.getByRole('button',{name:'Material',exact:true}).click();
   await room.getByRole('searchbox',{name:'Find in this project'}).fill('Silhouette');

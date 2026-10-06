@@ -1,6 +1,7 @@
 import {test,expect,type APIRequestContext,type Page} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {artifact} from './paths';
 const source=fileURLToPath(new URL('../../../bench/sources/rc-keep/source.png',import.meta.url));
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'3D browser verification'}});
 
@@ -43,7 +44,7 @@ test('imported mesh opens the real viewer and a saved reduction preserves invali
   await inspection.getByRole('button',{name:'Wireframe W',exact:true}).click();
   await expect(inspection.getByRole('button',{name:'Wireframe W',exact:true})).toHaveAttribute('aria-pressed','true');
   await inspection.getByRole('button',{name:'Wireframe W',exact:true}).click();
-  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:`../../.preview/screenshots/mesh-inspection-${width}.png`});}
+  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:artifact(`mesh-inspection-${width}.png`)});}
   await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Act on Study.glb',exact:true})).toBeFocused();
   await page.getByRole('button',{name:'Reduce mesh',exact:true}).click();
   const op=await chooseOperation(page,'Reduce mesh · gltfpack (meshopt)',1);await op.locator('summary').click();
@@ -56,7 +57,7 @@ test('imported mesh opens the real viewer and a saved reduction preserves invali
   await page.reload();await page.getByRole('button',{name:'Open preparation: Reduce mesh',exact:true}).click();
   const restored=drawer(page).getByRole('spinbutton',{name:'Reduce mesh · gltfpack (meshopt) attempts',exact:true}).locator('../..');await restored.locator('summary').click();
   await expect(restored.getByRole('spinbutton',{name:'Target triangles',exact:true})).toHaveValue('1000');await expect(restored.getByLabel('Force reduction through texture seams',{exact:true})).toHaveValue('true');
-  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});await page.screenshot({path:`../../.preview/screenshots/mesh-preparation-${width}.png`});}
+  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});await page.screenshot({path:artifact(`mesh-preparation-${width}.png`)});}
   expect(errors).toEqual([]);
 });
 

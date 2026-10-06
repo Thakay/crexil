@@ -58,7 +58,7 @@ test('artist draws, reloads, erases and reviews a source-bound region',async({pa
  expect(await maskPixels(page,second)).toEqual({center:0,edge:255});
  const masks=await(await request.get(`/api/crexil/projects/${project.id}/masks`)).json();
  expect(masks.find((m:{id:string})=>m.id===second).previous_mask_id).toBe(first);
- await drawer.getByRole('spinbutton',{name:/Qwen.*attempts/}).fill('1');
+ await drawer.getByRole('spinbutton',{name:/Qwen Edit.*attempts/}).fill('1');
  await expect(drawer.getByRole('status')).toHaveText('Saved');
  await drawer.getByRole('button',{name:'Review run',exact:true}).click();
  await expect(drawer.getByRole('img',{name:'Effective edit area for pass 1'})).toBeVisible();

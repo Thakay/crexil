@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { artifact } from './paths';
 const command = () => ({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Browser execution check'}});
 
 test('review preserves invalid controls and navigation saves pending preparation', async ({page,request}) => {
@@ -157,7 +158,7 @@ test('missing related files recover through the same attempt after a lost collec
     const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;const ctx=canvas.getContext('2d')!;ctx.drawImage(bitmap,0,0);
     return [ctx.getImageData(0,0,1,1).data[3],ctx.getImageData(32,32,1,1).data[3]];},coat.id)).toEqual([0,190]);
   for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-    await page.screenshot({path:`../../.preview/screenshots/collection-incomplete-${width}-scripted.png`});}
+    await page.screenshot({path:artifact(`collection-incomplete-${width}-scripted.png`)});}
   await request.post(`/api/harness/slots/${slot.id}/collection`,{data:{kind:'landed',outputs:outputs.map(output=>({...output,missing:false}))}});
   let lost=true;
   await page.route(`**/api/crexil/attempts/${slot.id}/collect`,async route=>{
@@ -174,10 +175,10 @@ test('missing related files recover through the same attempt after a lost collec
   expect(recovered.outputs.map((o:{id:string})=>o.id)).toEqual(group.outputs.map((o:{id:string})=>o.id));
   for(const output of group.outputs.filter((o:{available:boolean})=>o.available))expect(recovered.outputs.find((o:{id:string})=>o.id===output.id).sha256).toBe(output.sha256);
   const runtime=await(await request.get('/api/harness/state')).json();expect(runtime.starts[slot.id]).toBe(1);expect(runtime.retrievals[slot.id]).toBe(2);
-  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});await page.screenshot({path:`../../.preview/screenshots/collection-recovered-${width}-scripted.png`});}
+  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});await page.screenshot({path:artifact(`collection-recovered-${width}-scripted.png`)});}
   await room.getByRole('button',{name:'Esc · Back',exact:true}).click();await expect(page.getByRole('button',{name:'Act on 0A',exact:true})).toBeVisible();
   expect(errors).toEqual([]);
-  await (await import('node:fs/promises')).writeFile('../../.preview/collection-browser-verification.json',JSON.stringify({
+  await (await import('node:fs/promises')).writeFile(artifact('collection-browser-verification.json'),JSON.stringify({
     project:project.id,before:group,after:recovered,slot:after.turns[0].slots[0],runtime,errors,
     alpha_samples:[0,190],charged_before:before.charged_usd,charged_after:after.charged_usd,
   },null,2));

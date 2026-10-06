@@ -8,6 +8,8 @@ const graph = {
 };
 
 test('artist saves an operation interface and returns through shared test preparation', async({page,request})=>{
+  const health=await(await request.get('/api/health')).json();
+  test.skip(!health.preview,'Runtime discovery reads as disconnected in the isolated preview only.');
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   const created=await request.post('/api/crexil/projects',{data:{...command(),name:`Operation journey ${Date.now()}`}});
   const project=await created.json();

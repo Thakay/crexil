@@ -1,6 +1,7 @@
 import {test,expect,type APIRequestContext,type Page} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {artifact} from './paths';
 const source=fileURLToPath(new URL('../../../bench/sources/rc-keep/source.png',import.meta.url));
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Sequence browser verification'}});
 
@@ -56,7 +57,7 @@ test('artist creates a sequence, supplies an attributed choice and returns after
   for(const width of [1440,1920]){
     await page.setViewportSize({width,height:900});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-    await page.screenshot({path:`../../.preview/screenshots/sequence-decision-${width}.png`});
+    await page.screenshot({path:artifact(`sequence-decision-${width}.png`)});
   }
   await child.getByRole('button',{name:'Record decision',exact:true}).click();
   await expect(child).toContainText('Chosen by Artist: The silhouette is clear at this scale.');

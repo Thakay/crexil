@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {artifact} from './paths';
 const image=readFileSync(fileURLToPath(new URL('../../../bench/sources/rc-keep/source.png',import.meta.url))).toString('base64');
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Backup verification'}});
 
@@ -16,7 +17,7 @@ test('backup downloads and restores a separate project after lost acceptance and
   const backup=await(await receipt).json();expect(backup.records.nodes).toBe(2);
   const bytes=await(await request.get(`/api/crexil/backups/${backup.id}/file`)).body();
   await expect(backupRoom.getByRole('link',{name:/Download/})).toBeVisible();
-  await page.screenshot({path:'../../.preview/screenshots/backup-1440.png'});
+  await page.screenshot({path:artifact('backup-1440.png')});
   await page.goto('/#/projects');await page.getByRole('button',{name:'Restore project',exact:true}).click();
   const room=page.getByRole('region',{name:'Restore project',exact:true});
   await room.getByLabel('Project backup file',{exact:true}).setInputFiles({name:'project.crexil.zip',mimeType:'application/zip',buffer:bytes});
@@ -25,7 +26,7 @@ test('backup downloads and restores a separate project after lost acceptance and
   await expect(restoreButton).toBeEnabled();
   const restoredName=project.name+' restored';
   await room.getByLabel('Restored project name',{exact:true}).fill(restoredName);
-  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:`../../.preview/screenshots/restore-${width}.png`});}
+  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:artifact(`restore-${width}.png`)});}
   const bodies:unknown[]=[];
   await page.route('**/api/crexil/archive-uploads/*/restore',async route=>{
     bodies.push(route.request().postDataJSON());

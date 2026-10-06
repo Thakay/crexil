@@ -19,15 +19,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
+import { DB, PROMOTED, PROMOTE_SIBLING } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 
 const T = { timeout: 10_000 };
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const REPO = path.resolve(HERE, "../../..");
-const DB = path.join(REPO, ".staging/e2e-harness/cockpit-v4.sqlite");
-const PROMOTED = path.join(REPO, ".staging/e2e-promote");
 
 function seed(): Seed {
   const name = `promote-${Date.now()}`;
@@ -118,10 +116,11 @@ test("promote: the words before the hold, the hold, and the mark after", async (
   expect((m.workspace as { slug: string }).slug).toBe(ws.slug);
   expect(m.parent_node_ids).toEqual([]);
   expect(m.local_only).toBe(true);
-  expect(m.replayable).toMatch(/^exact:/);
+  // The seed fixture writes landed rows directly, without a submitted graph,
+  // so nothing pins this take's recipe and its honest tier is record only.
+  // The exact tier, carried by a verbatim graph, is test_api_v4_promote.py's.
+  expect(m.replayable).toMatch(/^record only: /);
   expect((m.cost as Record<string, unknown>).charged_usd).toBeNull();
-  // (the graph's own verbatim carry is test_api_v4_promote.py's — the seed
-  // fixture writes landed rows directly, without one)
 
   // and the take wears the mark, on the canvas, permanently
   await expect(
@@ -138,9 +137,9 @@ test("the fence is on screen, and refuses a folder off the drive", async ({
   request,
 }) => {
   const s = seed();
-  // the harness's promote root sits under .staging; its parent stands in
+  // the harness's promote root sits in the run folder, which stands in
   // for the drive, so a sibling folder is legal and anything above is not
-  const sibling = path.join(REPO, ".staging/e2e-promote-sibling");
+  const sibling = PROMOTE_SIBLING;
   mkdirSync(sibling, { recursive: true });
   const offDrive = mkdtempSync(path.join(tmpdir(), "promote-off-"));
 
@@ -194,7 +193,7 @@ test("the picker walks the drive and hands back a handle, never a path", async (
   request,
 }) => {
   const s = seed();
-  const sibling = path.join(REPO, ".staging/e2e-promote-sibling");
+  const sibling = PROMOTE_SIBLING;
   mkdirSync(sibling, { recursive: true });
 
   await page.goto(`/#/w/${s.workspace_id}`);
