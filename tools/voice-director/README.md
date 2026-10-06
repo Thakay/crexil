@@ -19,7 +19,8 @@ confirms in the panel is recorded under the artist's name.
 
 ElevenLabs' policy forbids using its output as input to any machine learning, and the language
 model behind the agent is one. So no take audio, URL or file address ever reaches the agent.
-While a take plays, the panel mutes the microphone and turns the agent's voice down.
+Before any take plays, whoever starts it, the panel mutes the microphone and turns the agent's voice down; the
+microphone stays muted 400 ms after the take stops, and no take plays while a session connects.
 
 ## Files
 

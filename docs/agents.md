@@ -98,6 +98,10 @@ scripts/crexil.py post directions/RUN/submit --json '{"revision": 0, "review_tok
 scripts/crexil.py decisions PROJECT                 # the decision record, one JSON line per decision
 ```
 
+`scripts/seed_demo_project.py` is a worked example of the same client: it carries one character brief
+through image, voice, sound and 3D runs, prints each run's reviewed price before it sends anything, and
+spends only with `--live` and the exact total it reviewed.
+
 Each change prints its delivery id. After a connection failure, retry with `--request-id` and
 the same body.
 
@@ -128,6 +132,15 @@ Door errors give the server's plain line, then the next move, then a stable kind
 | `over_door_ceiling` | The run would spend more than this door allows | Ask the artist |
 | `invalid_input` | The arguments do not describe a request | Fix the arguments |
 | `server_error` | Crexil failed on its side and recorded it | Try again, or ask the artist |
+
+## The voice director
+
+The voice director is the second agent door: an ElevenLabs Agents conversation in a column at the right of
+the project surface, configured in `tools/voice-director/`. Its tools call the same shared actions as
+`agent:voice-director`; a paid run and a pick wait for the artist's click. During a session the microphone
+audio and what the director reads about the project (the brief, run prompts, take labels and reasons) go to
+ElevenLabs and the agent's language model, and ElevenLabs keeps each conversation for 7 days. Take audio never
+does: the microphone mutes before any take plays.
 
 ## Worked example: casting a voice
 

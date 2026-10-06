@@ -55,6 +55,7 @@ npm --prefix cockpit/web run dev             # hot reload on :5173, proxied to t
 scripts/gen-api-types.sh                     # after any route or wire-model change
 scripts/preview.sh [port]                    # isolated preview on 127.0.0.1:8010 (or port); cannot generate or spend
 scripts/crexil.py --help                     # the artist and agent client of the shared HTTP actions
+scripts/seed_demo_project.py --help          # seeds the demo project through the HTTP actions; a dry run unless --live
 uv run --script tools/agent-door/crexil_mcp.py --help   # the MCP agent door; see docs/agents.md
 python3 tools/voice-director/apply.py --dry-run       # the voice director's agent configuration; see its README
 scripts/deploy.sh                            # optional local Docker build and start
@@ -324,6 +325,11 @@ ElevenLabs account. A save refused because every slot is in use says so.
 - **No authentication.** The server trusts localhost: a Host allow-list, an Origin check, and a key
   setup route that refuses non-loopback clients unless `COCKPIT_LOOPBACK_PUBLISH=1` (set in
   `compose.yaml`, where clients arrive from a bridge address). Never expose the port.
+- **The voice director's column.** While it is open it sets `--director-inset` on the root element; every
+  Filmstrip surface keeps its right edge clear of `var(--director-inset, 0px)` (fixed layers through `right`,
+  in-flow ones through `margin-right`), and a new surface must too.
+- **One player for take audio.** All take audio plays through `audio/player.ts`, whose before-play listeners let
+  the voice director mute its microphone first; never play take audio through another media element.
 - **Store schema.** `db.py` upgrades an older store when it opens it (schema 13 today). Older code
   refuses a newer file, and a file older than schema 4 is refused, never migrated. Use a fresh
   `COCKPIT_DB` when you move back across a schema change. `docker compose down -v` deletes the

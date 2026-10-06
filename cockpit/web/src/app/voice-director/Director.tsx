@@ -1,19 +1,19 @@
-// The voice director: an ElevenLabs Agents conversation docked beside the project, never a
-// modal (law 2). The server starts each session and hands over a conversation token once, so
-// the key never reaches the browser (law 18). Minutes are counted from the moment the
-// conversation connects and the session ends at its maximum (laws 17 and 22). The agent's
-// tools prepare and propose; a paid run and a pick wait for the artist's click, with the price
-// on the paid button's face (laws 6, 15 and 23). While a take plays, the microphone is muted
-// and the agent's voice turned down, so take audio never reaches the agent's model.
+// The voice director's conversation: an ElevenLabs Agents session in the column its door opens
+// (VoiceDirectorPanel.tsx), never a modal (law 2). The server starts each session and hands
+// over a conversation token once, so the key never reaches the browser (law 18). Minutes are
+// counted from the moment the conversation connects and the session ends at its maximum (laws
+// 17 and 22). The agent's tools prepare and propose; a paid run and a pick wait for the
+// artist's click, with the price on the paid button's face (laws 6, 15 and 23). Before a
+// session starts the panel says what leaves the machine. Take audio never does: the microphone
+// mutes before any take plays (microphone.ts), and no take starts while a session connects.
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { createStore, useStore, type StoreApi } from 'zustand';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { player, usePlayer } from '../audio';
 import { artist as browserArtist, message, money, type Actor } from '../crexil/api';
-import { ViewContext } from '../crexil/view';
 import { door as httpDoor, type Door, type VoiceSession, type VoiceUsage } from './door';
 import { plain } from './guard';
 import { elapsedSince, minutes, sessionPrice } from './meter';
+import { DUCKED, guardTakes, type Guard } from './microphone';
 import { createTools, TOOL_NAMES, type ProposalCard, type RunCard, type Tool } from './tools';
 import css from './VoiceDirector.module.css';
 
@@ -22,8 +22,17 @@ export type DirectorProps = {
   /** Who confirms runs and picks, and starts and ends sessions: by default, the artist this browser names. */
   artist?: Actor;
   door?: Door;
-  onClose(): void;
+  /** Told whether a session is live, so the column's close and Escape follow it. */
+  onLive?(live: boolean): void;
 };
+
+/** What leaves the machine during a session, said once before it starts. */
+export const DISCLOSURE = 'While a session runs, your microphone audio goes to ElevenLabs and the director\'s language '
+  + 'model, and so does what the director reads about this project: the brief, run prompts, take labels and reasons. '
+  + 'ElevenLabs keeps each conversation for 7 days. Take audio never goes: the microphone mutes before any take plays.';
+
+/** Why a take waits while a session connects. */
+export const CONNECTING = 'The voice director is connecting. Play the take once it is listening.';
 
 type Line = {id: number; role: 'artist' | 'director' | 'note'; text: string};
 type Waiting = {state: 'waiting' | 'busy' | 'done'; note?: string};
@@ -33,26 +42,15 @@ type Card =
   | {kind: 'free'; id: string; runId: string; title: string; attempts: number; state: 'done'};
 type Unrecorded = {sessionId: string; elapsed: number; conversationId: string | null};
 
-const DUCKED = 0.2;      // the agent's voice while a take plays
-const TAIL_MS = 400;     // the microphone stays muted this long after a take stops
 const POLL_MS = 4000;    // how often a queued run's progress is read for the agent
 const VERB_WORDS = {'voice-design': 'Voice design', speak: 'Speech', sfx: 'Sound effect'} as const;
 const short = (text: string, limit = 90) => text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
-
-// Outside a project room there is no draft drawer to keep clear of.
-const NO_ROOM = createStore(() => ({drawer: null as string | null}));
-
-/** Whether the project room's draft drawer is open, so the panel can keep above it. */
-function useDrawerOpen(): boolean {
-  const room = useContext(ViewContext) as StoreApi<{drawer: string | null}> | null;
-  return useStore(room ?? NO_ROOM, state => state.drawer !== null);
-}
 
 export default function Director(props: DirectorProps) {
   return <ConversationProvider><Session {...props}/></ConversationProvider>;
 }
 
-function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}: DirectorProps) {
+function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}: DirectorProps) {
   const [usage, setUsage] = useState<VoiceUsage | null>(null);
   const [session, setSession] = useState<VoiceSession | null>(null);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
@@ -62,16 +60,21 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [userMuted, setUserMuted] = useState(false);
-  const [tail, setTail] = useState(false);
   const [unrecorded, setUnrecorded] = useState<Unrecorded | null>(null);
   const playing = usePlayer(state => state.playing);
-  const drawerOpen = useDrawerOpen();
   const sessionRef = useRef<VoiceSession | null>(null);
   const connectedRef = useRef<number | null>(null);
   const conversationRef = useRef<string | null>(null);
   const finished = useRef(false);
+  const closed = useRef(false);
   const lineId = useRef(0);
   const tracked = useRef(new Map<string, {title: string; summary: string}>());
+  // The microphone's state lives outside React, so a change reaches the conversation before
+  // the take it guards against sounds: the take guard, the artist's own mute, and whether a
+  // starting session still holds every take back.
+  const guard = useRef<Guard>({muted: false, ducked: false});
+  const mutedByArtist = useRef(false);
+  const holding = useRef(false);
 
   const note = useCallback((role: Line['role'], text: string) => {
     setLines(current => [...current, {id: ++lineId.current, role, text}].slice(-60));
@@ -86,6 +89,7 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
     sessionRef.current = null;
     connectedRef.current = null;
     conversationRef.current = null;
+    holding.current = false;
     setSession(null);
     setConnectedAt(null);
     tracked.current.clear();
@@ -104,16 +108,20 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
   }, [artist, door]);
 
   const conversation = useConversation({
-    micMuted: userMuted || playing || tail,
-    volume: playing ? DUCKED : 1,
     onConnect: ({conversationId}) => {
       conversationRef.current = conversationId;
       connectedRef.current = Date.now();
       setConnectedAt(connectedRef.current);
+      microphone();
+      holding.current = false;
     },
     onDisconnect: () => void finish(),
     onMessage: ({message: text, role}) => note(role === 'agent' ? 'director' : 'artist', text),
-    onError: problem => setError(`The voice session reported a problem: ${problem}`),
+    onError: problem => {
+      setError(`The voice session reported a problem: ${problem}`);
+      // A session that never connected is over: its minutes are recorded, and takes play again.
+      if (sessionRef.current && connectedRef.current === null) stop();
+    },
   });
   const live = session !== null;
   // The SDK's handle and the latest finish, read through refs so effects keep stable timers
@@ -125,6 +133,30 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
   const say = useCallback((text: string) => {
     if (sessionRef.current) sdk.current.sendContextualUpdate(text);
   }, []);
+  const stop = useCallback(() => {
+    sdk.current.endSession();
+    void finishing.current();
+  }, []);
+
+  /** Sets the open conversation's microphone and the agent's volume from the take guard and the
+   *  artist's own mute. With no conversation open it changes nothing; the next one is set as it
+   *  connects. */
+  const microphone = useCallback(() => {
+    try {
+      sdk.current.setMuted(mutedByArtist.current || guard.current.muted);
+      sdk.current.setVolume({volume: guard.current.ducked ? DUCKED : 1});
+    } catch {
+      // The SDK throws when no conversation is open.
+    }
+  }, []);
+
+  // Every take the shared player starts, whoever starts it, is guarded while the panel is open.
+  useEffect(() => guardTakes(player, next => {
+    guard.current = next;
+    microphone();
+  }, () => holding.current ? CONNECTING : null), [microphone]);
+
+  useEffect(() => {onLive?.(live);}, [live, onLive]);
 
   const update = useCallback((id: string, change: Partial<Card>) => {
     setCards(current => current.map(card => card.id === id ? {...card, ...change} as Card : card));
@@ -161,23 +193,6 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
     return () => {alive = false;};
   }, [door]);
 
-  // The microphone stays muted a moment after a take stops, so its last sound is not heard.
-  const wasPlaying = useRef(false);
-  useEffect(() => {
-    if (wasPlaying.current && !playing) {
-      setTail(true);
-      const timer = setTimeout(() => setTail(false), TAIL_MS);
-      wasPlaying.current = playing;
-      return () => clearTimeout(timer);
-    }
-    wasPlaying.current = playing;
-  }, [playing]);
-
-  const stop = useCallback(() => {
-    sdk.current.endSession();
-    void finishing.current();
-  }, []);
-
   // The meter counts while connected, and the session ends at its maximum (law 22).
   useEffect(() => {
     if (connectedAt === null || !session) return;
@@ -212,6 +227,7 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
 
   // Closing the panel ends a live session, and records it.
   useEffect(() => () => {
+    closed.current = true;
     if (sessionRef.current && !finished.current) {
       sdk.current.endSession();
       void finishing.current();
@@ -224,11 +240,21 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
     setError(null);
     try {
       const started = await door.start(projectId, artist);
+      if (closed.current) {
+        // The panel closed while the server started the session: it never connects, and its
+        // minutes are recorded as unused.
+        void door.end(started.session.session_id, 0, null, artist).catch(() => undefined);
+        return;
+      }
       setUsage(started.usage);
       sessionRef.current = started.session;
       finished.current = false;
       setSession(started.session);
       if (!started.conversation_token) throw new Error('The server started no conversation. Try again.');
+      // The microphone opens while the session connects, before it can be muted: no take sounds
+      // until it listens.
+      holding.current = true;
+      player.pause();
       conversation.startSession({conversationToken: started.conversation_token, connectionType: 'webrtc', clientTools: tools});
     } catch (failure) {
       setError(message(failure));
@@ -309,13 +335,11 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
     : conversation.isSpeaking ? 'Speaking' : 'Listening';
   const shown = cards.filter(card => card.kind === 'free' || card.state !== 'done' || card.note).slice(-8);
 
-  return <aside className={drawerOpen ? `${css.panel} ${css.compact}` : css.panel} aria-label="Voice director"
-    data-placement={drawerOpen ? 'above-drawer' : 'column'}>
-    <header className={css.head}>
-      <h2 className={css.title}>Voice director</h2>
-      <span className={css.status} role="status">{status}</span>
-      <button type="button" className={css.close} onClick={() => {if (live) stop(); onClose();}}>{live ? 'End and close' : 'Close'}</button>
-    </header>
+  return <>
+    <div className={css.cap}>
+      <span role="status">{status}</span>
+      {live && <span>Esc · Back to the work</span>}
+    </div>
 
     <section className={css.meter} aria-label="Voice minutes">
       {live && session ? <>
@@ -328,7 +352,7 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
     </section>
 
     {!live && <section className={css.start}>
-      <p className={css.notice}>While a session runs, your microphone audio goes to ElevenLabs. Take audio never does: playing a take mutes the microphone.</p>
+      <p className={css.notice}>{DISCLOSURE}</p>
       {usage && !usage.ready && <ul className={css.reasons}>{usage.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
       {unrecorded
         ? <button type="button" onClick={() => void recordEnd(unrecorded)}>Record the last session's minutes</button>
@@ -338,7 +362,11 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
     </section>}
 
     {live && <section className={css.live}>
-      <button type="button" aria-pressed={userMuted} onClick={() => setUserMuted(muted => !muted)}>{userMuted ? 'Unmute microphone' : 'Mute microphone'}</button>
+      <button type="button" aria-pressed={userMuted} onClick={() => {
+        mutedByArtist.current = !mutedByArtist.current;
+        setUserMuted(mutedByArtist.current);
+        microphone();
+      }}>{userMuted ? 'Unmute microphone' : 'Mute microphone'}</button>
       <button type="button" onClick={stop}>End session</button>
     </section>}
 
@@ -383,5 +411,5 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}
         {line.role !== 'note' && <span className={css.who}>{line.role === 'director' ? 'Director' : 'You'}</span>}{line.text}
       </li>)}
     </ol>
-  </aside>;
+  </>;
 }
