@@ -25,12 +25,16 @@ test('the door opens the panel beside the work, and the panel closes back to the
   expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
 });
 
-test('the closed door makes way while a room head fills its band, and returns with the Filmstrip', () => {
+test('the closed door makes way while anything is open over the Filmstrip, and returns with it', () => {
   const store = createViewStore();
   render(<ViewContext.Provider value={store}><VoiceDirectorPanel projectId="p1" door={fakeDoor()}/></ViewContext.Provider>);
   expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
   act(() => store.getState().inspect('n1'));
   expect(screen.queryByRole('button', {name: 'Voice director ›'})).toBeNull();
   act(() => { store.getState().closeTop(); });
+  expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
+  act(() => store.setState({drawer: 'd1'}));
+  expect(screen.queryByRole('button', {name: 'Voice director ›'})).toBeNull();
+  act(() => store.setState({drawer: null}));
   expect(screen.getByRole('button', {name: 'Voice director ›'})).toBeInTheDocument();
 });
