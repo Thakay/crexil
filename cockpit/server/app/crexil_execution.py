@@ -67,7 +67,6 @@ def workflow_hashes(preset: dict) -> dict[str, str]:
 def catalogue(stack, graphs: dict | None = None) -> list[dict]:
     results = []
     preview = config.CREXIL_PREVIEW
-    benches = stack.scheduler.snapshot()['benches']
     for preset in stack.catalog.values():
         raw = {cap: (config.WORKFLOWS_DIR / f'{ref}.json').read_bytes()
                for cap, ref in preset.get('workflows', {}).items()}
@@ -88,7 +87,7 @@ def catalogue(stack, graphs: dict | None = None) -> list[dict]:
             actions.append('combine')
         if {'inpaint_modify', 'inpaint_replace', 'remove'} & set(preset.get('workflows', {})):
             actions.append('region')
-        unavailable = preview or 'lane:local' in benches or f"engine:{preset['id']}" in benches
+        unavailable = preview or stack.scheduler.bench_holding(preset['id']) is not None
         results.append({'id': preset['id'], 'label': preset['display_name'],
             'revision': digest([preset, hashes])[:16], 'actions': actions,
             'inputs': preset.get('inputs', []), 'source_limit': max([1, *[len(ports) for ports in preset.get('source_ports', {}).values()]]),
@@ -101,7 +100,7 @@ def catalogue(stack, graphs: dict | None = None) -> list[dict]:
             'sources': [{'role': 'source', 'accepts': ['image']}], 'price_unit': 'attempt'})
     for model in stack.provider_catalog.selectable().values():
         limit = hosted_images.source_limit(model)
-        unavailable = preview or not stack.openrouter.key_present or 'lane:external' in benches or f"engine:{model['id']}" in benches
+        unavailable = preview or not stack.openrouter.key_present or stack.scheduler.bench_holding(model['id']) is not None
         results.append({'id': model['id'], 'label': model['label'],
             'revision': hosted_images.revision(model), 'actions': ['generate'] + (['continue'] if limit else []) + (['combine'] if limit > 1 else []),
             'inputs': hosted_images.inputs(model), 'source_limit': limit,

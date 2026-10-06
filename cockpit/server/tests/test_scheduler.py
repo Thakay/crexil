@@ -286,7 +286,7 @@ async def test_dead_key_benches_the_whole_external_lane_in_one_record(tmp_path):
         assert benched[0]["payload"]["scope"] == "lane:external"
 
 
-async def test_comfy_unreachable_benches_the_local_lane(tmp_path):
+async def test_comfy_unreachable_benches_comfyui_alone(tmp_path):
     async with opened(tmp_path) as db:
         ws = await db.create_workspace("A")
         local = FakeExecutor("comfy", "local")
@@ -302,7 +302,7 @@ async def test_comfy_unreachable_benches_the_local_lane(tmp_path):
         by = {sl["engine"]: sl["status"] for sl in done["slots"]}
         assert by == {"klein": "failed", "z-image": "held"}
         assert (await events_of(db, "engine.benched"))[0]["payload"]["scope"] \
-            == "lane:local"
+            == "provider:comfy"
 
 
 async def test_moderation_fails_the_slot_without_benching(tmp_path):

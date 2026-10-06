@@ -34,7 +34,7 @@ from .mesh import MESH_ENGINES, MeshExecutor
 from .openrouter import OpenRouterClient
 from .presets import load_presets
 from .providers import ProviderCatalog
-from .scheduler import OnEvent, Scheduler
+from .scheduler import COMFY_SCOPE, OnEvent, Scheduler
 
 
 # Every executor and the lane it serves. Local executors share one GPU and
@@ -248,20 +248,29 @@ async def startup_checks(sched: Scheduler, comfy: ComfyClient,
     probe timeouts."""
     benches = sched.snapshot()["benches"]
 
-    local = benches.get("lane:local")
+    # ComfyUI's absence benches ComfyUI alone (COMFY_SCOPE): the voice and 3D
+    # runners beside it keep serving (law 1). The local lane's own bench is
+    # the one GPU (law 14).
+    own = benches.get(COMFY_SCOPE)
     try:
         await comfy.system_stats()
         comfy_up = True
     except Exception:
         comfy_up = False
-    if not comfy_up and local is None:
+    if not comfy_up and own is None:
         await sched.bench(
-            "lane:local", kind="unreachable",
+            COMFY_SCOPE, kind="unreachable",
             cause=f"startup check: ComfyUI unreachable at "
                   f"{config.COMFYUI_URL} — start it (systemctl --user start "
                   f'comfyui), then POST /api/unbench {{"scope": '
-                  f'"lane:local"}}')
-    elif comfy_up and local and local["kind"] in AUTO_CLEAR:
+                  f'"{COMFY_SCOPE}"}}')
+    elif comfy_up and own and own["kind"] in AUTO_CLEAR:
+        await sched.unbench(COMFY_SCOPE)
+    stale = benches.get("lane:local")
+    if stale and stale["kind"] in AUTO_CLEAR:
+        # a lane bench for an unreachable runtime is a record from before
+        # ComfyUI had its own scope; replayed, it would hold every local
+        # engine, so it goes (ComfyUI's own bench above holds its takes)
         await sched.unbench("lane:local")
 
     # The 3D runner is a SECOND local engine, so its absence is an
