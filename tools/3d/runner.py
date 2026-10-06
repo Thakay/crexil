@@ -16,7 +16,11 @@ only: no new dependency enters the repo for a service this small.
 Binds 127.0.0.1:8189, mirroring ComfyUI's bind exactly — the container
 reaches it at `host.docker.internal:8189` through WSL's localhost relay
 (the same relay, and the same known caveat: it can die after Windows sleep;
-`wsl --shutdown` or networkingMode=mirrored).
+`wsl --shutdown` or networkingMode=mirrored). It has no accounts, so it
+answers only requests addressed to this machine or to `host.docker.internal`,
+never a web page (any Origin is refused), and job and upload bodies only in
+their declared types. Listening beyond loopback takes
+THREED_RUNNER_ALLOW_REMOTE=1; THREED_RUNNER_ALLOWED_HOSTS names further hosts.
 
 **One job at a time.** The cockpit's local lane already serialises every GPU
 take across executors, but this is the GPU's own door: a stray second
@@ -110,6 +114,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import ipaddress
 import json
 import logging
 import os
@@ -124,7 +129,7 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, urlsplit
 
 HERE = Path(__file__).resolve().parent
 FUNNEL = HERE / "funnel.py"
@@ -137,6 +142,20 @@ SERVE = RUNS / ".serve"
 
 HOST = os.environ.get("THREED_RUNNER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("THREED_RUNNER_PORT", "8189"))
+# Who may knock: the runner has no accounts, so it answers only requests
+# addressed to this machine's loopback names or to host.docker.internal, the
+# name the cockpit's container uses for the host (compose.yaml), and never a
+# web page. Listening beyond loopback takes THREED_RUNNER_ALLOW_REMOTE=1, and
+# THREED_RUNNER_ALLOWED_HOSTS (comma-separated) names further hosts clients use.
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "host.docker.internal"})
+ALLOW_REMOTE = os.environ.get("THREED_RUNNER_ALLOW_REMOTE") == "1"
+ALLOWED_HOSTS = LOCAL_HOSTS | {h.strip().strip("[]").lower()
+                               for h in os.environ.get("THREED_RUNNER_ALLOWED_HOSTS", "").split(",")
+                               if h.strip()}
+JOB_TYPE = "application/json"
+# A refused body up to this size is read and dropped before the answer, so
+# closing the connection never resets it before the refusal arrives.
+DRAIN_LIMIT = 1024 * 1024
 # A cold TRELLIS.2/Hunyuan take is 155–216 s (measured); the ceiling is a
 # runaway guard, not a schedule. The cockpit has its own per-take timeout.
 JOB_TIMEOUT_S = float(os.environ.get("THREED_JOB_TIMEOUT_S", "1800"))
@@ -350,6 +369,58 @@ class Refused(Exception):
 
 
 # --- job records (the reconcile surface) ---
+
+def host_named(header: str | None) -> str | None:
+    """The host a Host header names, lowercased, without its port or IPv6
+    brackets; None when the header is missing or unreadable."""
+    if not header:
+        return None
+    try:
+        parts = urlsplit("//" + header.strip())
+        _ = parts.port                                 # a malformed port raises
+    except ValueError:
+        return None
+    return parts.hostname or None
+
+
+def refusal(headers, allowed_hosts: frozenset[str]) -> tuple[int, str] | None:
+    """Why a request is not served, or None. A Host outside the allow-list is
+    DNS rebinding or a misaddressed client; an Origin is a web page."""
+    host = host_named(headers.get("Host"))
+    if host not in allowed_hosts:
+        return 403, (f"Refused: this runner answers requests addressed to {', '.join(sorted(allowed_hosts))}; "
+                     f"this one is addressed to {host or 'no host'}.")
+    if headers.get("Origin") is not None:
+        return 403, "Refused: this runner serves the cockpit's server, never a web page."
+    return None
+
+
+def wrong_type(headers, expected: str) -> tuple[int, str] | None:
+    """A body that changes state must name its type. A web page can send plain
+    text or a form without asking first, never these types, so the check
+    closes that door."""
+    given = (headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+    return None if given == expected else (415, f"Refused: send the body as {expected}.")
+
+
+def loopback(host: str) -> bool:
+    name = host.strip().lower()
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+def check_bind(host: str, allow_remote: bool) -> None:
+    """Refuse to listen beyond this machine unless asked by name: the runner
+    has no accounts."""
+    if not allow_remote and not loopback(host):
+        raise ValueError(f"Refusing to listen on {host}: the runner has no accounts, so it serves this "
+                         "machine only. To serve the network anyway, set THREED_RUNNER_ALLOW_REMOTE=1 "
+                         "and name the hosts clients use in THREED_RUNNER_ALLOWED_HOSTS.")
+
 
 def record_path(job_id: str) -> Path:
     return JOBS / f"{job_id}.json"
@@ -1045,11 +1116,13 @@ class Handler(BaseHTTPRequestHandler):
         log.info("%s - %s", self.address_string(), fmt % a)
 
     # -- helpers --
-    def _json(self, code: int, payload) -> None:
+    def _json(self, code: int, payload, *, close: bool = False) -> None:
         body = json.dumps(payload).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if close:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1059,6 +1132,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def _refuse(self, why: tuple[int, str] | None) -> bool:
+        """Answer a refusal and close the connection, saying so in the answer so
+        no client reuses it. A body up to DRAIN_LIMIT is read and dropped first,
+        so the close neither resets the answer in flight nor leaves the body to
+        be read as the next request."""
+        if why is None:
+            return False
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if 0 < length <= DRAIN_LIMIT:
+            self.rfile.read(length)
+        self._json(why[0], {"detail": why[1]}, close=True)
+        return True
 
     def _file(self, path: Path | None, ctype: str, missing: str) -> None:
         if path is None or not path.is_file():
@@ -1075,6 +1164,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routes --
     def do_GET(self) -> None:
+        if self._refuse(refusal(self.headers, ALLOWED_HOSTS)):
+            return None
         u = urlparse(self.path)
         parts = [p for p in u.path.split("/") if p]
         if parts == ["health"]:
@@ -1132,8 +1223,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"detail": f"no route {u.path}"})
 
     def do_POST(self) -> None:
+        if self._refuse(refusal(self.headers, ALLOWED_HOSTS)):
+            return None
         path = urlparse(self.path).path.rstrip("/")
         by_route = {v["route"]: k for k, v in INPUTS.items()}
+        expected = INPUTS[by_route[path]]["ctype"] if path in by_route else JOB_TYPE if path == "/jobs" else None
+        if expected and self._refuse(wrong_type(self.headers, expected)):
+            return None
         if path in by_route:
             # a RAW body, deliberately: a 35 MB GLB (or a field set of the
             # same order) base64'd into a JSON document is a third again as
@@ -1168,6 +1264,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(202, {"job_id": rec["id"], "state": rec["state"]})
 
     def do_DELETE(self) -> None:
+        if self._refuse(refusal(self.headers, ALLOWED_HOSTS)):
+            return None
         parts = [p for p in urlparse(self.path).path.split("/") if p]
         if len(parts) != 2 or parts[0] != "jobs":
             return self._json(404, {"detail": f"no route {self.path}"})
@@ -1190,6 +1288,11 @@ def main() -> int:
     global WORKER, RESIDENT
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    try:
+        check_bind(HOST, ALLOW_REMOTE)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
     for path, what in ((PYTHON, "the funnel venv's python"), (FUNNEL, "funnel.py")):
         if not path.exists():
             print(f"missing {what}: {path}", file=sys.stderr)
