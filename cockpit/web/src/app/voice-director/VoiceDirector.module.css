@@ -1,0 +1,71 @@
+/* The voice director's door and panel. A floating layer: fixed at the top right of the work,
+   clear of the project bar, the queue, the footer and the draft drawer, never reflowing a row
+   (the bible's motion rule). Values come from tokens.css; gold marks money about to move, the
+   accent marks a door. Selectors name the element as well as the class, so the surface's own
+   button and input rules never restyle the panel. */
+
+.dock { position: fixed; top: 56px; right: 16px; z-index: 45; }
+.dock .door {
+  font: 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: var(--r-panel); padding: 7px 12px; cursor: pointer; box-shadow: var(--shadow-menu);
+}
+.dock .door:hover { background: var(--raised); }
+.dock .door:focus-visible, aside.panel button:focus-visible, aside.panel input:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+
+.panel {
+  position: fixed; right: 12px; top: 56px; bottom: 130px; z-index: 45; width: 356px; max-width: calc(100vw - 24px);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); color: var(--text); font: 12px/1.45 var(--font-ui);
+  border: 1px solid var(--border-strong); border-radius: var(--r-panel); box-shadow: var(--shadow-menu);
+}
+/* While the draft drawer is open the panel keeps to the top, above the drawer's run bar. */
+.compact { bottom: auto; max-height: calc(35vh - 90px); overflow: auto; }
+.compact .log, .compact .notice { display: none; }
+
+aside.panel button {
+  font: 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--secondary); background: transparent; border: 1px solid var(--border);
+  border-radius: var(--r-control); padding: 6px 10px; cursor: pointer;
+}
+aside.panel button:hover { color: var(--text); background: var(--raised); }
+aside.panel button:disabled { opacity: .5; cursor: default; }
+aside.panel .paid { color: var(--money); border-color: var(--money); background: var(--tint-money); }
+.loading { padding: 16px 14px; color: var(--secondary); }
+
+.head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--hairline); flex: none; }
+.title { margin: 0; font: 10px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text); font-weight: 400; }
+.status { font: 9px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--secondary); }
+aside.panel .close { margin-left: auto; }
+
+.meter { padding: 10px 14px 0; flex: none; }
+.meter meter { width: 100%; height: 6px; }
+.meter p { margin: 6px 0 0; font: 9px var(--font-mono); letter-spacing: .06em; color: var(--secondary); text-transform: uppercase; }
+
+.start, .live { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; flex: none; }
+.live { flex-direction: row; }
+.notice { margin: 0; color: var(--secondary); font-size: 11px; }
+.reasons { margin: 0; padding-left: 18px; color: var(--secondary); font-size: 11px; }
+.reasons li { margin: 2px 0; }
+.error { margin: 0 14px 8px; padding: 8px 10px; color: var(--text); background: var(--tint-danger); border-left: 2px solid var(--danger); font-size: 11px; }
+
+.cards { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 10px; overflow: auto; max-height: 45%; flex: none; }
+.card { border: 1px solid var(--border); border-radius: var(--r-inner); background: var(--card); padding: 10px; }
+.eyebrow { margin: 0 0 4px; font: 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--secondary); }
+.what { margin: 0 0 4px; color: var(--text); overflow-wrap: anywhere; }
+.facts { margin: 0 0 4px; font: 10px var(--font-mono); color: var(--secondary); overflow-wrap: anywhere; }
+.cardNote { margin: 6px 0 0; font-size: 11px; color: var(--secondary); }
+.actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.reason { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; color: var(--secondary); font-size: 10px; }
+aside.panel .reason input {
+  min-width: 0; color: var(--text); background: var(--input); border: 1px solid var(--border);
+  border-radius: var(--r-control); padding: 6px 8px; font: 12px var(--font-ui);
+}
+
+.log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 14px 14px; list-style: none; border-top: 1px solid var(--hairline); }
+.log li { margin: 0 0 8px; overflow-wrap: anywhere; }
+.empty { color: var(--secondary); }
+.who { display: block; font: 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--secondary); }
+.artist { color: var(--secondary); }
+.director { color: var(--text); }
+.note { color: var(--secondary); font: 10px var(--font-mono); }

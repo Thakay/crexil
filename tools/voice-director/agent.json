@@ -1,0 +1,178 @@
+{
+  "name": "Crexil voice director",
+  "tags": ["crexil-voice-director"],
+  "conversation_config": {
+    "agent": {
+      "first_message": "I'm your voice director. Describe the character's voice, or tell me what to try.",
+      "language": "en",
+      "prompt": {
+        "prompt": "You are the voice director inside Crexil, a bench where an artist compares AI-made takes and keeps a record of every choice. You help the artist cast voices and sounds for the open project's character.\n\nAct only when the artist asks. Your tools: list_engines, get_project_summary, prepare_run, get_run_status, play_take and propose_pick. You cannot submit paid work, pick, reveal a blind run, deliver or change limits: the artist does those with a click in the panel. A run that only uses free local engines starts when you prepare it; a paid run waits for the artist's click, so tell them its price.\n\nBefore preparing a run, say which engines and how many takes, and the cap you will set. Never invent engine ids; use list_engines. Voice design needs a preview line of 100 to 1000 characters for the takes to speak. Speech needs a voice take; name it by its label. Name takes by their labels, like 2B.\n\nYou never hear take audio, and you never receive it. To judge a take, play it for the artist with play_take and ask what they heard. Base every proposal on the artist's words or on the facts your tools return. When a run is blind, never guess which engine made a take; say the run is blind until the artist reveals it.\n\nKeep replies to one or two spoken sentences. Say prices only as your tools state them.",
+        "llm": "claude-haiku-4-5",
+        "temperature": 0.2,
+        "max_tokens": 300,
+        "enable_parallel_tool_calls": false
+      }
+    },
+    "tts": {
+      "model_id": "eleven_v4_turbo"
+    },
+    "conversation": {
+      "max_duration_seconds": 300
+    }
+  },
+  "platform_settings": {
+    "auth": {
+      "enable_auth": true
+    },
+    "call_limits": {
+      "daily_limit": 50,
+      "agent_concurrency_limit": 1
+    },
+    "privacy": {
+      "record_voice": false,
+      "retention_days": 7
+    }
+  },
+  "client_tools": [
+    {
+      "type": "client",
+      "name": "list_engines",
+      "description": "Lists the engines the artist can use for audio or image work, with each one's id, actions, whether it is available now and why not, where it runs and how it is priced. Read-only.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "string",
+            "enum": ["audio", "image"],
+            "description": "Which kind of engine to list. Audio unless the artist asks about images."
+          }
+        },
+        "required": []
+      },
+      "expects_response": true,
+      "response_timeout_secs": 20,
+      "execution_mode": "immediate"
+    },
+    {
+      "type": "client",
+      "name": "get_project_summary",
+      "description": "Reads the open project: its name, brief, spending limit and what it has spent, and its three latest runs with their states and picked takes. Read-only.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "expects_response": true,
+      "response_timeout_secs": 20,
+      "execution_mode": "immediate"
+    },
+    {
+      "type": "client",
+      "name": "prepare_run",
+      "description": "Prepares an audio run and checks its price. A run on free local engines starts at once. A paid run waits for the artist's click in the panel, and this tool never submits it. Say the engines, the takes and the cap to the artist first.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["voice-design", "speak", "sfx"],
+            "description": "voice-design invents voices from a description, speak reads a line in a chosen voice, sfx makes a sound effect."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "For voice-design, the voice description. For speak, the line to say. For sfx, the sound to make."
+          },
+          "engines": {
+            "type": "array",
+            "description": "The engines to use, by the ids list_engines returned, and how many attempts each.",
+            "items": {
+              "type": "object",
+              "description": "One engine and its attempts.",
+              "properties": {
+                "id": {"type": "string", "description": "An engine id from list_engines."},
+                "count": {"type": "integer", "description": "Attempts on this engine, 1 to 4."}
+              },
+              "required": ["id", "count"]
+            }
+          },
+          "spending_limit_usd": {
+            "type": "number",
+            "description": "The run's cap in US dollars. Tell the artist this number before preparing."
+          },
+          "preview_line": {
+            "type": "string",
+            "description": "voice-design only: the words every preview speaks, 100 to 1000 characters."
+          },
+          "voice_take": {
+            "type": "string",
+            "description": "speak only: the label of the voice take to speak with, like 2B."
+          },
+          "duration_seconds": {
+            "type": "number",
+            "description": "sfx only: the sound's length in seconds, 0.5 to 30."
+          },
+          "blind": {
+            "type": "boolean",
+            "description": "True to hide which engine made each take until the artist reveals the run."
+          }
+        },
+        "required": ["action", "prompt", "engines", "spending_limit_usd"]
+      },
+      "expects_response": true,
+      "response_timeout_secs": 30,
+      "execution_mode": "immediate"
+    },
+    {
+      "type": "client",
+      "name": "get_run_status",
+      "description": "Reads one run: its state, a one-line summary, its cap and spending, and each take by label with its state and length. Read-only.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string", "description": "The run id prepare_run or get_project_summary returned."}
+        },
+        "required": ["run_id"]
+      },
+      "expects_response": true,
+      "response_timeout_secs": 20,
+      "execution_mode": "immediate"
+    },
+    {
+      "type": "client",
+      "name": "play_take",
+      "description": "Plays one audio take for the artist through their speakers. You do not hear it; ask the artist what they heard.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string", "description": "The run the take belongs to."},
+          "take": {"type": "string", "description": "The take's label, like 2B."}
+        },
+        "required": ["run_id", "take"]
+      },
+      "expects_response": true,
+      "response_timeout_secs": 20,
+      "execution_mode": "immediate"
+    },
+    {
+      "type": "client",
+      "name": "propose_pick",
+      "description": "Proposes takes for the artist to pick, with a short reason. It records your proposal and never changes the pick; the artist picks with a click in the panel.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "run_id": {"type": "string", "description": "The run the takes belong to."},
+          "takes": {
+            "type": "array",
+            "description": "The labels of the takes you propose, like 2B.",
+            "items": {"type": "string", "description": "A take label."}
+          },
+          "reason": {"type": "string", "description": "Why, in one short sentence, from the artist's words or the facts."}
+        },
+        "required": ["run_id", "takes", "reason"]
+      },
+      "expects_response": true,
+      "response_timeout_secs": 20,
+      "execution_mode": "immediate"
+    }
+  ]
+}

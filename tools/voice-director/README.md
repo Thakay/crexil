@@ -1,0 +1,88 @@
+# Voice director
+
+The voice director is an ElevenLabs Agents conversation inside Crexil. The artist talks, and the
+agent lists engines, prepares audio runs, plays takes and proposes picks, all through the same
+shared actions the artist uses. The panel is `cockpit/web/src/app/voice-director/`. This folder
+holds the agent's configuration and the one command that applies it to an ElevenLabs account.
+
+## What the agent may and may not do
+
+| May | Never |
+|---|---|
+| List engines, read the project and a run | Hear or receive take audio: its tools return facts, labels and reasons only |
+| Prepare a run; a run on free local engines starts at once | Submit a paid run: the artist confirms it with a click, and the price is on the button (laws 6 and 22) |
+| Play a take for the artist through the speakers | Pick, reveal a blind run, deliver or change limits (law 23) |
+| Propose a pick with a reason, recorded as its own decision | Act unasked: it acts only on the artist's spoken request (law 15) |
+
+Every write the agent makes is recorded as `agent:voice-director`. Every write the artist
+confirms in the panel is recorded under the artist's name.
+
+ElevenLabs' policy forbids using its output as input to any machine learning, and the language
+model behind the agent is one. So no take audio, URL or file address ever reaches the agent.
+While a take plays, the panel mutes the microphone and turns the agent's voice down.
+
+## Files
+
+| File | Holds |
+|---|---|
+| `agent.json` | The agent: name, tag, prompt, language model, voice model, the session's longest duration, privacy, and the six client tools. No key, no account id |
+| `apply.py` | Validates `agent.json` and creates or updates the agent and its tools |
+
+The six tool names in `agent.json` must match the panel's handlers in
+`cockpit/web/src/app/voice-director/tools.ts`. A test checks it.
+
+## Apply
+
+A dry run validates the file and prints every call a live run would make. It reads no key and
+opens no connection:
+
+```sh
+python3 tools/voice-director/apply.py --dry-run
+```
+
+A live run needs `ELEVENLABS_API_KEY` in the environment. It never reads a file for it and never
+prints it:
+
+```sh
+set -a; . ./.env; set +a          # from the checkout whose .env holds the key
+python3 tools/voice-director/apply.py
+```
+
+It checks that the configured language model is offered, creates the six client tools and then
+the agent, and prints the line to add to `.env`:
+
+```text
+ELEVENLABS_VOICE_AGENT_ID=...
+```
+
+To update an agent that exists, pass `--agent-id` or keep `ELEVENLABS_VOICE_AGENT_ID` set: apply
+reads the agent's tool ids and updates them in place. `--voice-id` sets the director's own voice;
+without it the platform's default voice speaks. `--session-max` must equal the installation's
+`CREXIL_VOICE_SESSION_MAX_S` (default 300); the file's `max_duration_seconds` must equal it too.
+
+Then set the minutes Crexil may spend, and restart the server:
+
+```text
+CREXIL_VOICE_MINUTES_CAP=10        # 0, the default, starts no session
+CREXIL_VOICE_SESSION_MAX_S=300
+```
+
+## Costs and limits
+
+Minutes are capped in three places (law 22):
+
+- **Crexil's budget:** the server refuses a session when the minutes left cover less than one
+  session, and the panel ends a session at its maximum.
+- **The agent's own limit:** `conversation.max_duration_seconds` ends a session ElevenLabs-side.
+- **The provider's call limits:** `call_limits.daily_limit` and `agent_concurrency_limit`.
+
+ElevenLabs lists agent minutes at $0.08 each beyond a plan's included minutes, with the
+language model billed on top. The panel shows this as an estimate, never as a promise (law 17).
+
+## Confirm on the first live run
+
+- That `claude-haiku-4-5` is offered on the account; otherwise choose another tool-capable model.
+- The privacy fields ElevenLabs accepts (`record_voice`, `retention_days`), and whether the
+  account's data-use setting keeps conversations from improving models.
+- The tool and agent response shapes (`id`, `agent_id`, `tool_config`) and the token's lifetime.
+- Whether minutes are billed per second.
