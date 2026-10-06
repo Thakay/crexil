@@ -411,8 +411,12 @@ async def test_backups_keep_audio_facts_and_blind_runs(tmp_path, monkeypatch):
         upload, _ = await backup_upload(client, p['id'])
         copy = await restored(client, upload)
         assert copy['project']['id'] != p['id']
-        assert [n['audio']['container'] for n in copy['nodes']] == ['wav'] * 3
+        facts = await store().audio_facts(copy['project']['id'])
+        assert sorted(facts) == sorted(n['id'] for n in copy['nodes'])
+        assert [facts[n['id']]['container'] for n in copy['nodes']] == ['wav'] * 3
         assert len(copy['blind_runs']) == 1 and copy['blind_runs'][0]['turn_id'] == copy['turns'][0]['id']
+        assert copy['blind_runs'][0]['revealed'] is False          # a restored blind run stays blind
+        assert all(n['identity_hidden'] and n['audio']['container'] is None for n in copy['nodes'])
 
 
 # --- the v13 store ---

@@ -49,7 +49,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-from . import config, manifests, promote
+from . import blind, config, manifests, promote
 from .api_v4 import _live_node, _stack, _turntable_file
 from .db import new_id
 from .schemas import (PromoteBrowse, PromotePreview, PromoteRepoint,
@@ -164,6 +164,10 @@ async def _context(nid: str) -> tuple:
     manifest and the preview both need, fetched once."""
     db = _stack().db
     node = await _live_node(nid)
+    if await blind.is_hidden(db, node["turn_id"]):
+        # a manifest names the take's engine, so a blind run's takes wait for its reveal
+        raise HTTPException(409, "This take belongs to a blind run. Reveal the run before "
+                                 "promoting it, so its record can name its engine.")
     workspace = await db.get_workspace(node["workspace_id"])
     turn = await db.get_turn(node["turn_id"]) if node["turn_id"] else None
     slot = await db.get_slot(node["slot_id"]) if node["slot_id"] else None

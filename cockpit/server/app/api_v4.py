@@ -1112,11 +1112,12 @@ async def backfill_turn(turn_id: str, body: MoneyGate | None = None):
 async def _node_view_full(db, node: dict) -> dict:
     """db.get_node stays unjoined by contract (list_nodes docstring); the
     wire shape carries the two label keys, so single-node responses fetch
-    them here."""
+    them here. A blind run's take answers masked until its reveal."""
     turn = await db.get_turn(node["turn_id"]) if node["turn_id"] else None
     slot = await db.get_slot(node["slot_id"]) if node["slot_id"] else None
-    return _node_view({**node, "turn_idx": turn["idx"] if turn else None,
+    view = _node_view({**node, "turn_idx": turn["idx"] if turn else None,
                        "slot_pos": slot["pos"] if slot else None})
+    return blind.mask("node", view) if await blind.is_hidden(db, node["turn_id"]) else view
 
 
 @router.post("/nodes/{nid}/set-aside", response_model=Node)
