@@ -2,7 +2,8 @@
 
 Endpoint descriptions own capabilities and tariffs. Only explicitly understood
 controls and flat per-image billing can be compiled; all other saved values are
-refused in words. A tariff reserves expected spend but never promises a hard cap.
+refused in words. A tariff reserves expected spend but never promises a hard cap,
+and a tariff that cannot state its amount exactly is an unknown price (law 22).
 Endpoint facts older than CATALOG_TTL_S never compile; the refusal states their
 observed age and why no fresher facts exist (laws 3 and 17).
 Dispatch must recheck the exact endpoint description before sending source bytes.
@@ -20,6 +21,7 @@ from decimal import Decimal, InvalidOperation
 
 from PIL import Image
 
+from .crexil_budget import UnknownPrice
 from .providers import CATALOG_TTL_S
 
 # Observations that change without the model changing; a revision ignores them.
@@ -80,11 +82,15 @@ def source_limit(model: dict) -> int:
 
 
 def tariff(endpoint: dict, output_count: int, reference_count: int) -> Decimal:
+    """The exact reservation for one attempt from the endpoint's published
+    per-image tariff. A tariff that cannot state that amount exactly raises
+    `UnknownPrice`: an unknown price counts as over every cap, so the whole run
+    is refused before any engine is called (law 22)."""
     prices = endpoint.get('pricing')
     if not isinstance(prices, list) or not prices:
-        raise ValueError('This endpoint has no complete published tariff.')
+        raise UnknownPrice('This endpoint has no complete published tariff.')
     if not any(p.get('billable') == 'output_image' for p in prices):
-        raise ValueError('The published tariff does not describe output-image charges.')
+        raise UnknownPrice('The published tariff does not describe output-image charges.')
     total = Decimal(0)
     seen = set()
     for price in prices:
@@ -92,15 +98,15 @@ def tariff(endpoint: dict, output_count: int, reference_count: int) -> Decimal:
         try:
             rate = Decimal(str(price['cost_usd']))
         except (KeyError, InvalidOperation) as exc:
-            raise ValueError('The published tariff has an unknown rate.') from exc
+            raise UnknownPrice('The published tariff has an unknown rate.') from exc
         if not rate.is_finite() or rate < 0 or price.get('variants') or price.get('conditions'):
-            raise ValueError('This conditional tariff is not supported for budget reservations.')
+            raise UnknownPrice('This conditional tariff is not supported for budget reservations.')
         if set(price) - {'billable', 'unit', 'cost_usd'}:
-            raise ValueError('The tariff has additional pricing rules that need qualification.')
+            raise UnknownPrice('The tariff has additional pricing rules that need qualification.')
         if rate == 0:
             continue
         if price.get('unit') != 'image' or billable not in ('input_image', 'output_image') or billable in seen:
-            raise ValueError('This tariff cannot be reserved from a fixed number of images.')
+            raise UnknownPrice('This tariff cannot be reserved from a fixed number of images.')
         seen.add(billable)
         total += rate * (output_count if billable == 'output_image' else reference_count)
     return total

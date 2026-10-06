@@ -16,7 +16,11 @@ words as its cause, and nothing is generated.
 
 Recovery is a lookup of the runner's job records, and it never raises: a raised
 failure during recovery would bench the whole local lane and stop the image
-engines beside this one (law 1).
+engines beside this one (law 1). Once the runner names a take's job, the take is
+never sent again: a poll the runner does not answer asks about the same job
+again, and a runner silent for REATTACH_S leaves the take's outcome uncertain,
+its job id kept, so collecting looks the job up and nothing is generated twice
+(law 14).
 """
 
 from __future__ import annotations
@@ -37,7 +41,13 @@ PROVIDER = 'voice-runner'
 VERBS = ('voice-design', 'speak')
 TERMINAL = frozenset({'done', 'failed', 'cancelled'})
 POLL_S = 0.5                       # a local voice job lasts seconds; the poll is cheap
+# How long a running job is asked about again while the runner does not answer,
+# before its outcome counts as uncertain. The lane waits that long, because the
+# card may still be busy with the job (law 14), and no longer (law 1).
+REATTACH_S = 60.0
 START_HINT = 'Start it with tools/tts/runner.py (see tools/tts/README.md).'
+SILENT = ('The local voice runner stopped answering while this take was running, so it was not sent '
+          'again. When the runner answers, collect files to look for its takes; nothing is generated again.')
 
 
 @dataclass
@@ -53,15 +63,17 @@ class VoiceRunnerExecutor:
     name: str = PROVIDER
     lane: Lane = 'local'
 
-    def __init__(self, base_url: str | None = None) -> None:
+    def __init__(self, base_url: str | None = None, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._base = (base_url or config.VOICE_RUNNER_URL).rstrip('/')
+        self._transport = transport
         self._client: httpx.AsyncClient | None = None
 
     # --- lifecycle ---
 
     async def open(self) -> None:
         if self._client is None:
-            self._client = httpx.AsyncClient(base_url=self._base, timeout=httpx.Timeout(60.0, connect=5.0))
+            self._client = httpx.AsyncClient(base_url=self._base, transport=self._transport,
+                                             timeout=httpx.Timeout(60.0, connect=5.0))
 
     async def close(self) -> None:
         if self._client is not None:
@@ -135,13 +147,25 @@ class VoiceRunnerExecutor:
         return {'wav_b64': base64.b64encode(blob).decode(), 'text': voice.get('text')}
 
     async def wait(self, handle: VoiceHandle) -> ExecutionResult:
+        """Follow the accepted job to its end. A poll the runner does not
+        answer asks about the same job again, never starting another (law
+        14): an `unreachable` failure here would be retried as a second job.
+        After REATTACH_S of silence the outcome is uncertain: the job id
+        stays on the take, so collecting looks it up later."""
         if not handle.job_ref:
             raise EngineFailure('error', 'The local voice runner gave no job id.')
+        loop = asyncio.get_running_loop()
+        answered = loop.time()                 # the runner just named this job
         while True:
             try:
                 record = await self._fetch(handle.job_ref)
             except httpx.HTTPError as exc:
-                raise self._unreachable(exc, 'while the take was running') from exc
+                if loop.time() - answered >= REATTACH_S:
+                    raise EngineFailure('uncertain', SILENT, detail=str(exc)[:600], job_ref=handle.job_ref,
+                                        charged_usd=0, plain=True) from exc
+                await asyncio.sleep(POLL_S)
+                continue
+            answered = loop.time()
             if record is None:
                 raise EngineFailure('error', 'The local voice runner has no record of this job. '
                                              'It may have restarted during the take.')

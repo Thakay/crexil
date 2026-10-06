@@ -4,10 +4,11 @@ The run flag is set at preparation (`Preparation.blind`) and recorded at Run in
 `blind_runs`. A run stays hidden until its first `run.revealed` event, which
 names its author (law 23). While hidden, every read that tells its takes apart
 by engine passes through `mask`: the snapshot, `/api/events`, `/api/queue`, the
-workspace and node reads, the tray, the per-take record, record search, the
-decision export and execution files. A masked item says so with
-`identity_hidden: true`; its engine reads `HIDDEN_ENGINE`, never null, because a
-null engine means imported material. Run totals and caps stay visible (law 22).
+workspace and node reads (set-aside and restore answers too), the tray, the
+per-take record, record search, the decision export and execution files. A
+masked item says so with `identity_hidden: true`; its engine reads
+`HIDDEN_ENGINE`, never null, because a null engine means imported material. Run
+totals and caps stay visible (law 22).
 Delivery, Promote and reuse refuse a hidden take, so no manifest, hand-off
 folder or copy names its engine before the reveal; a continuation from a hidden
 take is refused at review, so no child's request carries its source's engine.
@@ -16,10 +17,12 @@ A hidden take shows one time, its run's creation time: its landing time, its
 attempt's timings and its own events' times wait for the reveal, so the order
 in which takes land never shows through the clock. A bench event names no hidden
 take: a held take's bench scope is withheld, an engine-and-run bench of a hidden
-run reads as masked, and hidden takes leave every bench's held and resumed
-lists. A hidden take's failure events keep their kind and plain line, never the
-site, exception or traceback of the code that failed. A blind run compares at
-least two engines and is sent whole or not at all (`crexil_execution.review`).
+run reads as masked and stays out of the queue's bench list, and hidden takes
+leave every bench's held and resumed lists. A resume recorded on a hidden take
+names no bench. A hidden take's failure events keep their kind and plain line,
+never the site, exception or traceback of the code that failed. A blind run
+compares at least two engines and is sent whole or not at all
+(`crexil_execution.review`).
 
 What blindness does not hide: which engines the run asked for (the artist chose
 them), which takes share one attempt, a take's own audible or visible content,
@@ -55,7 +58,8 @@ IDENTITY_KEYS = frozenset({
     'external', 'submitted', 'submitted_graph', 'upload', 'operation_id', 'operation_revision',
     'registration_id', 'registration_revision', 'executor', 'frame', 'facts', 'detail', 'duration_ms',
     'container', 'codec', 'sample_rate', 'channels', 'controls', 'fixed', 'filename', 'identity', 'role',
-    'bench', 'unbench', 'in_flight', 'collection_errors', 'site', 'error', 'exc_type', 'message', 'traceback',
+    'bench', 'bench_seq', 'unbench', 'in_flight', 'collection_errors', 'site', 'error', 'exc_type', 'message',
+    'traceback',
 })
 
 # The audio facts a take's own sound already carries stay readable.
@@ -90,6 +94,7 @@ _CAUSES = {
     'internal': 'Crexil failed on this take.',
     'collection': "This take's files could not be collected.",
     'preflight': 'The request was stopped before it was sent.',
+    'uncertain': 'The engine stopped answering about this take, so it was not sent again.',
     'repeat': 'One engine failed twice in this run; its other takes here are held, not dropped.',
 }
 _REVEAL_FOR_MORE = " Reveal the run to read the engine's own words."
@@ -114,12 +119,16 @@ async def mark(db, turn_id: str, workspace_id: str, actor: dict) -> None:
     await db.mark_blind_run(turn_id, workspace_id, actor)
 
 
+def scope_run(scope: str | None) -> str | None:
+    """The run an engine-and-run bench scope names (law 1's A9 scope), if any."""
+    return scope.split(_TURN_SCOPE, 1)[1] if scope and _TURN_SCOPE in scope else None
+
+
 def _scope_turn(event: dict) -> str | None:
-    """The run an engine-and-run bench event names (law 1's A9 scope), if any."""
+    """The run an engine-and-run bench event names, if any."""
     if event.get('type') not in _BENCH_EVENTS:
         return None
-    scope = (event.get('payload') or {}).get('scope') or ''
-    return scope.split(_TURN_SCOPE, 1)[1] if _TURN_SCOPE in scope else None
+    return scope_run((event.get('payload') or {}).get('scope'))
 
 
 async def _slots_of(db, turn_ids) -> frozenset[str]:

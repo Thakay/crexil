@@ -132,6 +132,86 @@
         "title": "ArchiveUpload",
         "type": "object"
       },
+      "AttemptMove": {
+        "additionalProperties": false,
+        "description": "One participant's move on one attempt: the attempt as they saw it\n(a later attempt of the same slot refuses as stale), and why.",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "attempt"
+        ],
+        "title": "AttemptMove",
+        "type": "object"
+      },
+      "AttemptMoveView": {
+        "description": "What one move on one attempt did, recorded with its participant\n(law 23). `words` say it plainly, with what it cost, and name no engine\n(laws 3 and 5); `released` counts the held attempts a resume sent back to\nthe queue.",
+        "properties": {
+          "action": {
+            "enum": [
+              "resume",
+              "cancel"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "released": {
+            "default": 0,
+            "title": "Released",
+            "type": "integer"
+          },
+          "slot_id": {
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "words": {
+            "title": "Words",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "attempt",
+          "action",
+          "words",
+          "actor",
+          "reason"
+        ],
+        "title": "AttemptMoveView",
+        "type": "object"
+      },
       "AudioFacts": {
         "description": "Measured once by the server at collection; the bytes never change.\n\n`loudness_lufs` is gated integrated loudness by ITU-R BS.1770-4 (null\nwhen no 400 ms block clears the absolute gate). `peaks` is the absolute\nsample peak of up to 256 equal spans, from 0 to 1, for drawing. `text` is\nthe spoken words, `voice` the voice identity the engine reported, and\n`alignment` per-character timing when the engine reports it. Format facts\nare null only while a blind run withholds them.",
         "properties": {
@@ -2768,6 +2848,13 @@
           "attempts": {
             "title": "Attempts",
             "type": "integer"
+          },
+          "automatic_retry": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Automatic Retry",
+            "type": "object"
           },
           "blocked_attempts": {
             "title": "Blocked Attempts",
@@ -10728,6 +10815,59 @@
         ]
       }
     },
+    "/api/crexil/attempts/{sid}/cancel": {
+      "post": {
+        "description": "Cancel one attempt, for its participant (laws 4 and 23), as a run's\ncancel stops each of its own (failure case 2.7): an unsent attempt is\nskipped and nothing more is sent; a running one is asked to stop, and a\nsent hosted request keeps its cell and its charge facts. Stopping never\nspends money, so an agent may cancel too.",
+        "operationId": "cancel_attempt_api_crexil_attempts__sid__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttemptMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptMoveView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Attempt",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
     "/api/crexil/attempts/{sid}/collect": {
       "post": {
         "operationId": "collect_execution_api_crexil_attempts__sid__collect_post",
@@ -10775,6 +10915,59 @@
           }
         },
         "summary": "Collect Execution",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/attempts/{sid}/resume": {
+      "post": {
+        "description": "Resume the engine that holds this attempt, for its participant (laws 4\nand 23): A9's TRY ONCE MORE for an engine held for one run, an engine's\nown bench, or a runtime's bench once its cause is gone (a key accepted, a\nrunner answering, the card free). The attempts that bench holds go back\nto the queue, and each meets the run, project and sequence limits again\nbefore it is sent (law 22). An agent resumes free local work only:\nsending held attempts that reserve money is the artist's act.",
+        "operationId": "resume_attempt_api_crexil_attempts__sid__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttemptMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptMoveView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume Attempt",
         "tags": [
           "Crexil shared actions"
         ]

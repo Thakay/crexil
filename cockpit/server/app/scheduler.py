@@ -4,7 +4,10 @@ Every dispatch records its request before the runtime call. Queued work can be
 adopted after restart; running work must reconcile with runtime evidence. Missing
 history or a missing response does not prove that submission failed, so uncertain
 work is never automatically resubmitted. Known active work is watched in its
-original slot without creating another request.
+original slot without creating another request. A runtime that stops answering
+about a request it accepted leaves that attempt's outcome uncertain and benches
+the runtime; its held takes wait for a participant's recorded resume, which lifts
+that one bench once.
 
 The database arbitrates landing, cancellation and charges. A late external result
 keeps its original cell; missing billing evidence stays unverified. Shared actions
@@ -289,8 +292,10 @@ def bench_scope_for(kind: str, lane: str, engine: str,
         # one key kills every engine behind it: an audio provider's key is
         # its own, any other key is OpenRouter's, the external lane's
         return f"provider:{provider}" if provider in audio.PROVIDERS else "lane:external"
-    if kind == "unreachable":
-        # a down 3D runner is those two engines' problem alone
+    if kind in ("unreachable", "uncertain"):
+        # a runtime that cannot be reached, or that stopped answering about
+        # a request it had accepted; a down 3D runner is those two engines'
+        # problem alone
         if engine in MESH_ENGINES:
             return f"engine:{engine}"
         return runtime_scope(provider, lane)
@@ -328,11 +333,15 @@ def gpu_held_cause(reading: GpuReading) -> str:
 @dataclass
 class BenchEntry:
     """One live bench (A9/E6): the scope it covers, the kind, the plain
-    cause. Not the wire model — `schemas.Bench` is what the queue view
-    serialises this into."""
+    cause, and `seq`, the `engine.benched` event that installed it (0 until
+    that event is written). A bench lifted and installed again is another
+    bench with its own seq, so a recorded resume lifts one bench, once. Not
+    the wire model — `schemas.Bench` is what the queue view serialises this
+    into."""
     scope: str
     kind: str
     cause: str
+    seq: int = 0
 
 
 @dataclass
@@ -548,6 +557,10 @@ class Scheduler:
         if b:
             return b
         return self._benches.get(f"lane:{ex.lane}") if lane_covers(ex, ex.lane) else None
+
+    def standing(self, scope: str | None) -> BenchEntry | None:
+        """The bench installed under this scope now, if one stands."""
+        return self._benches.get(scope) if scope else None
 
     def bench_holding(self, engine: str) -> BenchEntry | None:
         """The bench a new take of this engine would wait behind now, by the
@@ -1158,7 +1171,12 @@ class Scheduler:
                     await self.adopt_prepared_turn(slot['turn_id'])
 
     async def apply_execution_controls(self) -> None:
-        from .execution_controls import cancellations
+        """Apply the recorded controls: skipped attempts leave the lanes,
+        durable stops reach running attempts, and a recorded resume lifts the
+        bench it names. A resume names one bench by the event that installed
+        it, so a bench lifted and installed again since stays, and a replayed
+        or restarted request never resumes twice."""
+        from .execution_controls import cancellations, resumes
         for sid in list(self._takes):
             current = await self.db.get_slot(sid)
             if current and current['status'] == 'skipped':
@@ -1174,6 +1192,10 @@ class Scheduler:
             current = await self.db.get_slot(target['slot_id'])
             if current and current['attempt'] == target['attempt']:
                 await self.cancel_slot(target['slot_id'])
+        for intent in await resumes(self.db, {scope: b.seq for scope, b in self._benches.items()}):
+            bench = self._benches.get(intent['bench'])
+            if bench is not None and bench.seq == intent['bench_seq']:
+                await self.unbench(intent['bench'], actor=intent['actor'], reason=intent['reason'])
         await self.resume_budget_holds()
         await self._emit_new()
 
@@ -1339,7 +1361,14 @@ class Scheduler:
         if scope:
             # Install the shared cause before publishing a terminal failure.
             # Readers of the completed row must already see its queue gate.
-            await self.bench(scope, kind=e.kind, cause=cause)
+            kind, shared = e.kind, cause
+            if e.kind == "uncertain":
+                # A runtime that stopped answering: its other takes wait
+                # behind its unreachable bench, in its own words (law 1).
+                kind, shared = "unreachable", plain_cause(
+                    "unreachable", lane=take.lane, engine=req.engine,
+                    provider=take.executor.name, verb=req.verb)
+            await self.bench(scope, kind=kind, cause=shared)
         failed = False
         try:
             await self.db.fail_slot(slot["id"], cause=cause, detail=detail,
@@ -1490,6 +1519,19 @@ class Scheduler:
                 "rechecking": bool(self._gpu_task and not self._gpu_task.done()
                                    and not cleared)}
 
+    async def card_still_held(self) -> str | None:
+        """Why the card still holds the local lane (C2), in plain words with
+        the next move; None when a reading now shows it free. No reading
+        cannot show the card free, so it keeps the lane held."""
+        reading = await self._probe_gpu()
+        if reading is None:
+            return ("The card cannot be read right now, so it cannot be shown free. "
+                    "Try again in a moment.")
+        if reading.foreign >= self._gpu_hold_bytes:
+            return (f"Something else still holds {reading.foreign / (1 << 30):.1f} GB of the card. "
+                    "Close what holds it, then resume.")
+        return None
+
     async def gpu_hold(self) -> dict:
         """HOLD THE QUEUE: keep the lane benched until an explicit unbench —
         the re-check stops; nothing moves without the artist."""
@@ -1614,7 +1656,7 @@ class Scheduler:
     async def bench(self, scope: str, *, kind: str, cause: str) -> None:
         if scope in self._benches:
             return                           # law 1: one cause record
-        self._benches[scope] = BenchEntry(scope, kind, cause)   # flag FIRST, sync
+        entry = self._benches[scope] = BenchEntry(scope, kind, cause)   # flag FIRST, sync
         held = []
         for slot_id in list(self._takes):
             take = self._takes.get(slot_id)
@@ -1629,26 +1671,42 @@ class Scheduler:
             held.append(slot_id)
             with suppress(ValueError):
                 self._local_q.remove(slot_id)
-        await self.db.append_event(
+        installed = await self.db.append_event(
             "engine.benched",
             payload={"scope": scope, "kind": kind, "cause": cause,
                      "held": held})
+        entry.seq = installed["seq"]
         await self._emit_new()
 
-    async def unbench(self, scope: str) -> None:
+    async def held_by(self, scope: str) -> list[dict]:
+        """The attempts a bench holds: held slots whose last hold names it.
+        A slot held for another reason (a pause, a limit, another bench)
+        stays where it is."""
+        held = []
+        for slot in await self.db.slots_by_status("held"):
+            try:
+                if not self._scope_covers(scope, slot["engine"], slot["turn_id"]):
+                    continue
+            except ValueError:
+                continue                     # no executor serves this engine now
+            holds = [e for e in await self.db.slot_events(slot["id"])
+                     if e["type"] == "slot.held"]
+            if holds and holds[-1]["payload"].get("bench") == scope:
+                held.append(slot)
+        return held
+
+    async def unbench(self, scope: str, *, actor: dict | None = None,
+                      reason: str = "") -> list[str]:
+        """Lift a bench: the attempts it holds go back to the queue. A lift a
+        participant asked for records them and their reason on its event
+        (law 23). Returns the attempts that went back to the queue."""
         if scope not in self._benches:
-            return
+            return []
         del self._benches[scope]
         if scope == "lane:local":
             self._gpu_manual_hold = False
         resumed = []
-        for slot in await self.db.slots_by_status("held"):
-            if not self._scope_covers(scope, slot["engine"], slot["turn_id"]):
-                continue
-            events = await self.db.slot_events(slot["id"])
-            holds = [e for e in events if e["type"] == "slot.held"]
-            if not holds or holds[-1]["payload"].get("bench") != scope:
-                continue                     # held for some other reason
+        for slot in await self.held_by(scope):
             if slot["id"] not in self._takes:
                 req = await self._rebuild_request(slot)
                 if req is None:
@@ -1670,9 +1728,11 @@ class Scheduler:
                 continue
             resumed.append(slot["id"])
             self._enqueue(slot["id"])
+        authored = {"actor": actor, "reason": reason} if actor else {}
         await self.db.append_event(
-            "engine.unbenched", payload={"scope": scope, "resumed": resumed})
+            "engine.unbenched", payload={"scope": scope, "resumed": resumed, **authored})
         await self._emit_new()
+        return resumed
 
     def _scope_covers(self, scope: str, engine: str,
                       turn_id: str | None = None) -> bool:
@@ -1825,7 +1885,7 @@ class Scheduler:
                 if ev["type"] == "engine.benched":
                     p = ev["payload"]
                     self._benches[p["scope"]] = BenchEntry(
-                        p["scope"], p.get("kind", ""), p.get("cause", ""))
+                        p["scope"], p.get("kind", ""), p.get("cause", ""), ev["seq"])
                 elif ev["type"] == "engine.unbenched":
                     self._benches.pop(ev["payload"]["scope"], None)
         self._emit_cursor = seq

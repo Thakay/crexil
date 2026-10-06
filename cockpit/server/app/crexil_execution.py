@@ -17,7 +17,8 @@ blind run compares at least two engines and is never narrowed to the ones that
 are ready. A source whose blind run is still hidden is refused before any of
 its facts is read, so no review line and no frozen request names its engine.
 Each take's runtime files are named by its frozen grid position, after a blind
-run is arranged.
+run is arranged. The review says, for each operation, whether its attempts will
+retry on their own.
 """
 
 from __future__ import annotations
@@ -457,6 +458,11 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
             op['ready'] = False
     ready_count = sum(op['count'] for op in chosen if op['ready'])
     errors = list(dict.fromkeys(global_errors + [error for op in chosen for error in op['errors']]))
+    # As each operation's attempts freeze: audio attempts retry on their own,
+    # visibly, because the kinds that retry were refused before generation;
+    # image and 3D attempts never do (law 9).
+    automatic_retry = {choice.operation_id: bool((operations.get(choice.operation_id) or {}).get('audio_verb'))
+                       for choice in setup.operations}
     snapshot = {'direction_id': did, 'revision': direction['revision'], 'setup': setup.model_dump(),
                 'project_revision': project['revision'], 'brief': project['brief'],
                 'project_instructions': project['instructions'], 'sources': sources, 'operations': chosen,
@@ -478,7 +484,8 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
             'ready_attempts': ready_count, 'blocked_attempts': count - ready_count,
             'maximum_usd': None if uses_tariff or unknown and not ready_count else float(maximum),
             'reserved_usd': float(maximum),
-            'reserved_micro_usd': int((maximum * crexil_budget.MICRO_USD).to_integral_value()), 'snapshot': snapshot}
+            'reserved_micro_usd': int((maximum * crexil_budget.MICRO_USD).to_integral_value()),
+            'automatic_retry': automatic_retry, 'snapshot': snapshot}
 
 
 async def freeze(stack, did: str, body, *, staged_directories: list | None = None,

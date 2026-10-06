@@ -32,8 +32,10 @@ from app import audio, config, local_voice
 from app.executors import DispatchRequest, EngineFailure, SourceImage
 from app.local_voice import VoiceRunnerExecutor
 from fakes import tone_wav
-from test_audio_contract import booted_audio, designed, draft, submit
-from test_crexil import project
+from test_api_v4 import settle_turn
+from test_audio_contract import PREVIEW, booted_audio, designed, draft, submit
+from test_crexil import command, project
+from test_crexil_execution import reviewed
 
 pytestmark = pytest.mark.anyio
 
@@ -156,10 +158,38 @@ def voice(**recorded):
             'recorded': {'provider': 'voice-runner', 'kind': 'designed', **recorded}}
 
 
-async def opened(base):
-    ex = VoiceRunnerExecutor(base)
+async def opened(base, transport=None):
+    ex = VoiceRunnerExecutor(base, transport=transport)
     await ex.open()
     return ex
+
+
+class Silence(httpx.AsyncBaseTransport):
+    """The runner's door with its job polls going unanswered: the first
+    `misses` of them, or every one while `silent` holds. The runner itself
+    keeps working, as when it is busy or briefly away."""
+
+    def __init__(self, misses=None):
+        self.inner = httpx.AsyncHTTPTransport()
+        self.misses, self.silent, self.unanswered = misses, True, 0
+
+    async def handle_async_request(self, request):
+        poll = request.method == 'GET' and request.url.path.startswith('/jobs/') and '/audio/' not in request.url.path
+        if poll and self.silent and (self.misses is None or self.unanswered < self.misses):
+            self.unanswered += 1
+            raise httpx.ConnectError('the runner did not answer', request=request)
+        return await self.inner.handle_async_request(request)
+
+    async def aclose(self):
+        await self.inner.aclose()
+
+
+async def finished(door, job_ref):
+    for _ in range(500):
+        if door.get(job_ref)['state'] in runner.TERMINAL:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError('the runner never finished the job')
 
 
 # --- the executor over the real door ---
@@ -347,6 +377,83 @@ async def test_free_collection_reuses_stored_takes_and_fetches_only_the_rest(tmp
             await ex.close()
     assert missing.kind == 'failed' and missing.failure_kind == 'collection'
     assert 'Collected takes are kept' in missing.cause
+
+
+# --- a runner that stops answering while a take runs (law 14) ---
+
+async def test_a_poll_the_runner_does_not_answer_asks_about_the_same_job_again(tmp_path):
+    silence = Silence(misses=5)
+    with served(tmp_path) as (backend, door, base):
+        ex, collected = await opened(base, silence), Collector()
+        try:
+            result = await ex.wait(await ex.start(request(collector=collected)))
+        finally:
+            await ex.close()
+        jobs = list(door.jobs_dir.glob('*.json'))
+    assert silence.unanswered == 5 and len(jobs) == 1 and len(backend.calls) == 1     # one take, one job
+    assert result.primary_identity == 'take:0' and len(collected.landed()) == 3
+
+
+async def test_a_runner_silent_too_long_leaves_the_take_uncertain_and_collecting_finds_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_voice, 'REATTACH_S', 0.1)
+    backend, silence = StubBackend(), Silence()
+    backend.gate = threading.Event()
+    with served(tmp_path, backend) as (_, door, base):
+        ex = await opened(base, silence)
+        try:
+            handle = await ex.start(request())
+            with pytest.raises(EngineFailure) as silent:
+                await ex.wait(handle)
+            silence.silent = False
+            backend.gate.set()
+            await finished(door, handle.job_ref)
+            found = await ex.collect_existing({'job_ref': handle.job_ref}, request=request(collector=Collector()))
+        finally:
+            await ex.close()
+    # Never `unreachable`, which the scheduler would retry as a second job.
+    assert (silent.value.kind, silent.value.job_ref, silent.value.charged_usd) == ('uncertain', handle.job_ref, 0)
+    assert silent.value.plain and str(silent.value) == local_voice.SILENT
+    assert found.kind == 'landed' and len(backend.calls) == 1
+
+
+async def test_a_silent_runner_never_runs_a_take_twice_through_the_shared_actions(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_voice, 'REATTACH_S', 0.2)
+    backend, silence = StubBackend(), Silence()
+    backend.gate = threading.Event()
+    with served(tmp_path, backend) as (_, door, base):
+        async with booted_audio(tmp_path, monkeypatch, executors={
+                'voice-runner': VoiceRunnerExecutor(base, transport=silence)}) as (client, _):
+            monkeypatch.setattr(config, 'VOICE_RUNNER_URL', base)
+            p = await project(client)
+            direction = await draft(client, p['id'], 'audio:voice-design:qwen3-tts', DESCRIPTION,
+                                    controls={'preview_text': PREVIEW}, count=2)
+            check = await reviewed(client, direction)
+            answer = await client.post(f"/api/crexil/directions/{direction['id']}/submit",
+                                       json=command(revision=check['revision'], review_token=check['token']))
+            turn_id = answer.json()['turn_id']
+            first, second = (await settle_turn(turn_id, until={'failed', 'held'}))['slots']
+            # The runner went silent on an accepted job: no automatic retry, one runner job, the
+            # runner's other takes held behind its own bench, in its own words (law 1).
+            assert (first['kind'], first['cause'], second['status']) == ('uncertain', local_voice.SILENT, 'held')
+            assert first['job_ref'] and len(list(door.jobs_dir.glob('*.json'))) == 1
+            (bench,) = (await client.get('/api/queue')).json()['benches']
+            assert (bench['scope'], bench['kind']) == ('provider:voice-runner', 'unreachable')
+            assert 'tools/tts/README.md' in bench['cause']
+
+            silence.silent = False
+            backend.gate.set()
+            await finished(door, first['job_ref'])
+            collected = await client.post(f"/api/crexil/attempts/{first['id']}/collect",
+                                          json=command(take=first['attempt']))
+            assert collected.status_code == 200, collected.text
+            resumed = await client.post(f"/api/crexil/attempts/{second['id']}/resume",
+                                        json=command(attempt=second['attempt']))
+            assert resumed.status_code == 200 and resumed.json()['released'] == 1, resumed.text
+            landed = await settle_turn(turn_id, until={'landed'})
+            nodes = (await client.get(f"/api/crexil/projects/{p['id']}")).json()['nodes']
+    assert [slot['status'] for slot in landed['slots']] == ['landed', 'landed']
+    assert len([n for n in nodes if n['turn_id'] == turn_id]) == 6                     # three previews per take
+    assert len(list(door.jobs_dir.glob('*.json'))) == 2 and len(backend.calls) == 2   # one job per take
 
 
 # --- the startup check ---

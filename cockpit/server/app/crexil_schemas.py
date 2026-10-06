@@ -205,6 +205,27 @@ class ControlExecution(Command):
     reason: str = Field(default='', max_length=4000)
 
 
+class AttemptMove(Command):
+    """One participant's move on one attempt: the attempt as they saw it
+    (a later attempt of the same slot refuses as stale), and why."""
+    attempt: int = Field(ge=0)
+    reason: str = Field(default='', max_length=4000)
+
+
+class AttemptMoveView(BaseModel):
+    """What one move on one attempt did, recorded with its participant
+    (law 23). `words` say it plainly, with what it cost, and name no engine
+    (laws 3 and 5); `released` counts the held attempts a resume sent back to
+    the queue."""
+    slot_id: str
+    attempt: int
+    action: Literal['resume', 'cancel']
+    words: str
+    released: int = 0
+    actor: Actor
+    reason: str
+
+
 class ExecutionControlView(BaseModel):
     scope: Literal['project', 'run', 'sequence']
     target_id: str
@@ -685,6 +706,9 @@ class ExecutionReview(BaseModel):
     reserved_usd: float = 0
     # the same reservation, exact in integer micro-dollars
     reserved_micro_usd: int = 0
+    # each operation of the run, by id: whether its attempts retry on their
+    # own, visibly (law 9). Audio attempts do; image and 3D attempts never do.
+    automatic_retry: dict[str, bool] = Field(default_factory=dict)
     snapshot: dict
 
 

@@ -1112,12 +1112,14 @@ async def backfill_turn(turn_id: str, body: MoneyGate | None = None):
 async def _node_view_full(db, node: dict) -> dict:
     """db.get_node stays unjoined by contract (list_nodes docstring); the
     wire shape carries the two label keys, so single-node responses fetch
-    them here. A blind run's take answers masked until its reveal."""
+    them here. A blind run's take answers masked until its reveal, its times
+    its run's creation time, as every other node read gives them."""
     turn = await db.get_turn(node["turn_id"]) if node["turn_id"] else None
     slot = await db.get_slot(node["slot_id"]) if node["slot_id"] else None
     view = _node_view({**node, "turn_idx": turn["idx"] if turn else None,
                        "slot_pos": slot["pos"] if slot else None})
-    return blind.mask("node", view) if await blind.is_hidden(db, node["turn_id"]) else view
+    (view,) = await blind.apply(db, "node", [view], workspace_id=node["workspace_id"])
+    return view
 
 
 @router.post("/nodes/{nid}/set-aside", response_model=Node)
@@ -1201,6 +1203,9 @@ async def queue_view():
     depth = len(local)                       # queued+running local rows
     local, external, held, late = [await blind.apply(db, "queue", rows)
                                    for rows in (local, external, held, late)]
+    # An engine-and-run bench (A9's) names its engine and slot positions, so
+    # one whose run is blind and unrevealed stays out of the list.
+    hidden = await blind.hidden_turns(db)
     return {
         "seq": await db.latest_seq(),
         "now": now.isoformat(),
@@ -1217,7 +1222,8 @@ async def queue_view():
         "held": held,
         "late": late,
         "benches": [{"scope": scope, **b}
-                    for scope, b in snap["benches"].items()],
+                    for scope, b in snap["benches"].items()
+                    if blind.scope_run(scope) not in hidden],
         "checks": [{"slot_id": sid, **c}
                    for sid, c in snap.get("checks", {}).items()],
         "retries": [{"slot_id": sid, **r}

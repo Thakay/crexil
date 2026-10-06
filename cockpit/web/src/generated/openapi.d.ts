@@ -95,6 +95,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/crexil/attempts/{sid}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Attempt
+         * @description Cancel one attempt, for its participant (laws 4 and 23), as a run's
+         *     cancel stops each of its own (failure case 2.7): an unsent attempt is
+         *     skipped and nothing more is sent; a running one is asked to stop, and a
+         *     sent hosted request keeps its cell and its charge facts. Stopping never
+         *     spends money, so an agent may cancel too.
+         */
+        post: operations["cancel_attempt_api_crexil_attempts__sid__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/crexil/attempts/{sid}/collect": {
         parameters: {
             query?: never;
@@ -106,6 +130,32 @@ export interface paths {
         put?: never;
         /** Collect Execution */
         post: operations["collect_execution_api_crexil_attempts__sid__collect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/attempts/{sid}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Attempt
+         * @description Resume the engine that holds this attempt, for its participant (laws 4
+         *     and 23): A9's TRY ONCE MORE for an engine held for one run, an engine's
+         *     own bench, or a runtime's bench once its cause is gone (a key accepted, a
+         *     runner answering, the card free). The attempts that bench holds go back
+         *     to the queue, and each meets the run, project and sequence limits again
+         *     before it is sent (law 22). An agent resumes free local work only:
+         *     sending held attempts that reserve money is the artist's act.
+         */
+        post: operations["resume_attempt_api_crexil_attempts__sid__resume_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1883,6 +1933,51 @@ export interface components {
             state: "waiting" | "ready";
         };
         /**
+         * AttemptMove
+         * @description One participant's move on one attempt: the attempt as they saw it
+         *     (a later attempt of the same slot refuses as stale), and why.
+         */
+        AttemptMove: {
+            actor: components["schemas"]["Actor"];
+            /** Attempt */
+            attempt: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Request Id */
+            request_id: string;
+        };
+        /**
+         * AttemptMoveView
+         * @description What one move on one attempt did, recorded with its participant
+         *     (law 23). `words` say it plainly, with what it cost, and name no engine
+         *     (laws 3 and 5); `released` counts the held attempts a resume sent back to
+         *     the queue.
+         */
+        AttemptMoveView: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "resume" | "cancel";
+            actor: components["schemas"]["Actor"];
+            /** Attempt */
+            attempt: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Released
+             * @default 0
+             */
+            released: number;
+            /** Slot Id */
+            slot_id: string;
+            /** Words */
+            words: string;
+        };
+        /**
          * AudioFacts
          * @description Measured once by the server at collection; the bytes never change.
          *
@@ -2788,6 +2883,10 @@ export interface components {
         ExecutionReview: {
             /** Attempts */
             attempts: number;
+            /** Automatic Retry */
+            automatic_retry?: {
+                [key: string]: boolean;
+            };
             /** Blocked Attempts */
             blocked_attempts: number;
             /** Direction Id */
@@ -5880,6 +5979,41 @@ export interface operations {
             };
         };
     };
+    cancel_attempt_api_crexil_attempts__sid__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttemptMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptMoveView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     collect_execution_api_crexil_attempts__sid__collect_post: {
         parameters: {
             query?: never;
@@ -5902,6 +6036,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExecutionGroupView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_attempt_api_crexil_attempts__sid__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttemptMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptMoveView"];
                 };
             };
             /** @description Validation Error */

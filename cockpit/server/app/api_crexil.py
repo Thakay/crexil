@@ -30,7 +30,7 @@ from .crexil_schemas import (CollectExecution, ExecutionGroupView, CreateDirecti
     ExecutionReview, SubmitDirection, SubmittedDirection,
     ProjectLimits, ProjectSnapshot, ProjectView, UpdateDirection, UpdateProject,
     ImportOperation, InspectOperation, RegistrationView, UpdateOperation, OperationDefinition,
-    MaskView, MaskSourceView, SaveMask, ControlExecution, ExecutionControlView,
+    MaskView, MaskSourceView, SaveMask, ControlExecution, ExecutionControlView, AttemptMove, AttemptMoveView,
     Command, CreateSequence, UpdateSequence, UpdateSequenceStep, StartSequence, DecideSequence, SequenceView, SequenceReview,
     DeliverySelection, CreateDelivery, DeliveryReview, DeliveryView,
     ReuseSelection, CreateReuse, ReuseReview,
@@ -86,6 +86,17 @@ def human_only(actor, act: str) -> None:
     if actor.kind != 'human':
         raise HTTPException(403, f'{act} is the artist\'s act. An agent may propose takes and review a delivery; '
                                  'the artist delivers.')
+
+
+def artist_sets_limits(actor, current: dict, requested, owner: str) -> None:
+    """A spending limit decides how much money may move, so only the artist
+    changes one, up or down (laws 22 and 23). An agent's edit that leaves the
+    limits out, or restates them unchanged, passes. Refused before anything
+    is recorded."""
+    if (actor.kind != 'human' and requested is not None
+            and requested.model_dump() != {**ProjectLimits().model_dump(), **current}):
+        raise HTTPException(403, f"Changing {owner} spending limits is the artist's act: a limit decides how "
+                                 'much money may move. An agent may propose a new limit; the artist sets it.')
 
 
 async def check_references(wid: str, ids: list[str], *, require_available=False):
@@ -317,10 +328,7 @@ async def update_project(wid: str, body: UpdateProject):
         project = await creative.project(wid)
         if project['revision'] != body.revision:
             raise Conflict('The project changed in another view. Reload before saving your changes.')
-        if (body.actor.kind != 'human' and body.limits is not None
-                and body.limits.model_dump() != {**ProjectLimits().model_dump(), **project['limits']}):
-            raise HTTPException(403, "Changing a project's spending limits is the artist's act: a limit decides how "
-                                     'much money may move. An agent may propose a new limit; the artist sets it.')
+        artist_sets_limits(body.actor, project['limits'], body.limits, "a project's")
         await creative.db.rename_workspace(wid, body.name.strip())
         await creative.db.conn.execute(
             'INSERT INTO project_details(workspace_id,brief,instructions,revision,limits_json) VALUES(?,?,?,?,?) '
@@ -375,8 +383,17 @@ async def sequence_state(sid: str):
 
 @router.patch('/sequences/{sid}', response_model=SequenceView)
 async def update_sequence(sid: str, body: UpdateSequence):
+    # A sequence's spending limits are the artist's, as a project's are: an
+    # agent's edit that would change them is refused before anything is
+    # recorded (laws 22 and 23). Its title and instructions stay open to agents.
     from .crexil_sequences import update
-    saved = await command(body, 'sequences.update:' + sid, lambda: update(store().db, sid, body))
+    async def apply():
+        row = await store().db._one('SELECT limits_json FROM sequences WHERE id=?', (sid,))
+        if row is None:
+            raise LookupError('This sequence could not be found. Return to the project.')
+        artist_sets_limits(body.actor, json.loads(row['limits_json']), body.limits, "a sequence's")
+        return await update(store().db, sid, body)
+    saved = await command(body, 'sequences.update:' + sid, apply)
     await wiring.current.scheduler.resume_budget_holds(saved['workspace_id'])
     wiring.current.sequences.wake.set()
     return saved
@@ -818,6 +835,57 @@ async def collect_execution(sid: str, body: CollectExecution):
         if isinstance(exc, EngineFailure):
             raise HTTPException(503, str(exc)) from exc
         raise
+
+
+@router.post('/attempts/{sid}/cancel', response_model=AttemptMoveView)
+async def cancel_attempt(sid: str, body: AttemptMove):
+    """Cancel one attempt, for its participant (laws 4 and 23), as a run's
+    cancel stops each of its own (failure case 2.7): an unsent attempt is
+    skipped and nothing more is sent; a running one is asked to stop, and a
+    sent hosted request keeps its cell and its charge facts. Stopping never
+    spends money, so an agent may cancel too."""
+    from .execution_controls import cancel_attempt as stop
+    db = store().db
+    slot = await db.get_slot(sid)
+    hidden = bool(slot) and await blind.is_hidden(db, slot['turn_id'])
+    saved = await command(body, 'attempts.cancel:' + sid, lambda: stop(db, sid, body, hidden=hidden))
+    await wiring.current.scheduler.apply_execution_controls()
+    return saved
+
+
+@router.post('/attempts/{sid}/resume', response_model=AttemptMoveView)
+async def resume_attempt(sid: str, body: AttemptMove):
+    """Resume the engine that holds this attempt, for its participant (laws 4
+    and 23): A9's TRY ONCE MORE for an engine held for one run, an engine's
+    own bench, or a runtime's bench once its cause is gone (a key accepted, a
+    runner answering, the card free). The attempts that bench holds go back
+    to the queue, and each meets the run, project and sequence limits again
+    before it is sent (law 22). An agent resumes free local work only:
+    sending held attempts that reserve money is the artist's act."""
+    from .execution_controls import PAID_RESUME, held_attempt, remaining_cause, reserves_money
+    from .execution_controls import resume_attempt as record
+    creative = store()
+    stack = wiring.current
+    scope = 'attempts.resume:' + sid
+    try:
+        saved = await creative.delivered(body.request_id, scope, body.model_dump())
+    except Conflict as exc:
+        raise refused(exc) from exc
+    if saved is None:
+        try:
+            slot, bench = await held_attempt(creative.db, stack.scheduler, sid, body.attempt)
+        except (LookupError, ValueError) as exc:
+            raise refused(exc) from exc
+        released = await stack.scheduler.held_by(bench.scope)
+        if body.actor.kind != 'human' and reserves_money(released):
+            raise HTTPException(403, PAID_RESUME)
+        why = await remaining_cause(stack, bench, hidden=await blind.is_hidden(creative.db, slot['turn_id']))
+        if why:
+            raise HTTPException(422, why)
+        saved = await command(body, scope, lambda: record(creative.db, slot, body, bench, len(released)))
+    # Applying again is safe: a resume lifts the one bench it names, once.
+    await stack.scheduler.apply_execution_controls()
+    return saved
 
 
 @router.post('/projects/{wid}/backups', response_model=ProjectBackup, status_code=201)

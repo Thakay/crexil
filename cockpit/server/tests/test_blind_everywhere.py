@@ -1,10 +1,11 @@
 """A blind run keeps each take's engine out of every read until the artist reveals
 the run (law 23): continuing from its takes, bench and hold events, a run that
 would compare fewer than two engines, the takes' own times, download names,
-failure records and reuse. A whole run is refused when a price is unknown
-(law 22), and a project's spending limits are the artist's to change. Each test
-drives the HTTP API and the real scheduler with fake executors; no network, no
-GPU.
+failure records, reuse, the queue's bench list and the set-aside and restore
+answers. A whole run is refused when a price is unknown, a hosted tariff's
+included (law 22), and project and sequence spending limits are the artist's to
+change. Each test drives the HTTP API and the real scheduler with fake
+executors; no network, no GPU.
 """
 
 import asyncio
@@ -427,3 +428,87 @@ async def test_agents_cannot_change_a_projects_spending_limits(tmp_path, monkeyp
         assert renamed.status_code == 200 and renamed.json()['name'] == 'Forge level'
         restated = await edit(agent, brief='A heavier hammer', limits=artist.json()['limits'])
         assert restated.status_code == 200 and restated.json()['limits']['spending_limit_usd'] == 1
+
+
+async def test_agents_cannot_change_a_sequences_spending_limits(tmp_path, monkeypatch):
+    from test_crexil_sequences import sequence
+    agent = {'kind': 'agent', 'name': 'Scout'}
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        attest()
+        p = await project(client)
+        planned, _, _ = await sequence(client, p['id'])
+        url = f"/api/crexil/sequences/{planned['id']}"
+
+        async def edit(actor=None, **fields):
+            current = (await client.get(url)).json()
+            body = {'revision': current['revision'], 'title': current['title'],
+                    'instructions': current['instructions'], 'limits': current['limits'], **fields}
+            return await client.patch(url, json=command(**body, **({'actor': actor} if actor else {})))
+
+        changes = len([e for e in await events(client, workspace_id=p['id']) if e['type'] == 'sequence.changed'])
+        for limits in ({'attempt_limit': 32, 'spending_limit_usd': 0}, {'attempt_limit': 4, 'spending_limit_usd': 0},
+                       {'attempt_limit': 16, 'spending_limit_usd': 2, 'spending_policy': 'published_tariff'}):
+            refused = await edit(agent, limits=limits)
+            assert refused.status_code == 403 and refused.json()['detail'].startswith(
+                "Changing a sequence's spending limits is the artist's act")
+        assert len([e for e in await events(client, workspace_id=p['id']) if e['type'] == 'sequence.changed']) == changes
+        # Every other edit stays open to an agent, restating the same limits.
+        retitled = await edit(agent, title='Explore wider')
+        assert retitled.status_code == 200 and retitled.json()['title'] == 'Explore wider'
+        artist = await edit(limits={'attempt_limit': 32, 'spending_limit_usd': 0})
+        assert artist.status_code == 200 and artist.json()['limits']['attempt_limit'] == 32
+
+
+# --- reads that the first blind pass left out ---
+
+async def test_the_queue_lists_no_bench_of_a_hidden_run_until_the_reveal(tmp_path, monkeypatch):
+    failing = FakeAudioExecutor('voice-runner', 'local', failure=EngineFailure('error', 'Qwen3-TTS crashed'))
+    async with casting(tmp_path, monkeypatch, **{'voice-runner': failing}) as (client, _):
+        p = await project(client)
+        turn, _ = await ran(client, await prepared(client, p['id'], (LOCAL, 3), (HOSTED, 1)),
+                            until=('landed', 'held', 'failed'))
+        scope = f"engine:{LOCAL}@turn:{turn['id']}"
+        assert scope in wiring.current.scheduler.snapshot()['benches']           # the engine stays held
+        queue = (await client.get('/api/queue')).json()
+        assert queue['benches'] == [] and not names_an_engine(queue)             # no engine, no slot positions
+        await reveal(client, turn['id'])
+        assert [b['scope'] for b in (await client.get('/api/queue')).json()['benches']] == [scope]
+
+
+async def test_set_aside_and_restore_answer_a_hidden_take_with_its_runs_time(tmp_path, monkeypatch):
+    async with casting(tmp_path, monkeypatch) as (client, _):
+        p = await project(client)
+        turn, takes = await ran(client, await prepared(client, p['id']))
+        created = await run_created(client, p['id'], turn['id'])
+        some = takes[0]['id']
+        aside = (await client.post(f'/api/nodes/{some}/set-aside')).json()
+        restored = (await client.post(f'/api/nodes/{some}/restore')).json()
+        assert aside['created_at'] == restored['created_at'] == created
+        assert aside['identity_hidden'] is True and not names_an_engine([aside, restored])
+        await reveal(client, turn['id'])
+        landed = (await client.post(f'/api/nodes/{some}/set-aside')).json()
+        assert landed['created_at'] == takes[0]['created_at'] != created
+
+
+async def test_a_hosted_engine_with_an_unknown_tariff_refuses_the_whole_run(tmp_path, monkeypatch):
+    from test_crexil_hosted import discover
+    async with booted(tmp_path, monkeypatch) as (client, fakes):
+        attest()
+        discover()
+        endpoint = wiring.current.provider_catalog._live['testvendor/testmodel']['endpoints'][0]
+        endpoint['pricing'] = [{'billable': 'output_image', 'unit': 'image', 'cost_usd': .04,
+                                'conditions': {'resolution': '2K'}}]
+        p = await project(client)
+        ops = {o['id']: o for o in (await client.get('/api/crexil/operations')).json()}
+        made = await client.post(f"/api/crexil/projects/{p['id']}/directions", json=command(title='Lamps', setup={
+            'prompt': 'brass lamp', 'spending_limit_usd': 1, 'spending_policy': 'published_tariff',
+            'operations': [{'operation_id': key, 'revision': ops[key]['revision'], 'count': 1}
+                           for key in ('testpreset', 'testvendor/testmodel')]}))
+        check, answer = await submitted(client, made.json())
+        whole = ('An unknown price counts as over the spending limit, so nothing in this run is sent. '
+                 'Remove Test Model from the run, or choose an engine with a published price.')
+        assert not check['ready'] and (check['ready_attempts'], check['blocked_attempts']) == (0, 2)
+        assert whole in check['errors']
+        assert 'Test Model: This conditional tariff is not supported for budget reservations.' in check['errors']
+        assert answer.status_code == 422 and whole in answer.json()['detail']
+        assert fakes['comfy'].starts == fakes['openrouter'].starts == [] and await store().list_turns(p['id']) == []
