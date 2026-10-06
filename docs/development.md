@@ -39,11 +39,12 @@ Last verified on a clean checkout with Python 3.12, uv 0.11, Node 24 and npm 11.
 (cd cockpit/server && uv sync --frozen)      # install from the lock files
 (cd cockpit/web && npm ci)
 
-scripts/check.sh                             # all checks: ruff, pytest, vitest, tsc -b
+scripts/check.sh                             # all checks: ruff, pytest, vitest, tsc -b, the specs' tsc
 scripts/check.sh ruff --fix                  # ruff only; arguments after "ruff" go to ruff
 (cd cockpit/server && uv run pytest -q)      # one file: uv run pytest tests/test_scheduler.py
 (cd cockpit/web && npm run test)             # one folder: npx vitest run src/app/composer
 (cd cockpit/web && npx tsc -b)
+(cd cockpit/web && npx tsc -p tsconfig.e2e.json)   # the browser specs and both Playwright configs
 
 (cd cockpit/server && uv run uvicorn app.main:app --reload)   # server on 127.0.0.1:8000
 npm --prefix cockpit/web run dev             # hot reload on :5173, proxied to the source server on :8000;
@@ -59,10 +60,13 @@ python3 tools/voice-director/apply.py --dry-run       # the voice director's age
 scripts/deploy.sh                            # optional local Docker build and start
 ```
 
-**Baseline.** On a clean checkout ruff passes, pytest reports 948 passed and 1 skipped in about 90
-seconds, vitest reports 441 passed in 36 files, and `tsc -b` and `vite build` pass. The skipped test
-compares the provider catalogue with the live OpenRouter API; `LIVE_CATALOG=1` turns it on (network,
-no key, no cost). Ruff's rules live in `cockpit/server/pyproject.toml`.
+**Baseline.** On a clean checkout ruff passes, pytest reports 1343 passed and 2 skipped in about
+130 seconds, vitest reports 734 passed in 64 files, and `tsc -b`, the specs' type-check and
+`vite build` pass; `scripts/check.sh` takes about 150 seconds. The skipped tests are the live
+checks: `LIVE_CATALOG=1` compares the provider catalogue with the live OpenRouter API (network, no
+key, no cost), and `LIVE_ELEVENLABS=1` with a key makes one live ElevenLabs sound effect (about
+$0.001). Ruff's rules live in `cockpit/server/pyproject.toml`; `scripts/check.sh` applies them to
+`cockpit/server`, `scripts` and `tools`.
 
 **End-to-end tests.** They need a fresh `npm run build`, `uv` on the `PATH`, Playwright's Chromium
 (`npx playwright install chromium`) and a free port 8123. They need no engine: Playwright boots the
@@ -84,8 +88,8 @@ requests, then serves until stopped.
 
 **Agent client.** `scripts/crexil.py` drives the same HTTP actions as the artist interface, for
 people and agents alike. `--actor` names the participant recorded with each change, mutations print
-a delivery ID to reuse when retrying after a connection failure, and `--url` picks the instance
-(the preview by default). It never writes the store or staging itself (law 19).
+a delivery ID to reuse when retrying after a connection failure, and `--url` or `CREXIL_URL` picks
+the instance (the source server on port 8000 by default). It never writes the store or staging itself (law 19).
 
 **Docker.** `scripts/deploy.sh` is opt-in. It bakes the git revision and the build time into the
 image, runs `docker compose up -d` and polls `/api/health`. A plain `docker compose up -d --build`
@@ -110,6 +114,11 @@ and reads the record and its export. Every voice-design operation the harness of
 scripted audio takes are four-second tones. The harness suite sets a placeholder
 `ELEVENLABS_API_KEY`, with `ELEVENLABS_URL` on a closed port, so the ElevenLabs operations are
 ready; the scripted executors never call ElevenLabs.
+
+Playwright runs specs without type-checking them. `scripts/check.sh` type-checks the specs,
+`paths.ts` and both Playwright configs through `cockpit/web/tsconfig.e2e.json`: the app's strict
+options plus Node's types, which the app's own `tsconfig.json` leaves out so Node globals never
+type-check in browser code.
 
 ## 4. Running an isolated instance
 

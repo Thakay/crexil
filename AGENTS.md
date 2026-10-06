@@ -14,7 +14,7 @@ then read what your change touches:
 ## Commands
 
 ```bash
-scripts/check.sh            # ruff, pytest, vitest, tsc -b; run before you call work done
+scripts/check.sh            # ruff, pytest, vitest, tsc (app and specs); run before you call work done
 scripts/check.sh ruff --fix # ruff only, arguments forwarded
 scripts/gen-api-types.sh    # after ANY route or wire-model change; commit both outputs
 ```
