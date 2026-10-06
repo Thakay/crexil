@@ -221,7 +221,7 @@ test("a blind run's held attempt resumes from its face, naming no engine and no 
   await page.getByRole('button',{name:'Grid ›',exact:true}).click();
   const kept=(await slotsNow()).find(slot=>slot.status==='held')!;
   const held=page.getByRole('group',{name:`Attempt 0${String.fromCharCode(65+kept.pos)} · held`,exact:true});
-  // one neutral face: its setup first, its resume live, no engine, lane, cause or price (V1b S-4)
+  // one neutral face: its setup first, its resume live, no engine, lane, cause or price
   await expect(held).toContainText('waiting costs nothing');
   await expect(held).not.toContainText('Its engine is held.');
   await expect(held.getByRole('button')).toHaveText(['REUSE SETUP','RESUME ENGINE','CANCEL ATTEMPT']);
