@@ -128,6 +128,11 @@ async def test_native_continuation_keeps_exact_source_all_outputs_receipt_and_ch
         group = snap['execution_groups'][0]
         assert group['state'] == 'complete' and len(group['outputs']) == 3
         receipt = next(o for o in group['outputs'] if o['role'] == 'provider receipt')
+        # The receipt lands first and is no take: the images are the attempt's first and second takes.
+        assert (receipt['ordinal'], receipt['node_id']) == (0, None)
+        assert sorted(n['output_index'] for n in nodes) == [0, 1]
+        (cell,) = (await client.get(f"/api/crexil/directions/{d['id']}/run")).json()['cells']
+        assert [take['label'] for take in cell['takes']] == ['0A', '0A.2']
         row = await store()._one('SELECT output_path FROM execution_outputs WHERE id=?', (receipt['id'],))
         saved = json.loads(Path(row['output_path']).read_bytes())
         assert saved['request'] == calls[0] and saved['response']['provider_extra'] == {'keep': True}

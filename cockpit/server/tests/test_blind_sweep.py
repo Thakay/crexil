@@ -7,7 +7,11 @@ with the hidden runs' ids, and fails on any body or header that carries one of
 those facts. The one place a fact may stand is where a run lists the engines
 it asked for (its operations), which blindness does not hide: the artist chose
 them. A route or an event key added later is swept without anyone remembering
-to mask it. Fakes only: no network, no GPU, no key.
+to mask it. The takes' own numbers are swept too: the real ElevenLabs and
+local voice adapters, against a synthetic ElevenLabs and a voice runner served
+on loopback with a scripted backend, land takes that read alike although only
+the hosted one lands a receipt. Fakes only: no network beyond loopback, no GPU,
+no key.
 """
 
 import json
@@ -16,15 +20,21 @@ import re
 from datetime import datetime
 from email.utils import formatdate
 
+import httpx
 import pytest
 
-from app import main
+from app import config, local_voice, main
+from app.elevenlabs import ElevenLabsExecutor
 from app.executors import EngineFailure
+from app.local_voice import VoiceRunnerExecutor
 from fakes import FakeAudioExecutor, tone_wav
 from test_api_v4 import store
-from test_blind_everywhere import HOSTED, LOCAL, casting, prepared, ran
+from test_blind_everywhere import HOSTED, LOCAL, casting, prepared, ran, reveal
 from test_blind_runs import MODELS
 from test_crexil import command, project
+from test_elevenlabs import BASE, FakeElevenLabs
+from test_elevenlabs import designed as designed_previews
+from test_local_voice import served
 
 pytestmark = pytest.mark.anyio
 
@@ -187,3 +197,62 @@ async def test_every_read_route_of_a_hidden_run(tmp_path, monkeypatch):
         for word in sorted(terms['engine'] | terms['provider'] | {'qwen', 'eleven', 'take-1'}):
             answer = (await client.get(f"/api/crexil/projects/{p['id']}/record", params={'q': word})).json()
             assert not hidden & set(answer['material_ids']), word
+
+
+async def told_apart(client, wid, did) -> dict:
+    """What tells one run's cells apart, cell by cell: the run view's take labels
+    after the cell's own, the take numbers, the take files its group lists as
+    (ordinal, identity, name), and the name each file downloads under."""
+    run = (await client.get(f'/api/crexil/directions/{did}/run')).json()
+    snapshot = (await client.get(f'/api/crexil/projects/{wid}')).json()
+    cells = {}
+    for cell in run['cells']:
+        (group,) = [g for g in snapshot['execution_groups'] if g['slot_id'] == cell['slot_id']]
+        files = [o for o in group['outputs'] if o['node_id']]
+        cells[cell['slot_id']] = {
+            'labels': [take['label'].removeprefix(cell['label']) for take in cell['takes']],
+            'numbers': sorted(n['output_index'] for n in snapshot['nodes'] if n['slot_id'] == cell['slot_id']),
+            'files': [(o['ordinal'], o['identity'], o['filename']) for o in files],
+            'downloads': [(await client.get(f"/api/crexil/outputs/{o['id']}/file")).headers['content-disposition']
+                          for o in files]}
+    return cells
+
+
+async def test_a_blind_runs_hosted_and_local_takes_are_numbered_alike(tmp_path, monkeypatch):
+    """ElevenLabs Voice Design lands its provider receipt before its three
+    previews, and the local voice runner lands three takes and no receipt. A take
+    is numbered among its attempt's takes only, so both engines' cells read alike:
+    labels, take numbers, and the hidden file lists and download names."""
+    monkeypatch.setattr(config, 'ELEVENLABS_URL', BASE)
+    monkeypatch.setattr(local_voice, 'POLL_S', 0.01)
+    fake = FakeElevenLabs().on('POST', '/v1/text-to-voice/design', designed_previews())
+    with served(tmp_path) as (backend, _, base):
+        engines = {'elevenlabs': ElevenLabsExecutor(transport=httpx.MockTransport(fake)),
+                   'voice-runner': VoiceRunnerExecutor(base)}
+        async with casting(tmp_path, monkeypatch, **engines) as (client, _):
+            p = await project(client)
+            direction = await prepared(client, p['id'], (LOCAL, 1), (HOSTED, 1))
+            turn, takes = await ran(client, direction)
+            assert len(takes) == 6 and len(fake.requests) == 1 and len(backend.calls) == 1
+
+            # The store holds the difference: one receipt, the hosted attempt's, and it is no take.
+            rows = await store()._all(
+                'SELECT g.slot_id, o.ordinal, o.role, o.node_id FROM execution_outputs o JOIN execution_groups g '
+                'ON g.id=o.group_id WHERE g.slot_id IN (SELECT value FROM json_each(?))',
+                (json.dumps([slot['id'] for slot in turn['slots']]),))
+            receipts = [row for row in rows if row['role'] == 'provider receipt']
+            assert [(row['ordinal'], row['node_id']) for row in receipts] == [(0, None)]
+            hosted = receipts[0]['slot_id']
+
+            hidden = await told_apart(client, p['id'], direction['id'])
+            alike = {'labels': ['', '.2', '.3'], 'numbers': [0, 1, 2],
+                     'files': [(n, f'output:{n}', f'output-{n}.wav') for n in range(3)],
+                     'downloads': [f'attachment; filename="output-{n}.wav"' for n in range(3)]}
+            assert list(hidden.values()) == [alike, alike]
+
+            # The reveal shows the receipt, and the takes keep the numbers they landed with.
+            await reveal(client, turn['id'])
+            shown = await told_apart(client, p['id'], direction['id'])
+            for cell in shown.values():
+                assert (cell['labels'], cell['numbers']) == (alike['labels'], alike['numbers'])
+            assert [ordinal for ordinal, *_ in shown[hosted]['files']] == [1, 2, 3]

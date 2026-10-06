@@ -4,8 +4,10 @@ The capability matrix's audio rows (`audio.engines()`) publish the engines; each
 verb a row serves becomes one operation. Per verb, a row declares its public
 controls (`params`), the model it asks for (`models`), provider fields fixed by
 configuration (`fixed`), its published price (`tariffs`), how many takes one
-attempt returns (`takes_per_attempt`) and the longest text one request takes
-(`text_limits`). Rows may declare the voices their speech accepts
+attempt returns (`takes_per_attempt`), the longest text one request takes
+(`text_limits`) and how many interleaved channels a raw PCM answer carries
+(`pcm_channels`, mono unless stated; never in `fixed`, whose fields are sent to
+the provider). Rows may declare the voices their speech accepts
 (`voice_providers`), the provider's terms on their outputs (`terms`) and the
 seeds the engine takes (`seed_range`, lowest and highest).
 
@@ -13,12 +15,12 @@ Review binds the voice take's bytes and checks its recorded terms (laws 12, 21),
 and refuses a fixed or locked seed whose attempts would leave the engine's seed
 range. Each attempt freezes one envelope in the slot's `external` field,
 transport `audio`: provider, engine, verb, model, the text, validated controls,
-fixed fields, seed, takes, voice, tariff, measures and the exact reservation in
-micro-dollars. Every frozen seed lies inside the engine's range, so the seed
-recorded is the seed sent. Audio slots retry visibly on their own (law 9): the
-kinds that retry are refused before generation, so a retry never pays twice.
-Executors turn the envelope into their provider's request; nothing here calls a
-provider.
+fixed fields, seed, takes, PCM channels, voice, tariff, measures and the exact
+reservation in micro-dollars. Every frozen seed lies inside the engine's range,
+so the seed recorded is the seed sent. Audio slots retry visibly on their own
+(law 9): the kinds that retry are refused before generation, so a retry never
+pays twice. Executors turn the envelope into their provider's request; nothing
+here calls a provider.
 """
 
 from __future__ import annotations
@@ -86,6 +88,12 @@ def take_seed(policy: dict, index: int, low: int, high: int) -> int:
 
 def takes(row: dict, verb: str) -> int:
     return int((row.get('takes_per_attempt') or {}).get(verb, 1))
+
+
+def pcm_channels(row: dict, verb: str) -> int:
+    """How many interleaved channels the verb's raw PCM answer carries: 1 unless
+    the row states otherwise."""
+    return int((row.get('pcm_channels') or {}).get(verb, 1))
 
 
 def tariff(row: dict, verb: str) -> dict | None:
@@ -290,7 +298,8 @@ async def compile_request(db, op: dict, setup, choice, nodes: list[dict]) -> dic
     request = {'transport': 'audio', 'provider': row['provider'], 'engine': row['id'], 'verb': verb,
                'model_id': (row.get('models') or {}).get(verb), 'text': text,
                'controls': {k: v for k, v in values.items() if k != 'seed'},
-               'fixed': dict((row.get('fixed') or {}).get(verb, {})), 'takes': takes(row, verb), 'voice': voice,
+               'fixed': dict((row.get('fixed') or {}).get(verb, {})), 'takes': takes(row, verb),
+               'pcm_channels': pcm_channels(row, verb), 'voice': voice,
                'tariff': price, 'measures': counted, 'reserved_micro_usd': reserved,
                'destination': destination(row['provider']), 'engine_revision': op['revision']}
     return {'request': request, 'controls': values, 'reserved_micro_usd': reserved,

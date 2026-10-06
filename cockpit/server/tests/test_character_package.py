@@ -19,11 +19,13 @@ import threading
 import wave
 from pathlib import Path, PurePosixPath
 
+import httpx
 import pytest
 from PIL import Image
 
 import fakes
 from app import config, crexil_delivery, decisions, manifests
+from app.elevenlabs import ElevenLabsExecutor
 from fakes import FakeExecutor, Step
 from test_api_v4 import store
 from test_audio_budget import priced
@@ -34,6 +36,8 @@ from test_crexil_execution import attest
 from test_crexil_hosted import limits
 from test_crexil_mesh import draft_mesh
 from test_crexil_restore import backup_upload, restored
+from test_elevenlabs import BASE as ELEVENLABS
+from test_elevenlabs import FakeElevenLabs, free_row, sounded
 
 pytestmark = pytest.mark.anyio
 
@@ -327,6 +331,32 @@ async def test_a_character_package_lands_every_medium_where_a_game_engine_import
         assert not re.search(r'\.(wav|png|glb|webp|json)\b', text)
         for role in ORDER:
             assert len(await store().node_events(takes[role]['id'], 'node.promoted')) == 1
+
+
+async def test_an_elevenlabs_sound_lands_in_the_package_as_stereo_at_its_requested_length(tmp_path, monkeypatch):
+    """The real adapter against a synthetic ElevenLabs that answers as the live
+    account does: interleaved stereo PCM, after a provider receipt."""
+    monkeypatch.setattr(config, 'ELEVENLABS_URL', ELEVENLABS)
+    fake = FakeElevenLabs().on('POST', '/v1/sound-generation', sounded())
+    engines = {'elevenlabs': ElevenLabsExecutor(transport=httpx.MockTransport(fake))}
+    async with booted_audio(tmp_path, monkeypatch, rows=[free_row('elevenlabs-sfx', 'test-eleven-sfx')],
+                            executors=engines) as (client, _):
+        wid = (await project(client))['id']
+        sound = await draft(client, wid, 'audio:sfx:test-eleven-sfx', 'Forge strike on the anvil',
+                            controls={'duration_seconds': 2.5})
+        _, (strike,) = await submit(client, sound)
+        _, delivery = await prepared(client, wid, [strike['id']])
+        await sent(client, delivery['id'])
+        root = await package_root(delivery['id'])
+        (entry,) = [e for e in json.loads((root / 'package.json').read_bytes())['files'] if e.get('asset_id')]
+        # Named by its grid label, which counts no receipt, and two channels for the 2.5 s asked for.
+        assert entry['path'] == 'Audio/SFX/0A_forge-strike-on-the-anvil.wav'
+        assert wav_facts((root / entry['path']).read_bytes()) == (2, 2, 48000, 120000)
+        manifest = json.loads((root / entry['manifest']).read_bytes())
+        assert {key: manifest['audio'][key] for key in ('container', 'codec', 'sample_rate', 'channels', 'duration_s')} \
+            == {'container': 'wav', 'codec': 'pcm_s16le', 'sample_rate': 48000, 'channels': 2, 'duration_s': 2.5}
+        assert isinstance(manifest['audio']['loudness_lufs'], float) and isinstance(manifest['audio']['peak_dbfs'], float)
+        assert (manifest['turn']['idx'], manifest['slot']['pos'], manifest['take']) == (0, 0, 1)
 
 
 async def test_review_hashes_each_file_once_outside_the_lock_and_prepare_hashes_nothing(tmp_path, monkeypatch):

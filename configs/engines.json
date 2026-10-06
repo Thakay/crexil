@@ -611,6 +611,9 @@
           "output_format": "pcm_48000"
         }
       },
+      "pcm_channels": {
+        "sfx": 2
+      },
       "params": {
         "sfx": {
           "duration_seconds": {

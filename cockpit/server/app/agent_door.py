@@ -71,9 +71,10 @@ class ProviderRefused(Exception):
 
 def label(turn_idx: int, pos: int, output_index: int = 0) -> str:
     """The grid's own name for a cell or a take: the run's index, then the cell's
-    letters, "3B", or "3B.2" for a later output. Cells past Z continue as spreadsheet
-    columns do, "3AA", "3AB", so every position of a run has its own name. The
-    client's `takeLabel` spells the same names."""
+    letters, "3B", or "3B.2" for its attempt's second take (`output_index` counts
+    takes only, never a receipt). Cells past Z continue as spreadsheet columns do,
+    "3AA", "3AB", so every position of a run has its own name. The client's
+    `takeLabel` spells the same names."""
     letters, rest = '', pos + 1
     while rest:
         rest, digit = divmod(rest - 1, 26)

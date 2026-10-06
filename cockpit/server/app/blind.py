@@ -222,11 +222,19 @@ def take_name(filename: str) -> str:
     return _hidden_name(filename, 'hidden-take')
 
 
-def output_name(member: dict) -> str:
-    """A hidden run's execution file as its group lists and serves it:
-    `output-<ordinal>` and the extension its bytes need, never the name the
-    engine gave it."""
-    return _hidden_name(member['filename'], f"output-{member['ordinal']}")
+def output_name(filename: str, number: int) -> str:
+    """A hidden run's take file as its group lists and serves it: `output-<n>`,
+    `n` its place among its attempt's takes, and the extension its bytes need;
+    never the name its engine gave it, nor a place that counts the receipt or
+    companion files an engine leaves beside its takes."""
+    return _hidden_name(filename, f'output-{number}')
+
+
+async def served_name(db, member: dict) -> str:
+    """The name a hidden run's take file downloads under: the one its group lists."""
+    before = await db._one('SELECT COUNT(*) AS n FROM execution_outputs WHERE group_id=? AND node_id IS NOT NULL '
+                           'AND ordinal<?', (member['group_id'], member['ordinal']))
+    return output_name(member['filename'], before['n'])
 
 
 def _held(item: dict) -> bool:
@@ -271,10 +279,13 @@ def mask(kind: str, item: dict) -> dict:
         if 'cause' in metadata:
             metadata['cause'] = plain_cause(metadata.get('failure_kind'))
         out['metadata'] = metadata
+        # Only the takes are listed, numbered among themselves: a receipt
+        # counted before them would tell a hosted engine from a local one.
+        takes = [member for member in out.get('outputs') or [] if member.get('node_id') is not None]
         out['outputs'] = [
-            {**member, 'identity': f"output:{member['ordinal']}", 'descriptor': scrub(member.get('descriptor') or {}),
-             'filename': output_name(member)}
-            for member in out.get('outputs') or [] if member.get('node_id') is not None]
+            {**member, 'ordinal': number, 'identity': f'output:{number}',
+             'descriptor': scrub(member.get('descriptor') or {}), 'filename': output_name(member['filename'], number)}
+            for number, member in enumerate(takes)]
     if kind == 'node':
         if out.get('material'):
             material = dict(out['material'])

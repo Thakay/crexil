@@ -1277,13 +1277,18 @@ class Scheduler:
             if req.payload == 'file':
                 await self.db.complete_files(slot['id'], slot['attempt'], charged_usd=charged)
             else:
+                # The primary take landed when it was collected, numbered among
+                # its attempt's takes; completion names it by that number.
+                primary = (await self.db.get_node(member["node_id"])
+                           if member["node_id"] else None)
                 node = await self.db.land_node(
                     slot["id"], payload=req.payload, verb=req.verb,
                     output_path=str(path), prompt=req.prompt,
                     parents=list(req.parents), external=result.external,
                     submitted_graph=result.submitted_graph,
                     duration_ms=duration_ms, charged_usd=charged,
-                    x=req.x, y=req.y, output_index=member["ordinal"],
+                    x=req.x, y=req.y,
+                    output_index=primary["output_index"] if primary else None,
                     expected_attempt=slot["attempt"])
         except ValueError:
             # lost the race to another finaliser; the money still gets its

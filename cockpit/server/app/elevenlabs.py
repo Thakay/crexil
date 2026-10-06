@@ -19,7 +19,9 @@ Guarantees:
   it, and sound effects always send their duration, so each price is known
   before the call (law 22). Speech keeps `enable_logging` on, so ElevenLabs'
   history can return a take whose response was lost.
-- Every take arrives as PCM WAV: raw PCM is wrapped sample for sample.
+- Every take arrives as PCM WAV: raw PCM is wrapped sample for sample, in the
+  interleaved channels its engine row states (`pcm_channels`, frozen in the
+  envelope; mono unless stated).
 - Each attempt reports its charge, which settles its reservation: the usage
   ElevenLabs bills (the characters of the text sent, or the seconds of sound
   requested) priced at the published tariff the attempt was frozen with, by the
@@ -138,14 +140,15 @@ def _seed(value) -> int | None:
     return None if value is None else int(value) % SEED_RANGE
 
 
-def _wav(raw: bytes, fmt: str) -> bytes:
+def _wav(raw: bytes, fmt: str, channels: int) -> bytes:
     """A take's bytes as PCM WAV: `wav` arrives wrapped, `pcm_*` is wrapped
-    here as 16-bit little-endian mono at the format's rate."""
+    here as 16-bit little-endian samples at the format's rate, interleaved in
+    `channels` channels."""
     if fmt.startswith('wav'):
         return raw
     if not _measurable(fmt):
         raise ValueError(f'{fmt} is not a PCM format.')
-    return audio.wrap_pcm(raw, sample_rate=int(fmt.split('_', 1)[1]), channels=1, sample_width=2)
+    return audio.wrap_pcm(raw, sample_rate=int(fmt.split('_', 1)[1]), channels=channels, sample_width=2)
 
 
 def _measurable(output_format) -> bool:
@@ -737,9 +740,10 @@ class ElevenLabsExecutor:
                                 detail=json.dumps(facts)[:1600], charged_usd=usd, job_ref=rid)
         primary = None
         take_external = {k: v for k, v in external.items() if k not in ('reported_cost_usd', 'generation_id')}
+        channels = envelope.get('pcm_channels', 1)
         for index, take in enumerate(takes):
             try:
-                data, filename = _wav(take.raw, take.fmt), f'take-{index + 1}.wav'
+                data, filename = _wav(take.raw, take.fmt, channels), f'take-{index + 1}.wav'
             except ValueError:
                 # Kept as delivered; collection reports why it cannot be measured (law 7).
                 data, filename = take.raw, f'take-{index + 1}.raw'

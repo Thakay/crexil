@@ -13,7 +13,7 @@ import pytest
 
 import importlib.util
 
-from app import audio, audio_executors, blind, config, main, wiring
+from app import audio, audio_executors, blind, config, crexil_audio, main, wiring
 from app.audio_executors import NotBuiltExecutor
 from app.db import Database
 from app.executors import EngineFailure
@@ -114,12 +114,19 @@ def test_audio_rows_are_well_formed_enabled_only_with_their_adapter_and_route_to
         assert audio.PROVIDERS[row['provider']] == row['lane']
         assert set(row['verbs']) <= set(audio.VERBS)
         assert set(row.get('params', {})) <= set(row['verbs'])
+        assert set(row.get('pcm_channels', {})) <= set(row['verbs'])
         for verb in row['verbs']:
             price = row['tariffs'][verb]
             assert price['unit'] in ('attempt', '1k_characters', 'second', 'generation')
             assert type(price['micro_usd']) is int and price['micro_usd'] >= 0
             assert row['models'][verb]
+            # A fact about the provider's answer, never a field sent to it.
+            assert 'pcm_channels' not in (row.get('fixed') or {}).get(verb, {})
+            assert crexil_audio.pcm_channels(row, verb) in (1, 2)
     assert all(rows[i]['terms']['allows'] == ['elevenlabs'] for i in rows if i.startswith('elevenlabs'))
+    # ElevenLabs answers sound effects in stereo PCM, and speech and Voice Design in mono.
+    assert {verb: crexil_audio.pcm_channels(rows[i], verb) for i in rows if i.startswith('elevenlabs')
+            for verb in rows[i]['verbs']} == {'voice-design': 1, 'speak': 1, 'sfx': 2}
 
 
 def test_every_engine_kind_routes_by_its_declared_source(tmp_path, monkeypatch):

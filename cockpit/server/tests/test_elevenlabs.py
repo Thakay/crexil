@@ -25,6 +25,7 @@ import pytest
 from app import audio, audio_executors, config, crexil_audio, crexil_budget, elevenlabs
 from app.elevenlabs import ElevenLabsExecutor
 from app.executors import DispatchRequest, EngineFailure, SourceImage
+from fakes import tone_wav
 
 pytestmark = pytest.mark.anyio
 
@@ -37,9 +38,30 @@ LINE = 'Steel remembers every strike. So do I.'
 
 
 def pcm(seconds=0.5, rate=24000, pitch=220.0) -> bytes:
-    """Raw 16-bit little-endian mono PCM, as ElevenLabs sends for `pcm_*`."""
+    """Raw 16-bit little-endian mono PCM, as ElevenLabs sends speech and Voice
+    Design for `pcm_*`."""
     return b''.join(struct.pack('<h', int(0.3 * 32767 * math.sin(2 * math.pi * pitch * i / rate)))
                     for i in range(int(seconds * rate)))
+
+
+# A channel of a stereo answer: (amplitude, pitch in Hz), or None for silence.
+LEFT, RIGHT = (0.3, 440.0), (0.15, 660.0)
+
+
+def stereo(seconds, rate=48000, left=LEFT, right=RIGHT) -> bytes:
+    """Raw 16-bit little-endian stereo PCM, its channels interleaved L, R, L, R,
+    as ElevenLabs sends sound effects for `pcm_48000`. Each sounding channel is
+    the tone `fakes.tone_wav` makes with the same amplitude and pitch."""
+    frames = round(seconds * rate)
+
+    def channel(tone):
+        if tone is None:
+            return [0] * frames
+        amplitude, pitch = tone
+        return [int(amplitude * 32767 * math.sin(2 * math.pi * pitch * i / rate)) for i in range(frames)]
+
+    interleaved = [sample for pair in zip(channel(left), channel(right), strict=True) for sample in pair]
+    return struct.pack(f'<{len(interleaved)}h', *interleaved)
 
 
 def b64(data: bytes) -> str:
@@ -94,9 +116,15 @@ def spoken(*, rid='req-tts'):
                           headers={'request-id': rid, 'history-item-id': 'hist-1', 'character-cost': str(len(LINE))})
 
 
-def sounded():
-    return httpx.Response(200, content=pcm(0.5, rate=48000), headers={'content-type': 'audio/pcm',
-                                                                       'request-id': 'req-sfx'})
+def sounded(left=LEFT, right=RIGHT):
+    """Sound Effects as the live account answered `pcm_48000`: interleaved stereo
+    PCM lasting the duration the request asked for, its credits in
+    `character-cost`, and no request or history id."""
+    def answer(request):
+        seconds = json.loads(request.content)['duration_seconds']
+        return httpx.Response(200, content=stereo(seconds, left=left, right=right), headers={
+            'content-type': 'audio/pcm', 'character-cost': str(math.ceil(11 * seconds)), 'x-trace-id': 'trace-sfx'})
+    return answer
 
 
 class Prices:
@@ -145,7 +173,8 @@ def envelope(engine, verb, text, controls, *, seed=None, voice=None):
     tariff = crexil_audio.tariff(row, verb)
     return {'transport': 'audio', 'provider': 'elevenlabs', 'engine': engine, 'verb': verb,
             'model_id': row['models'][verb], 'text': text, 'controls': dict(controls),
-            'fixed': dict(row['fixed'][verb]), 'takes': crexil_audio.takes(row, verb), 'voice': voice,
+            'fixed': dict(row['fixed'][verb]), 'takes': crexil_audio.takes(row, verb),
+            'pcm_channels': crexil_audio.pcm_channels(row, verb), 'voice': voice,
             'tariff': tariff, 'measures': crexil_audio.measures(tariff, text, controls), 'reserved_micro_usd': 0,
             'destination': BASE, 'engine_revision': 'rev-1', 'seed': seed}
 
@@ -285,7 +314,9 @@ async def test_speech_saves_a_designed_preview_once_and_reads_with_its_seed(rows
     take = outputs[1]
     assert take.descriptor['audio'] == {'text': LINE, 'alignment': ALIGNMENT, 'voice': {
         'provider': 'elevenlabs', 'kind': 'saved', 'voice_id': 'voice-1', 'from_generated_voice_id': 'gen-0'}}
-    assert audio.inspect(take.data)['sample_rate'] == 24000
+    # Speech answers mono PCM, so it stays one channel at its own length.
+    facts = audio.inspect(take.data)
+    assert (facts['channels'], facts['sample_rate'], facts['duration_s']) == (1, 24000, 0.5)
     assert first.charged_usd == second.charged_usd == pytest.approx(math.ceil(len(LINE) * 80) / 1e6)
     assert receipt_of(outputs)[0].external['history_item_id'] == 'hist-1'
 
@@ -317,24 +348,49 @@ async def test_speech_checks_its_voice_take_bytes_before_sending(rows, prices, t
 
 # --- sound effects ---
 
-async def test_a_sound_effect_always_sends_its_duration_and_lands_a_48k_take(rows, prices):
+async def test_a_stereo_sound_answer_lands_at_its_requested_length(rows, prices):
     fake = FakeElevenLabs().on('POST', '/v1/sound-generation', sounded())
-    result, outputs, _ = await run(executor(fake), sound_envelope())
+    env = sound_envelope()
+    assert env['pcm_channels'] == 2                          # the row's fact, frozen beside `fixed`, never sent
+    result, outputs, _ = await run(executor(fake), env)
     (request,) = fake.requests
     assert dict(request.url.params) == {'output_format': 'pcm_48000'}
     assert json.loads(request.content) == {'text': 'Hammer on an anvil, one ringing strike',
                                            'model_id': 'eleven_text_to_sound_v2', 'duration_seconds': 2.0,
                                            'prompt_influence': 0.3, 'loop': False}
+    # Two interleaved channels, so the take lasts the 2.0 s asked for, not twice that an octave low.
     facts = audio.inspect(outputs[1].data)
-    assert facts['sample_rate'] == 48000 and facts['duration_s'] == 0.5
+    assert (facts['channels'], facts['sample_rate'], facts['duration_s']) == (2, 48000, 2.0)
+    assert result.data == outputs[1].data and result.data[44:] == stereo(2.0)    # the samples as delivered
     assert outputs[1].descriptor['audio'] == {'text': None, 'voice': None, 'alignment': None}
     assert prices.calls[-1][1] == {'seconds': 2.0} and result.charged_usd == pytest.approx(0.004)
+    assert receipt_of(outputs)[1]['charge']['provider_character_cost'] == '22'
 
 
-async def test_audio_that_is_not_whole_pcm_is_kept_as_delivered(rows, prices):
-    fake = FakeElevenLabs().on('POST', '/v1/sound-generation', httpx.Response(200, content=b'\x01\x02\x03'))
+# A 1 kHz tone at half scale in one channel or both: its mono twin is `tone_wav`'s.
+TONE = (0.5, 1000.0)
+
+
+@pytest.mark.parametrize('left, right, gain', [(TONE, None, 0.0), (None, TONE, 0.0), (TONE, TONE, 3.01)],
+                         ids=['left only', 'right only', 'both'])
+async def test_a_stereo_takes_loudness_and_peaks_are_measured_over_both_channels(rows, prices, left, right, gain):
+    fake = FakeElevenLabs().on('POST', '/v1/sound-generation', sounded(left=left, right=right))
+    result, _, _ = await run(executor(fake), sound_envelope())
+    facts = audio.inspect(result.data)
+    mono = audio.inspect(tone_wav(seconds=2.0, rate=48000, pitch=1000.0, amplitude=0.5))
+    assert (facts['channels'], facts['duration_s']) == (2, 2.0)
+    # Each waveform bin spans the same instants in both channels and keeps the louder;
+    # loudness sums the channels' power (BS.1770 weighs left and right 1.0).
+    assert facts['peaks'] == mono['peaks'] and len(facts['peaks']) == audio.PEAK_BINS
+    assert facts['peak_dbfs'] == mono['peak_dbfs']
+    assert facts['loudness_lufs'] == pytest.approx(mono['loudness_lufs'] + gain, abs=0.02)
+
+
+@pytest.mark.parametrize('raw', [b'\x01\x02\x03', b'\x01\x02\x03\x04\x05\x06'], ids=['half a sample', 'half a frame'])
+async def test_audio_that_is_not_whole_pcm_is_kept_as_delivered(rows, prices, raw):
+    fake = FakeElevenLabs().on('POST', '/v1/sound-generation', httpx.Response(200, content=raw))
     result, outputs, _ = await run(executor(fake), sound_envelope())
-    assert result.filename == 'take-1.raw' and result.data == b'\x01\x02\x03' and outputs[1].payload == 'audio'
+    assert result.filename == 'take-1.raw' and result.data == raw and outputs[1].payload == 'audio'
 
 
 # --- refusals and failures ---
@@ -597,10 +653,21 @@ async def test_designed_voices_land_speak_and_sound_through_the_server(tmp_path,
         facts = await store().audio_facts(p['id'])
         for take in takes:
             measured = facts[take['id']]
-            assert measured['sample_rate'] == 24000 and measured['loudness_lufs'] is not None
+            assert (measured['sample_rate'], measured['channels']) == (24000, 1)
+            assert measured['loudness_lufs'] is not None
             assert 0 < len(measured['peaks']) <= audio.PEAK_BINS and measured['voice']['kind'] == 'designed'
-        # The provider receipt is collected first, so the takes follow it in order.
-        assert sorted(t['output_index'] for t in takes) == [1, 2, 3]
+        # The receipt is collected first, but a take is numbered among its attempt's
+        # takes only: the previews read 0A, 0A.2 and 0A.3, as a local engine's do.
+        number = {facts[t['id']]['voice']['generated_voice_id']: t['output_index'] for t in takes}
+        assert number == {'gen-0': 0, 'gen-1': 1, 'gen-2': 2}
+        (cell,) = (await client.get(f"/api/crexil/directions/{design['id']}/run")).json()['cells']
+        assert [take['label'] for take in cell['takes']] == ['0A', '0A.2', '0A.3']
+        (group,) = [g for g in (await client.get(f"/api/crexil/projects/{p['id']}")).json()['execution_groups']
+                    if g['slot_id'] == takes[0]['slot_id']]
+        receipt, *outputs = group['outputs']
+        assert (receipt['identity'], receipt['ordinal'], receipt['node_id']) == ('provider:receipt', 0, None)
+        landed = {t['id']: t['output_index'] for t in takes}
+        assert [(o['ordinal'], landed[o['node_id']]) for o in outputs] == [(1, 0), (2, 1), (3, 2)]
         voice = next(t for t in takes if facts[t['id']]['voice']['generated_voice_id'] == 'gen-0')
         assert json.loads(fake.calls('POST', '/v1/text-to-voice/design')[0].content)['seed'] == 7
 
@@ -611,13 +678,21 @@ async def test_designed_voices_land_speak_and_sound_through_the_server(tmp_path,
             assert spoken_facts['voice'] == {'provider': 'elevenlabs', 'kind': 'saved', 'voice_id': 'voice-1',
                                              'from_generated_voice_id': 'gen-0'}
             assert spoken_facts['text'] == LINE and spoken_facts['alignment'] == ALIGNMENT
+            assert (spoken_facts['channels'], spoken_facts['duration_s'], read['output_index']) == (1, 0.5, 0)
         # The second run reused the voice the first saved: review found it in the record.
         assert turn['slots'][0]['external']['voice']['voice_id'] == 'voice-1'
         assert len(fake.calls('POST', '/v1/text-to-voice')) == 1
 
-        sound = await draft(client, p['id'], 'audio:sfx:test-eleven-sfx', 'Hammer on an anvil')
-        _, (strike,) = await submit(client, sound)
-        assert (await store().audio_facts(p['id']))[strike['id']]['sample_rate'] == 48000
+        sound = await draft(client, p['id'], 'audio:sfx:test-eleven-sfx', 'Hammer on an anvil',
+                            controls={'duration_seconds': 2.5})
+        turn, (strike,) = await submit(client, sound)
+        # Review froze the row's stereo answer beside the fixed fields; the take lasts what was asked.
+        assert turn['slots'][0]['external']['pcm_channels'] == 2
+        sounded_facts = (await store().audio_facts(p['id']))[strike['id']]
+        assert {key: sounded_facts[key] for key in ('sample_rate', 'channels', 'duration_s')} == \
+            {'sample_rate': 48000, 'channels': 2, 'duration_s': 2.5}
+        (cell,) = (await client.get(f"/api/crexil/directions/{sound['id']}/run")).json()['cells']
+        assert [take['label'] for take in cell['takes']] == [f"{turn['idx']}A"]
         origin = await store().material_origin(strike['id'])
         assert origin['terms']['no_ai_input'] is True
 

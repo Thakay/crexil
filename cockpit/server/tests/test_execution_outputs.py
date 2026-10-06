@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from PIL import Image
 
 from app import api_crexil, config, execution_outputs, wiring
-from app.executors import ComfyExecutor
+from app.executors import CollectedOutput, ComfyExecutor, DispatchRequest
 from test_executors import FakeComfy
 from test_scheduler import events_of, make_batch, opened, running, settle
 
@@ -138,6 +138,7 @@ async def test_scheduler_keeps_all_runtime_files_and_distinct_same_named_outputs
         assert executor.start_calls == len(fake.submitted) == 1
         generated = [node for node in await db.list_nodes(workspace['id']) if node['slot_id']]
         assert len(generated) == 3
+        numbered = []
         for item in outputs:
             blob = files[descriptor_key(item)]
             assert Path(item['output_path']).read_bytes() == blob
@@ -150,8 +151,10 @@ async def test_scheduler_keeps_all_runtime_files_and_distinct_same_named_outputs
             else:
                 node = await db.get_node(item['node_id'])
                 assert node['parents'] == [parent['id']]
-                assert node['output_index'] == item['ordinal']
+                numbered.append((item['ordinal'], node['output_index']))
                 assert node['submitted_graph'] == requests[0].submitted_graph
+        # The metadata file between the images is no take: the image after it is the third take.
+        assert numbered == [(0, 0), (1, 1), (3, 2)]
         assert len(await events_of(db, 'node.landed')) == 1
         assert len(await events_of(db, 'execution.output_collected')) == 4
         assert await db.workspace_charged(workspace['id']) == 0
@@ -568,3 +571,30 @@ async def test_missing_descriptor_cannot_erase_an_unresolved_expected_output(tmp
             assert executor.start_calls == len(fake.submitted) == 1
             assert (await db.get_slot(sid))['attempt'] == 1
             assert await db.workspace_charged(workspace['id']) == 0
+
+
+async def test_a_take_is_numbered_among_its_attempts_takes_never_its_receipt_or_companions(tmp_path):
+    async with opened(tmp_path) as db:
+        workspace = await db.create_workspace('Numbered takes')
+        turn = await db.create_turn_with_slots(workspace['id'], 'brass lamp', {}, [{'engine': 'hosted'}])
+        sid = turn['slots'][0]['id']
+        await db.dispatch_slot(sid, job_ref='job-1', seed=1)
+        slot = await db.get_slot(sid)
+        req = DispatchRequest(slot_id=sid, engine='hosted', payload='image', verb='generate', prompt='brass lamp')
+
+        async def collected(identity, payload, role='unclassified', data=None):
+            output = CollectedOutput(identity=identity, filename=f"{identity.replace(':', '-')}.bin", payload=payload,
+                                     role=role, data=data or png((11, 22, 33)))
+            member = await execution_outputs.collect(db, tmp_path / 'staging', slot, req, output)
+            node = await db.get_node(member['node_id']) if member['node_id'] else None
+            return member['ordinal'], node and node['output_index']
+
+        # A hosted engine's receipt comes first and a companion file sits between the takes.
+        assert await collected('provider:receipt', None, 'provider receipt', b'{"id": "job-1"}') == (0, None)
+        assert await collected('image:0', 'image') == (1, 0)
+        assert await collected('companion:.json', None, 'companion', b'{}') == (2, None)
+        assert await collected('image:1', 'image', data=png((44, 55, 66))) == (3, 1)
+        # Collecting a take again keeps its number; changed bytes are a new member and the next take.
+        assert await collected('image:0', 'image') == (1, 0)
+        assert await collected('image:1', 'image', data=png((77, 88, 99))) == (4, 2)
+        assert sorted(n['output_index'] for n in await db.list_nodes(workspace['id'])) == [0, 1, 2]

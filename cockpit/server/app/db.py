@@ -983,14 +983,17 @@ class Database:
                         committed_usd: float | None = None,
                         charged_usd: float | None = None,
                         x: float | None = None, y: float | None = None,
-                        output_index: int = 0, complete: bool = True,
+                        output_index: int | None = 0, complete: bool = True,
                         expected_attempt: int | None = None) -> dict:
         """Record a collected material member, optionally completing its attempt.
 
-        Intermediate collection never changes slot status or bills. Repeating
-        collection at the same index and path reuses its identity. Completion
-        retains the existing terminal-transition guard, so one execution bills
-        once regardless of how many files it returned.
+        `output_index` numbers the take among its attempt's takes, from 0; None
+        gives a new take the number after every take its attempt holds, in the
+        order they land. A receipt or companion file lands no node, so it never
+        counts. Intermediate collection never changes slot status or bills.
+        Repeating collection at the same index and path reuses its identity.
+        Completion retains the existing terminal-transition guard, so one
+        execution bills once regardless of how many files it returned.
         """
         nid, ts = new_id(), now_iso()
         async with self._tx():
@@ -1004,6 +1007,10 @@ class Database:
             if not complete and charged_usd is not None:
                 raise ValueError('Collection does not record a charge. Complete or fail the execution once.')
             ids = await self._slot_ids(slot)
+            if output_index is None:
+                last = await self._one('SELECT MAX(output_index) AS n FROM nodes WHERE slot_id=? AND take=?',
+                                       (slot_id, slot['attempt']))
+                output_index = 0 if last['n'] is None else last['n'] + 1
             previous = await self._one('SELECT id,output_path FROM nodes WHERE slot_id=? AND take=? AND output_index=?',
                                        (slot_id, slot['attempt'], output_index))
             if previous:

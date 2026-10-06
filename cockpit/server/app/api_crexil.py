@@ -834,7 +834,7 @@ async def output_file(oid: str):
         raise HTTPException(404, 'This file is withheld while its run is blind. Reveal the run to read it.')
     # A blind run's take downloads under the neutral name its group lists, never the engine's own.
     return FileResponse(member['output_path'], media_type=member['media_type'],
-                        filename=blind.output_name(dict(member)) if hidden else Path(member['filename']).name,
+                        filename=await blind.served_name(store().db, member) if hidden else Path(member['filename']).name,
                         stat_result=await blind.file_stat(store().db, turn and turn['turn_id'], member['output_path']))
 
 

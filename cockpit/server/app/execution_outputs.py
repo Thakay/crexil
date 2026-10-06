@@ -9,6 +9,9 @@ Retained runtime inputs can gain one immutable upload/graph binding before
 dispatch; recording that binding never replaces the previously retained bytes.
 An audio take is measured before its transaction and lands with its facts and
 its provider's recorded terms; audio that cannot be measured stays a file.
+An output's ordinal places it among every file of its execution, provider
+receipts and companion files included; a take is numbered among its attempt's
+takes only, as it lands, so its grid label never counts a receipt.
 Bytes reach their file before the receipt transaction: no write, fsync or
 whole-payload hash runs on the event loop or while the store's lock is held.
 """
@@ -258,7 +261,7 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
                 node = await db.land_node(slot['id'], payload=output.payload, verb=req.verb,
                     output_path=str(path), prompt=req.prompt, parents=list(req.parents),
                     submitted_graph=output.submitted_graph, external=output.external, x=req.x, y=req.y,
-                    complete=False, output_index=ordinal, expected_attempt=slot['attempt'])
+                    complete=False, output_index=None, expected_attempt=slot['attempt'])
                 metadata = json.loads(item['metadata_json'])
                 if not metadata.get('companion_owner_id'):
                     metadata['companion_owner_id'] = node['id']
