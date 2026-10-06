@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, Response
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
-from . import audio, blind, config, preferences, wiring
+from . import agent_door, audio, blind, config, preferences, wiring
 from .crexil_schemas import (CollectExecution, ExecutionGroupView, CreateDirection, CreateProject, DirectionState,
     DirectionView, DisplaySelection, ImportMaterial, ImportResult, OperationView,
     ExecutionReview, SubmitDirection, SubmittedDirection,
@@ -36,7 +36,8 @@ from .crexil_schemas import (CollectExecution, ExecutionGroupView, CreateDirecti
     ReuseSelection, CreateReuse, ReuseReview,
     ReserveArchive, RestoreArchive, ArchiveUpload, ArchiveRestoreResult, ProjectBackup,
     RecordAssessment, DecisionView, ProjectRecord, MaterialRecord, SetupOverview, OperationRequirements,
-    BlindRunView, PreferenceExport, RevealRun)
+    BlindRunView, DecisionExport, RevealRun, RunView,
+    StartVoiceSession, EndVoiceSession, VoiceSessionStarted, VoiceSessionView, VoiceUsage)
 from .crexil_store import Conflict, CreativeStore
 from .db import new_id
 
@@ -79,6 +80,14 @@ async def command(body, scope, action):
         raise refused(exc) from exc
 
 
+def human_only(actor, act: str) -> None:
+    """Release is a human act (law 23): an agent may propose takes and review a
+    delivery, never prepare or transfer one. Refused before anything is recorded."""
+    if actor.kind != 'human':
+        raise HTTPException(403, f'{act} is the artist\'s act. An agent may propose takes and review a delivery; '
+                                 'the artist delivers.')
+
+
 async def check_references(wid: str, ids: list[str], *, require_available=False):
     if len(set(ids)) != len(ids):
         raise ValueError('A source is listed more than once. Keep one entry with its contribution.')
@@ -104,6 +113,7 @@ async def review_delivery(wid: str, body: DeliverySelection):
 @router.post('/projects/{wid}/deliveries', response_model=DeliveryView, status_code=201)
 async def prepare_delivery(wid: str, body: CreateDelivery):
     from .crexil_delivery import prepare, state
+    human_only(body.actor, 'Preparing a delivery')
     receipt = await command(body, 'delivery.prepare:' + wid, lambda: prepare(store().db, wid, body))
     return await state(store().db, receipt['id'])
 
@@ -129,6 +139,7 @@ async def delivery_state(did: str):
 @router.post('/deliveries/{did}/transfer', response_model=DeliveryView)
 async def transfer_delivery(did: str, body: Command):
     from .crexil_delivery import state, transfer
+    human_only(body.actor, 'Sending a delivery')
     async def record():
         saved = await state(store().db, did)
         await store().db.append_event('delivery.transfer_requested', workspace_id=saved['workspace_id'],
@@ -221,30 +232,92 @@ async def material_audio(nid: str):
 
 @router.post('/turns/{tid}/reveal', response_model=BlindRunView)
 async def reveal_run(tid: str, body: RevealRun):
-    """Reveal a blind run's engines to every reader; an authored event (law 23)."""
+    """Reveal a blind run's engines to every reader; an authored event (law 23). Only
+    the artist reveals: an agent revealing would end the artist's blind comparison."""
+    if body.actor.kind != 'human':
+        raise HTTPException(403, "Revealing a blind run is the artist's act: it ends the blind comparison. "
+                                 'An agent may propose takes while the run stays blind.')
     return await command(body, 'turns.reveal:' + tid, lambda: blind.reveal(store().db, tid, body))
 
 
-@router.get('/projects/{wid}/preferences', response_model=PreferenceExport)
-async def preference_export(wid: str):
-    """The decision record: never a dataset, and it holds no audio."""
+async def _decision_record(wid: str) -> dict:
     try:
         return await preferences.export(store().db, wid)
     except (LookupError, ValueError) as exc:
         raise refused(exc) from exc
 
 
-@router.get('/projects/{wid}/preferences.jsonl', response_class=Response,
-            responses={200: {'content': {'application/x-ndjson': {}},
-                             'description': 'one PreferenceRecord per line'}})
-async def preference_lines(wid: str):
-    try:
-        found = await preferences.export(store().db, wid)
-    except (LookupError, ValueError) as exc:
-        raise refused(exc) from exc
+async def _decision_lines(wid: str) -> Response:
+    found = await _decision_record(wid)
     lines = ''.join(json.dumps(record, sort_keys=True) + '\n' for record in found['records'])
     return Response(lines, media_type='application/x-ndjson',
                     headers={'Content-Disposition': f'attachment; filename="decisions-{wid}.jsonl"'})
+
+
+_LINES = {200: {'content': {'application/x-ndjson': {}}, 'description': 'one DecisionRecord per line'}}
+
+
+@router.get('/projects/{wid}/decisions', response_model=DecisionExport)
+async def decision_record(wid: str):
+    """The artist's decision record: never a dataset, and it holds no audio."""
+    return await _decision_record(wid)
+
+
+@router.get('/projects/{wid}/decisions.jsonl', response_class=Response, responses=_LINES)
+async def decision_lines(wid: str):
+    return await _decision_lines(wid)
+
+
+@router.get('/projects/{wid}/preferences', response_model=DecisionExport, deprecated=True)
+async def decision_record_old_address(wid: str):
+    """The decision record at its former address, kept while the command-line client
+    still reads it. Use `/projects/{wid}/decisions`."""
+    return await _decision_record(wid)
+
+
+@router.get('/projects/{wid}/preferences.jsonl', response_class=Response, responses=_LINES, deprecated=True)
+async def decision_lines_old_address(wid: str):
+    """The decision record's lines at their former address. Use `/projects/{wid}/decisions.jsonl`."""
+    return await _decision_lines(wid)
+
+
+@router.get('/directions/{did}/run', response_model=RunView)
+async def run_view(did: str):
+    """One run, compact and blind-safe: what agents read instead of the project snapshot."""
+    try:
+        return await agent_door.run_view(store().db, did)
+    except LookupError as exc:
+        raise refused(exc) from exc
+
+
+@router.get('/voice-sessions/usage', response_model=VoiceUsage)
+async def voice_usage():
+    """The voice director's minutes against the installation's cap."""
+    return await agent_door.usage(store().db)
+
+
+@router.post('/voice-sessions', response_model=VoiceSessionStarted, status_code=201)
+async def start_voice_session(body: StartVoiceSession):
+    """Start one voice director conversation for the artist. The ElevenLabs key stays
+    on the server (law 18); the minutes cap is checked before ElevenLabs is asked (law 22)."""
+    if body.actor.kind != 'human':
+        raise HTTPException(403, 'A voice session is started by the artist: it opens the microphone and spends '
+                                 'minutes. An agent may ask for one; the artist starts it.')
+    try:
+        return await agent_door.start_session(store(), body)
+    except agent_door.ProviderRefused as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    except (LookupError, ValueError) as exc:
+        raise refused(exc) from exc
+
+
+@router.post('/voice-sessions/{sid}/end', response_model=VoiceSessionView)
+async def end_voice_session(sid: str, body: EndVoiceSession):
+    """Record how long a session ran, as the panel observed it (law 17)."""
+    try:
+        return await agent_door.end_session(store(), sid, body)
+    except (LookupError, ValueError) as exc:
+        raise refused(exc) from exc
 
 
 @router.patch('/projects/{wid}', response_model=ProjectView)

@@ -925,6 +925,229 @@
         "title": "DecideSequence",
         "type": "object"
       },
+      "DecisionCandidate": {
+        "description": "One take the decision was made among, as the record states it.",
+        "properties": {
+          "cost_micro_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Micro Usd"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "node_id",
+          "position",
+          "engine",
+          "provider",
+          "model",
+          "seed",
+          "cost_micro_usd"
+        ],
+        "title": "DecisionCandidate",
+        "type": "object"
+      },
+      "DecisionExport": {
+        "description": "The artist's decision record: never a training or evaluation dataset,\nand it holds no audio.",
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "generated_at",
+          "purpose",
+          "records"
+        ],
+        "title": "DecisionExport",
+        "type": "object"
+      },
+      "DecisionRecord": {
+        "description": "One decision, derived from a selection or an assessment event.",
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blind": {
+            "title": "Blind",
+            "type": "boolean"
+          },
+          "brief": {
+            "title": "Brief",
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "chosen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chosen",
+            "type": "array"
+          },
+          "decided_at": {
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "direction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Id"
+          },
+          "kind": {
+            "enum": [
+              "selection",
+              "sequence_choice",
+              "assessment"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "verb": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verb"
+          }
+        },
+        "required": [
+          "decision_id",
+          "kind",
+          "project_id",
+          "run_id",
+          "direction_id",
+          "verb",
+          "brief",
+          "candidates",
+          "chosen",
+          "reason",
+          "author",
+          "blind",
+          "decided_at"
+        ],
+        "title": "DecisionRecord",
+        "type": "object"
+      },
       "DecisionView": {
         "properties": {
           "actor": {
@@ -1722,6 +1945,45 @@
           "node_ids"
         ],
         "title": "DisplaySelection",
+        "type": "object"
+      },
+      "EndVoiceSession": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "elapsed_s": {
+            "maximum": 86400.0,
+            "minimum": 0.0,
+            "title": "Elapsed S",
+            "type": "number"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor",
+          "elapsed_s"
+        ],
+        "title": "EndVoiceSession",
         "type": "object"
       },
       "Engine": {
@@ -5357,219 +5619,6 @@
         "title": "Passes",
         "type": "object"
       },
-      "PreferenceCandidate": {
-        "description": "One take the decision was made among, as the record states it.",
-        "properties": {
-          "cost_micro_usd": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cost Micro Usd"
-          },
-          "engine": {
-            "title": "Engine",
-            "type": "string"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
-          },
-          "node_id": {
-            "title": "Node Id",
-            "type": "string"
-          },
-          "position": {
-            "title": "Position",
-            "type": "integer"
-          },
-          "provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider"
-          },
-          "seed": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Seed"
-          }
-        },
-        "required": [
-          "node_id",
-          "position",
-          "engine",
-          "provider",
-          "model",
-          "seed",
-          "cost_micro_usd"
-        ],
-        "title": "PreferenceCandidate",
-        "type": "object"
-      },
-      "PreferenceExport": {
-        "description": "The artist's decision record: never a training or evaluation dataset,\nand it holds no audio.",
-        "properties": {
-          "generated_at": {
-            "title": "Generated At",
-            "type": "string"
-          },
-          "project_id": {
-            "title": "Project Id",
-            "type": "string"
-          },
-          "purpose": {
-            "title": "Purpose",
-            "type": "string"
-          },
-          "records": {
-            "items": {
-              "$ref": "#/components/schemas/PreferenceRecord"
-            },
-            "title": "Records",
-            "type": "array"
-          }
-        },
-        "required": [
-          "project_id",
-          "generated_at",
-          "purpose",
-          "records"
-        ],
-        "title": "PreferenceExport",
-        "type": "object"
-      },
-      "PreferenceRecord": {
-        "description": "One decision, derived from a selection or an assessment event.",
-        "properties": {
-          "author": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Actor"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "blind": {
-            "title": "Blind",
-            "type": "boolean"
-          },
-          "brief": {
-            "title": "Brief",
-            "type": "string"
-          },
-          "candidates": {
-            "items": {
-              "$ref": "#/components/schemas/PreferenceCandidate"
-            },
-            "title": "Candidates",
-            "type": "array"
-          },
-          "chosen": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Chosen",
-            "type": "array"
-          },
-          "decided_at": {
-            "title": "Decided At",
-            "type": "string"
-          },
-          "decision_id": {
-            "title": "Decision Id",
-            "type": "string"
-          },
-          "direction_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Direction Id"
-          },
-          "project_id": {
-            "title": "Project Id",
-            "type": "string"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Id"
-          },
-          "verb": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Verb"
-          }
-        },
-        "required": [
-          "decision_id",
-          "project_id",
-          "run_id",
-          "direction_id",
-          "verb",
-          "brief",
-          "candidates",
-          "chosen",
-          "reason",
-          "author",
-          "blind",
-          "decided_at"
-        ],
-        "title": "PreferenceRecord",
-        "type": "object"
-      },
       "Preparation": {
         "additionalProperties": false,
         "properties": {
@@ -7785,6 +7834,214 @@
         "title": "Run",
         "type": "object"
       },
+      "RunAudio": {
+        "description": "What an agent may know of an audio take: measured facts and the spoken words,\nnever its bytes or an address to fetch them. ElevenLabs' terms forbid its audio\nas input to any machine learning, and an agent's language model is one.",
+        "properties": {
+          "duration_s": {
+            "title": "Duration S",
+            "type": "number"
+          },
+          "loudness_lufs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loudness Lufs"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice"
+          }
+        },
+        "required": [
+          "duration_s",
+          "loudness_lufs",
+          "text",
+          "voice"
+        ],
+        "title": "RunAudio",
+        "type": "object"
+      },
+      "RunCell": {
+        "description": "One grid cell, an attempt, in its frozen position (law 8). A blind run's\ncell reads engine `hidden` with seed, per-take cost and timing withheld.",
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "cause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cause"
+          },
+          "charged_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charged Usd"
+          },
+          "collectable": {
+            "title": "Collectable",
+            "type": "boolean"
+          },
+          "committed_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed Usd"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Ms"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "retrying": {
+            "title": "Retrying",
+            "type": "boolean"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "slot_id": {
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "takes": {
+            "items": {
+              "$ref": "#/components/schemas/RunTake"
+            },
+            "title": "Takes",
+            "type": "array"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "turn_id",
+          "label",
+          "position",
+          "state",
+          "attempt",
+          "retrying",
+          "kind",
+          "cause",
+          "detail",
+          "engine",
+          "seed",
+          "committed_usd",
+          "charged_usd",
+          "elapsed_ms",
+          "collectable",
+          "takes"
+        ],
+        "title": "RunCell",
+        "type": "object"
+      },
       "RunResult": {
         "properties": {
           "seq": {
@@ -7800,6 +8057,220 @@
           "seq"
         ],
         "title": "RunResult",
+        "type": "object"
+      },
+      "RunSubmission": {
+        "description": "One submission of a run and its execution control; the control revision is\nwhat a pause, resume or cancel must echo.",
+        "properties": {
+          "blind": {
+            "title": "Blind",
+            "type": "boolean"
+          },
+          "control": {
+            "$ref": "#/components/schemas/ExecutionControlView"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "idx": {
+            "title": "Idx",
+            "type": "integer"
+          },
+          "revealed": {
+            "title": "Revealed",
+            "type": "boolean"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id",
+          "idx",
+          "created_at",
+          "blind",
+          "revealed",
+          "control"
+        ],
+        "title": "RunSubmission",
+        "type": "object"
+      },
+      "RunTake": {
+        "description": "One landed take of a run, named the way the grid names it. Facts, ids and\nlabels only: no bytes and no file address.",
+        "properties": {
+          "audio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunAudio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "chosen": {
+            "title": "Chosen",
+            "type": "boolean"
+          },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "payload": {
+            "enum": [
+              "image",
+              "3d",
+              "audio"
+            ],
+            "title": "Payload",
+            "type": "string"
+          },
+          "set_aside": {
+            "title": "Set Aside",
+            "type": "boolean"
+          },
+          "verb": {
+            "title": "Verb",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "label",
+          "payload",
+          "verb",
+          "available",
+          "set_aside",
+          "chosen"
+        ],
+        "title": "RunTake",
+        "type": "object"
+      },
+      "RunView": {
+        "description": "One run, compact and blind-safe, for agents and other light readers; never\nthe project snapshot. Run totals and the cap stay visible (law 22).",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "blind": {
+            "title": "Blind",
+            "type": "boolean"
+          },
+          "cap_usd": {
+            "title": "Cap Usd",
+            "type": "number"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/RunCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "charged_usd": {
+            "title": "Charged Usd",
+            "type": "number"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionView"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "event_seq": {
+            "title": "Event Seq",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "reserved_usd": {
+            "title": "Reserved Usd",
+            "type": "number"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "selection": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selection",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "submissions": {
+            "items": {
+              "$ref": "#/components/schemas/RunSubmission"
+            },
+            "title": "Submissions",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "project_id",
+          "title",
+          "state",
+          "revision",
+          "action",
+          "prompt",
+          "blind",
+          "cap_usd",
+          "reserved_usd",
+          "charged_usd",
+          "submissions",
+          "cells",
+          "selection",
+          "decisions",
+          "summary",
+          "event_seq"
+        ],
+        "title": "RunView",
         "type": "object"
       },
       "SaveMask": {
@@ -8749,6 +9220,47 @@
         "title": "StartSequence",
         "type": "object"
       },
+      "StartVoiceSession": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "connection": {
+            "default": "webrtc",
+            "enum": [
+              "webrtc",
+              "websocket"
+            ],
+            "title": "Connection",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor"
+        ],
+        "title": "StartVoiceSession",
+        "type": "object"
+      },
       "SubmitDirection": {
         "additionalProperties": false,
         "properties": {
@@ -9559,6 +10071,202 @@
         "title": "ViewUpdate",
         "type": "object"
       },
+      "VoiceSessionStarted": {
+        "description": "What the browser needs to start one conversation. The ElevenLabs key never\nleaves the server (law 18); the short-lived token or signed URL is handed over\nonce and never stored.",
+        "properties": {
+          "conversation_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Token"
+          },
+          "session": {
+            "$ref": "#/components/schemas/VoiceSessionView"
+          },
+          "signed_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed Url"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/VoiceUsage"
+          }
+        },
+        "required": [
+          "session",
+          "conversation_token",
+          "signed_url",
+          "usage"
+        ],
+        "title": "VoiceSessionStarted",
+        "type": "object"
+      },
+      "VoiceSessionView": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "connection": {
+            "enum": [
+              "webrtc",
+              "websocket"
+            ],
+            "title": "Connection",
+            "type": "string"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "elapsed_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed S"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "ended_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_seconds": {
+            "title": "Max Seconds",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "project_id",
+          "actor",
+          "started_at",
+          "max_seconds",
+          "connection",
+          "ended_at",
+          "ended_by",
+          "elapsed_s",
+          "conversation_id"
+        ],
+        "title": "VoiceSessionView",
+        "type": "object"
+      },
+      "VoiceUsage": {
+        "description": "The voice director's minutes against the installation's cap. An open session\ncounts its whole maximum until it ends (law 22); ended sessions count what the\npanel observed (law 17). The price is ElevenLabs' published list price per\nminute, an estimate; model use is billed on top.",
+        "properties": {
+          "cap_seconds": {
+            "title": "Cap Seconds",
+            "type": "integer"
+          },
+          "left_seconds": {
+            "title": "Left Seconds",
+            "type": "number"
+          },
+          "open_sessions": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceSessionView"
+            },
+            "title": "Open Sessions",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "reserved_seconds": {
+            "title": "Reserved Seconds",
+            "type": "integer"
+          },
+          "session_max_seconds": {
+            "title": "Session Max Seconds",
+            "type": "integer"
+          },
+          "usd_per_minute": {
+            "title": "Usd Per Minute",
+            "type": "number"
+          },
+          "used_seconds": {
+            "title": "Used Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ready",
+          "reasons",
+          "cap_seconds",
+          "session_max_seconds",
+          "used_seconds",
+          "reserved_seconds",
+          "left_seconds",
+          "usd_per_minute",
+          "open_sessions"
+        ],
+        "title": "VoiceUsage",
+        "type": "object"
+      },
       "Workspace": {
         "properties": {
           "created_at": {
@@ -10315,6 +11023,49 @@
           }
         },
         "summary": "Review Direction",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/directions/{did}/run": {
+      "get": {
+        "description": "One run, compact and blind-safe: what agents read instead of the project snapshot.",
+        "operationId": "run_view_api_crexil_directions__did__run_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "did",
+            "required": true,
+            "schema": {
+              "title": "Did",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run View",
         "tags": [
           "Crexil shared actions"
         ]
@@ -11145,6 +11896,87 @@
         ]
       }
     },
+    "/api/crexil/projects/{wid}/decisions": {
+      "get": {
+        "description": "The artist's decision record: never a dataset, and it holds no audio.",
+        "operationId": "decision_record_api_crexil_projects__wid__decisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decision Record",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/decisions.jsonl": {
+      "get": {
+        "operationId": "decision_lines_api_crexil_projects__wid__decisions_jsonl_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {}
+            },
+            "description": "one DecisionRecord per line"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decision Lines",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
     "/api/crexil/projects/{wid}/deliveries": {
       "get": {
         "operationId": "list_deliveries_api_crexil_projects__wid__deliveries_get",
@@ -11632,8 +12464,9 @@
     },
     "/api/crexil/projects/{wid}/preferences": {
       "get": {
-        "description": "The decision record: never a dataset, and it holds no audio.",
-        "operationId": "preference_export_api_crexil_projects__wid__preferences_get",
+        "deprecated": true,
+        "description": "The decision record at its former address, kept while the command-line client\nstill reads it. Use `/projects/{wid}/decisions`.",
+        "operationId": "decision_record_old_address_api_crexil_projects__wid__preferences_get",
         "parameters": [
           {
             "in": "path",
@@ -11650,7 +12483,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PreferenceExport"
+                  "$ref": "#/components/schemas/DecisionExport"
                 }
               }
             },
@@ -11667,7 +12500,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Preference Export",
+        "summary": "Decision Record Old Address",
         "tags": [
           "Crexil shared actions"
         ]
@@ -11675,7 +12508,9 @@
     },
     "/api/crexil/projects/{wid}/preferences.jsonl": {
       "get": {
-        "operationId": "preference_lines_api_crexil_projects__wid__preferences_jsonl_get",
+        "deprecated": true,
+        "description": "The decision record's lines at their former address. Use `/projects/{wid}/decisions.jsonl`.",
+        "operationId": "decision_lines_old_address_api_crexil_projects__wid__preferences_jsonl_get",
         "parameters": [
           {
             "in": "path",
@@ -11692,7 +12527,7 @@
             "content": {
               "application/x-ndjson": {}
             },
-            "description": "one PreferenceRecord per line"
+            "description": "one DecisionRecord per line"
           },
           "422": {
             "content": {
@@ -11705,7 +12540,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Preference Lines",
+        "summary": "Decision Lines Old Address",
         "tags": [
           "Crexil shared actions"
         ]
@@ -12626,7 +13461,7 @@
     },
     "/api/crexil/turns/{tid}/reveal": {
       "post": {
-        "description": "Reveal a blind run's engines to every reader; an authored event (law 23).",
+        "description": "Reveal a blind run's engines to every reader; an authored event (law 23). Only\nthe artist reveals: an agent revealing would end the artist's blind comparison.",
         "operationId": "reveal_run_api_crexil_turns__tid__reveal_post",
         "parameters": [
           {
@@ -12672,6 +13507,123 @@
           }
         },
         "summary": "Reveal Run",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/voice-sessions": {
+      "post": {
+        "description": "Start one voice director conversation for the artist. The ElevenLabs key stays\non the server (law 18); the minutes cap is checked before ElevenLabs is asked (law 22).",
+        "operationId": "start_voice_session_api_crexil_voice_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartVoiceSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Voice Session",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/voice-sessions/usage": {
+      "get": {
+        "description": "The voice director's minutes against the installation's cap.",
+        "operationId": "voice_usage_api_crexil_voice_sessions_usage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceUsage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Voice Usage",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/voice-sessions/{sid}/end": {
+      "post": {
+        "description": "Record how long a session ran, as the panel observed it (law 17).",
+        "operationId": "end_voice_session_api_crexil_voice_sessions__sid__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sid",
+            "required": true,
+            "schema": {
+              "title": "Sid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndVoiceSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "End Voice Session",
         "tags": [
           "Crexil shared actions"
         ]

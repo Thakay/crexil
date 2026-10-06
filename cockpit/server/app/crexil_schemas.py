@@ -695,7 +695,7 @@ class RevealRun(Command):
     reason: str = Field(default='', max_length=4000)
 
 
-class PreferenceCandidate(BaseModel):
+class DecisionCandidate(BaseModel):
     """One take the decision was made among, as the record states it."""
     node_id: str
     position: int                      # frozen grid position (law 8)
@@ -706,15 +706,16 @@ class PreferenceCandidate(BaseModel):
     cost_micro_usd: int | None         # charged when known, else committed
 
 
-class PreferenceRecord(BaseModel):
+class DecisionRecord(BaseModel):
     """One decision, derived from a selection or an assessment event."""
     decision_id: str
+    kind: Literal['selection', 'sequence_choice', 'assessment']   # an assessment chooses nothing
     project_id: str
     run_id: str | None                 # the turn
     direction_id: str | None
     verb: str | None
     brief: str                         # the prompt as typed
-    candidates: list[PreferenceCandidate]
+    candidates: list[DecisionCandidate]
     chosen: list[str]
     reason: str | None
     author: Actor | None
@@ -722,13 +723,142 @@ class PreferenceRecord(BaseModel):
     decided_at: str
 
 
-class PreferenceExport(BaseModel):
+class DecisionExport(BaseModel):
     """The artist's decision record: never a training or evaluation dataset,
     and it holds no audio."""
     project_id: str
     generated_at: str
     purpose: str
-    records: list[PreferenceRecord]
+    records: list[DecisionRecord]
+
+
+class RunAudio(BaseModel):
+    """What an agent may know of an audio take: measured facts and the spoken words,
+    never its bytes or an address to fetch them. ElevenLabs' terms forbid its audio
+    as input to any machine learning, and an agent's language model is one."""
+    duration_s: float
+    loudness_lufs: float | None
+    text: str | None
+    voice: dict | None                 # withheld while the run is blind
+
+
+class RunTake(BaseModel):
+    """One landed take of a run, named the way the grid names it. Facts, ids and
+    labels only: no bytes and no file address."""
+    node_id: str
+    label: str                         # run index, cell letter, ".n" for a later output: "3B", "3B.2"
+    payload: Payload
+    verb: str
+    available: bool                    # the bytes are on disk and not purged
+    set_aside: bool
+    chosen: bool                       # in the run's displayed selection
+    audio: RunAudio | None = None
+    identity_hidden: bool | None = None
+
+
+class RunCell(BaseModel):
+    """One grid cell, an attempt, in its frozen position (law 8). A blind run's
+    cell reads engine `hidden` with seed, per-take cost and timing withheld."""
+    slot_id: str
+    turn_id: str
+    label: str
+    position: int
+    state: str                         # the slot's status
+    attempt: int
+    retrying: bool                     # the scheduler's own retry is queued or running (law 9)
+    kind: str | None                   # the failure kind; it picks the next move (law 4)
+    cause: str | None                  # the plain line (law 3)
+    detail: str | None                 # the engine's raw text, at most 500 characters
+    engine: str
+    seed: int | None
+    committed_usd: float | None
+    charged_usd: float | None
+    elapsed_ms: int | None
+    collectable: bool                  # reported files are missing and can be collected for free
+    takes: list[RunTake]
+    identity_hidden: bool | None = None
+
+
+class RunSubmission(BaseModel):
+    """One submission of a run and its execution control; the control revision is
+    what a pause, resume or cancel must echo."""
+    turn_id: str
+    idx: int
+    created_at: str
+    blind: bool
+    revealed: bool
+    control: ExecutionControlView
+
+
+class RunView(BaseModel):
+    """One run, compact and blind-safe, for agents and other light readers; never
+    the project snapshot. Run totals and the cap stay visible (law 22)."""
+    run_id: str                        # the direction
+    project_id: str
+    title: str
+    state: str
+    revision: int                      # what a pick or a revision of the draft must echo
+    action: str
+    prompt: str
+    blind: bool
+    cap_usd: float
+    reserved_usd: float
+    charged_usd: float
+    submissions: list[RunSubmission]
+    cells: list[RunCell]
+    selection: list[str]
+    decisions: list[DecisionView]      # the latest ten that concern this run
+    summary: str                       # one plain line: counts by state, each cause once (law 1)
+    event_seq: int                     # the cursor for /api/events
+
+
+class StartVoiceSession(Command):
+    project_id: str | None = Field(default=None, max_length=100)   # the project the panel is open on
+    connection: Literal['webrtc', 'websocket'] = 'webrtc'
+
+
+class EndVoiceSession(Command):
+    elapsed_s: float = Field(ge=0, le=86400, allow_inf_nan=False)  # as the panel observed it (law 17)
+    conversation_id: str | None = Field(default=None, max_length=200)
+
+
+class VoiceSessionView(BaseModel):
+    session_id: str
+    project_id: str | None
+    actor: Actor
+    started_at: str
+    max_seconds: int
+    connection: Literal['webrtc', 'websocket']
+    ended_at: str | None
+    ended_by: Actor | None
+    elapsed_s: float | None
+    conversation_id: str | None
+
+
+class VoiceUsage(BaseModel):
+    """The voice director's minutes against the installation's cap. An open session
+    counts its whole maximum until it ends (law 22); ended sessions count what the
+    panel observed (law 17). The price is ElevenLabs' published list price per
+    minute, an estimate; model use is billed on top."""
+    ready: bool
+    reasons: list[str]                 # why a session cannot start now, in plain words
+    cap_seconds: int
+    session_max_seconds: int
+    used_seconds: float
+    reserved_seconds: int
+    left_seconds: float
+    usd_per_minute: float
+    open_sessions: list[VoiceSessionView]
+
+
+class VoiceSessionStarted(BaseModel):
+    """What the browser needs to start one conversation. The ElevenLabs key never
+    leaves the server (law 18); the short-lived token or signed URL is handed over
+    once and never stored."""
+    session: VoiceSessionView
+    conversation_token: str | None     # WebRTC
+    signed_url: str | None             # WebSocket
+    usage: VoiceUsage
 
 
 class GraphTarget(BaseModel):
