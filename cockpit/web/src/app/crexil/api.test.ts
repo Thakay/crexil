@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { ActionError, HUMAN, command, engineIdentity, engineLabel, isDefiniteRefusal, money } from './api';
+import { afterEach, describe, expect, it } from 'vitest';
+import { ActionError, HUMAN, artist, command, engineIdentity, engineLabel, isDefiniteRefusal, isSpendingConflict, money, result,
+  setArtistName } from './api';
 
 describe('money', () => {
   it('keeps two decimals from a cent up, and for exactly zero', () => {
@@ -33,11 +34,35 @@ describe('isDefiniteRefusal', () => {
 });
 
 describe('command', () => {
+  afterEach(() => localStorage.clear());
   it('names the artist by default and an agent when one acts', () => {
     expect(command().actor).toEqual(HUMAN);
     const agent = command({kind: 'agent', name: 'voice-director'});
     expect(agent.actor).toEqual({kind: 'agent', name: 'voice-director'});
     expect(agent.request_id).not.toBe(command().request_id);
+  });
+  it("names the artist as this browser's setting names them, and Artist when it names no one", () => {
+    setArtistName('  Kay  ');
+    expect(artist()).toEqual({kind: 'human', name: 'Kay'});
+    expect(command().actor).toEqual({kind: 'human', name: 'Kay'});
+    setArtistName('x'.repeat(200));
+    expect(artist().name).toHaveLength(120);
+    setArtistName('   ');
+    expect(command().actor).toEqual(HUMAN);
+  });
+});
+
+describe('conflicts', () => {
+  const answer = (status: number, conflict?: string) => Promise.resolve({error: {detail: 'Spending moved.'},
+    response: new Response(null, {status, headers: conflict ? {'X-Crexil-Conflict': conflict} : {}})});
+  it("reads the kind a 409 names, so spending that moved is told from a request that changed", async () => {
+    const spending = await result(answer(409, 'spending')).catch(error => error);
+    expect(spending).toBeInstanceOf(ActionError);
+    expect(spending).toMatchObject({status: 409, conflict: 'spending', message: 'Spending moved.'});
+    expect(isSpendingConflict(spending)).toBe(true);
+    expect(isSpendingConflict(await result(answer(409)).catch(error => error))).toBe(false);
+    expect(isSpendingConflict(await result(answer(422, 'spending')).catch(error => error))).toBe(false);
+    expect(isSpendingConflict(new Error('offline'))).toBe(false);
   });
 });
 

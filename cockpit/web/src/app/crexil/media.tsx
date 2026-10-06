@@ -2,6 +2,7 @@
 // importable file types, face plate and inspection body. Surfaces read this table
 // and never branch on a payload, so a new medium is one entry here plus its hue token.
 import type { ComponentType } from 'react';
+import { audioMedium } from '../audio/medium';
 import { actionView, type Action, type Payload } from './actions';
 import { imageUrl, label, type Material } from './api';
 import { MeshInspection } from './MeshInspection';
@@ -24,6 +25,11 @@ export type MediumView = {
   inspectFrame: 'fullImage' | 'fullMesh';
   /** Its instructions are a description kept for the record, never sent. */
   recordedDescription: boolean;
+  /** What a face adds to its take's name for a screen reader, for a medium a picture
+   *  cannot name: "audio, 4.4 s". */
+  describe?: (node: Material) => string;
+  /** The measured facts the record lists beside the file, as [name, value] pairs (law 17). */
+  facts?: (node: Material) => [string, string][];
 };
 
 export const MEDIA: {readonly [K in Payload]?: MediumView} = {
@@ -41,6 +47,7 @@ export const MEDIA: {readonly [K in Payload]?: MediumView} = {
     Inspect: ({node}) => <MeshInspection key={node.id} node={node}/>, inspectFrame: 'fullMesh',
     recordedDescription: true,
   },
+  audio: audioMedium,
 };
 
 function NoInspector() {
@@ -51,6 +58,12 @@ function NoInspector() {
 export function mediumOf(payload: Payload): MediumView {
   return MEDIA[payload] ?? {noun: String(payload), hue: 'var(--medium-image)', accept: [], hasPreview: () => false,
     placeholder: 'Preview unavailable', Inspect: NoInspector, inspectFrame: 'fullImage', recordedDescription: false};
+}
+
+/** A face's accessible name: the take's label, then what its medium says about it. */
+export function faceName(node: Material): string {
+  const words = mediumOf(node.payload).describe?.(node);
+  return `Act on ${label(node)}${words ? `, ${words}` : ''}`;
 }
 
 /** The import picker's accepted file types, every medium together. */

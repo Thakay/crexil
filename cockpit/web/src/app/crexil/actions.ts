@@ -19,10 +19,14 @@ export type ActionView = {
   sources?: SourceRole[];
   /** The prompt is kept for the record and never sent as instructions. */
   recordedDescription?: boolean;
+  /** The name of its words when they are not a prompt: "Line to speak". */
+  words?: string;
+  /** What its operations send, inside a sentence: "the line and its voice". */
+  sends?: string;
 };
 
 export const ACTIONS: {readonly [K in Action]?: ActionView} = {
-  generate: {title: 'New direction', label: 'Generate from words', listed: true, produces: 'image'},
+  generate: {title: 'New direction', label: 'Generate from words', listed: true, produces: 'image', sends: 'the prompt'},
   continue: {title: 'Continue from an image', label: 'Continue from one source', listed: true, produces: 'image'},
   combine: {title: 'Combined sources', label: 'Combine sources', listed: true, produces: 'image'},
   region: {title: 'Region study', label: 'Edit a region', listed: true, produces: 'image'},
@@ -34,6 +38,12 @@ export const ACTIONS: {readonly [K in Action]?: ActionView} = {
   texture: {title: 'Texture mesh', label: 'Texture mesh from image', listed: true, produces: '3d',
     sources: [{medium: '3d', role: 'Shape'}, {medium: 'image', role: 'Appearance'}], recordedDescription: true},
   prepare: {title: 'Prepared image', label: 'Crop, resize or arrange', listed: true, produces: 'image'},
+  'voice-design': {title: 'Voice design', label: 'Design a voice', listed: true, produces: 'audio',
+    words: 'Voice description', sends: 'the voice description and its preview line'},
+  speak: {title: 'Spoken line', label: 'Speak a line', listed: true, produces: 'audio',
+    sources: [{medium: 'audio', role: 'Voice'}], words: 'Line to speak', sends: 'the line and its voice'},
+  sfx: {title: 'Sound effect', label: 'Make a sound', listed: true, produces: 'audio',
+    words: 'Sound description', sends: 'the sound description'},
   import: {title: 'Imported material', label: 'Import material', listed: false, produces: 'image'},
 };
 
@@ -43,3 +53,10 @@ export const actionView = (action: string | null | undefined): ActionView | unde
 
 /** The medium a frozen or saved action produces; an unknown action produces an image. */
 export const producedBy = (action: string | null | undefined): Payload => actionView(action)?.produces ?? 'image';
+
+/** What an action's operations send: its own words, the sources alone for an action
+ *  whose description is only recorded, else the prompt and any sources. */
+export function sentBy(action: string | null | undefined): string {
+  const view = actionView(action);
+  return view?.sends ?? (view?.recordedDescription ? 'the sources' : 'the prompt and any sources');
+}

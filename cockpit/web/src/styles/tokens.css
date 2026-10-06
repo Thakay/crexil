@@ -34,10 +34,12 @@
   --tint-danger: rgba(219, 106, 87, 0.05);
 
   /* medium hues: a lineage line speaks its child's medium. An image keeps the
-     neutral line; a mesh is violet. A medium without a drawn hue reuses the
-     neutral line until the design gives it one. */
+     neutral line; a mesh is violet; audio is rose, clear of the accent, the
+     swatch's reserved hues and the dead red, at 7.4:1 on the panel. A medium
+     without a drawn hue reuses the neutral line until the design gives it one. */
   --medium-image: var(--border-strong);
   --medium-mesh: #b48cf7;
+  --medium-audio: #e283c6;
 
   --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;

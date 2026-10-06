@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import type { Direction } from './api';
-import { closeTop, createViewStore, initialView, openRecord, overlay, type View } from './view';
+import { closeTop, covered, createViewStore, initialView, openRecord, overlay, type View } from './view';
 
-const direction = {id: 'd1', revision: 3} as Direction;
+const direction = 'd1';
 const close = (view: View) => closeTop(view);
+
+describe('covered', () => {
+  it('counts every layer over the Filmstrip: the drawer, each overlay, a room, the record', () => {
+    expect(covered(initialView())).toBe(false);
+    expect(covered(initialView({room: 2, acting: ['n1']}))).toBe(false);
+    for (const layer of [{kind: 'group', id: 'g1'}, {kind: 'inspect', id: 'n1'}, {kind: 'picker', direction, left: 0, top: 0},
+      {kind: 'projectEdit'}] as const) expect(covered(initialView({overlays: [layer]}))).toBe(true);
+    expect(covered(initialView({drawer: 'd2'}))).toBe(true);
+    expect(covered(initialView({panel: {kind: 'backup'}}))).toBe(true);
+    expect(covered(initialView({record: {scope: {}, returnNode: null}}))).toBe(true);
+  });
+  it('leaves a grid room opened from the record uncovered, with the record waiting beneath', () => {
+    expect(covered(initialView({record: {scope: {}, returnNode: null}, recordDestination: true, room: 3}))).toBe(false);
+  });
+});
 
 describe('closeTop', () => {
   it('closes overlays top first: files, inspection, picker, project edit', () => {

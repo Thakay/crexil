@@ -191,9 +191,11 @@ def turntable_webp(job_ref: str) -> bytes:
     return buf.getvalue()
 
 
-def _wav(key: str, seconds: float = 0.6, rate: int = 24000) -> bytes:
+def _wav(key: str, seconds: float = 4.0, rate: int = 24000) -> bytes:
     """A real PCM WAV so a scripted audio take is measured like a real one:
-    a short tone whose pitch derives from the key, faded at both ends."""
+    a tone whose pitch derives from the key, faded at both ends, and long
+    enough that a browser journey can play, pause and switch takes from the
+    keyboard while it sounds."""
     pitch = 180 + hash(key) % 240
     count = int(seconds * rate)
     frames = bytearray()

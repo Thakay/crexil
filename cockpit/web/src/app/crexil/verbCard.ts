@@ -4,9 +4,12 @@
 // material but cannot start here (the wrong number of sources, no configured
 // operation, a provider's terms) stays in the main group, de-emphasised, with its
 // reason; one made for another medium drops to "Not for this material" with its
-// reason. Adding a verb, or a medium's verbs, is adding entries here.
+// reason. A take from a blind run not yet revealed starts nothing until the reveal,
+// and says so without naming a provider. Adding a verb, or a medium's verbs, is
+// adding entries here.
 import type { Action, Payload } from './actions';
-import type { Material, Operation } from './api';
+import { isHidden, type Material, type Operation } from './api';
+import { BLIND_SOURCE } from './blind';
 import { termsRefusal } from './capability';
 import { mediumOf } from './media';
 
@@ -42,6 +45,9 @@ type Entry = {
   feedsModel: boolean;
 };
 
+/** The verb the L key starts: speak a line in the acting take's voice. */
+export const SPEAK_VERB = 'Speak with this voice · L';
+
 const one = (n: number) => n === 1 ? null : `Acts on one source; ${n} are selected.`;
 const several = (n: number) => n > 1 ? null : 'Needs two or more sources; one is selected.';
 const any = () => null;
@@ -61,6 +67,9 @@ const ENTRIES: Entry[] = [
       ? null : 'Needs one mesh and one image together.',
     order: nodes => [...nodes.filter(node => node.payload === '3d'), ...nodes.filter(node => node.payload === 'image')]},
   {label: 'Continue each separately', action: 'continue', accepts: ['image'], count: several, each: true, operation: true, feedsModel: true},
+  {label: SPEAK_VERB, action: 'speak', accepts: ['audio'], count: one, operation: true, feedsModel: true,
+    fits: nodes => !nodes.every(node => node.available) ? "This take's audio is unavailable. Its record remains."
+      : nodes.every(node => node.audio?.voice) ? null : 'This take records no voice to speak with.'},
 ];
 
 const PLURAL: Record<string, string> = {image: 'images', mesh: 'meshes', audio: 'audio'};
@@ -96,7 +105,8 @@ export function cardVerbs(nodes: Material[], operations?: readonly Operation[]):
       notForThis.push({...base, live: false, reason: foreign, tier: 'notForThis'});
       continue;
     }
-    const reason = entry.count(nodes.length) ?? entry.fits?.(nodes) ?? operationReason(entry, nodes, operations);
+    const reason = (nodes.some(isHidden) ? BLIND_SOURCE : null) ?? entry.count(nodes.length) ?? entry.fits?.(nodes)
+      ?? operationReason(entry, nodes, operations);
     main.push({...base, live: reason === null, reason, tier: 'main'});
   }
   return [...main, ...notForThis];

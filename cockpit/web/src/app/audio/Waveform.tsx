@@ -1,5 +1,7 @@
 // A take's waveform, drawn from its measured peaks. The played part wears the accent; a loop
-// region is shaded. It is a picture only: it never takes focus or input.
+// region is shaded. A normalized waveform draws its tallest bar at full height, so its picture
+// shows the take's shape and never its level; a blind take is drawn so. It is a picture only:
+// it never takes focus or input.
 import { useMemo } from 'react';
 import s from './audio.module.css';
 import { bars } from './display';
@@ -12,13 +14,19 @@ type Props = {
   progress?: number;
   /** A loop region as shares of the take, 0 to 1. */
   loop?: {start: number; end: number} | null;
+  /** Scale the bars to the take's own loudest peak. */
+  normalized?: boolean;
   className?: string;
 };
 
 const BAR = 2, STEP = 3;
 
-export function Waveform({peaks, count, progress = 0, loop = null, className}: Props) {
-  const levels = useMemo(() => bars(peaks, count), [peaks, count]);
+export function Waveform({peaks, count, progress = 0, loop = null, normalized = false, className}: Props) {
+  const levels = useMemo(() => {
+    const drawn = bars(peaks, count);
+    const top = Math.max(0, ...drawn);
+    return normalized && top > 0 ? drawn.map(level => level / top) : drawn;
+  }, [peaks, count, normalized]);
   const width = levels.length * STEP;
   const cut = Math.round(Math.min(1, Math.max(0, progress)) * levels.length);
   return (

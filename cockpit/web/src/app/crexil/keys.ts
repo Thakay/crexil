@@ -50,13 +50,27 @@ export function useEscapeKey() {
   }, {enableOnFormTags: true, enableOnContentEditable: true});
 }
 
-/** A plain-key command, live only while `ready` says so at the moment of the key. */
-export function useCommandKey(key: string, run: () => void, ready: () => boolean) {
-  const current = useRef({run, ready});
-  current.current = {run, ready};
+/** A plain-key command, live only while `ready` says so at the moment of the key. A key
+ *  that `skip` claims for the focused element is left to it, unprevented. */
+export function useCommandKey(key: string, run: () => void, ready: () => boolean,
+  skip?: (event: KeyboardEvent) => boolean) {
+  const current = useRef({run, ready, skip});
+  current.current = {run, ready, skip};
   useHotkeys(key, event => {
-    if (!current.current.ready()) return;
+    if (current.current.skip?.(event) || !current.current.ready()) return;
     event.preventDefault();
     current.current.run();
   });
+}
+
+/** Marks an audio take's face: Space plays it instead of pressing it. */
+export const AUDIO_FACE = 'data-audio-face';
+const ACTIVATES = 'button, a[href], summary, [role=button], [role=checkbox], [role=switch], [role=tab], [role=menuitem]';
+
+/** Whether Space belongs to the focused control: a button, link or other control that
+ *  Space activates (WCAG 2.1.1), unless it is an audio take's face, where Space plays. */
+export function spaceActivates(event: KeyboardEvent): boolean {
+  const target = event.target instanceof Element ? event.target : null;
+  const control = target?.closest(ACTIVATES);
+  return Boolean(control) && !control!.closest(`[${AUDIO_FACE}]`);
 }

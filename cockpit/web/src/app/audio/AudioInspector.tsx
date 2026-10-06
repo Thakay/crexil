@@ -1,10 +1,13 @@
 // Inspection of one audio take: play, pause, scrub, a loop region, the spoken words as they
-// pass, and the take's measured facts. While its run is blind, the engine, the voice and any
-// withheld format facts stay hidden; the sound stays playable. It lives inside the inspection
-// layer and never opens a dialog of its own (law 2). Space plays and pauses this take.
-import { useEffect, useState } from 'react';
+// pass, and the take's measured facts (law 17). While its run is blind, the engine, the voice,
+// any withheld format facts and every level figure stay hidden, since levels differ by engine;
+// the sound stays playable at its matched level. It lives inside the inspection layer and never
+// opens a dialog of its own (law 2). Space plays and pauses this take, except on a focused
+// control, which Space presses; the arrow keys move the playhead a tenth of a second and Page
+// Up and Page Down a second.
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { engineLabel, type Material } from '../crexil/api';
-import { useCommandKey } from '../crexil/keys';
+import { spaceActivates, useCommandKey } from '../crexil/keys';
 import s from './audio.module.css';
 import type { Level } from './level';
 import { player, usePlayer } from './player';
@@ -14,10 +17,13 @@ import { Waveform } from './Waveform';
 
 type Facts = NonNullable<Material['audio']>;
 const WITHHELD = 'Withheld until the run is revealed';
+const LEVEL_WITHHELD = 'Level matched · figures shown after the reveal';
 
-/** How the take sounds when compared: turned down to the shared level, or as recorded. */
-export function levelLine(level: Level | null): string {
+/** How the take sounds when compared: turned down to the shared level, or as recorded. A
+ *  blind take never shows by how much, which would tell engines apart. */
+export function levelLine(level: Level | null, hidden = false): string {
   if (!level || !level.matched) return 'As recorded · not level matched';
+  if (hidden) return 'Matched level';
   if (level.gainDb > -0.05) return 'Matched level · as recorded';
   return `Matched level · turned down ${(-level.gainDb).toFixed(1)} dB`;
 }
@@ -55,7 +61,7 @@ export function AudioInspector({node}: {node: Material}) {
   const [hint, setHint] = useState<string | null>(null);
   const owner = useAudioKeys();
 
-  useCommandKey('space', () => void player.toggle(node.id, {duration: total}), () => owner() && node.available);
+  useCommandKey('space', () => void player.toggle(node.id, {duration: total}), () => owner() && node.available, spaceActivates);
   useEffect(() => () => player.pauseIf([node.id]), [node.id]);
 
   if (!node.available) return <p>This take's audio is unavailable. Its record remains.</p>;
@@ -67,15 +73,22 @@ export function AudioInspector({node}: {node: Material}) {
   const words = facts?.text ?? '';
   const {spoken, rest} = spokenSplit(words, facts?.alignment, loaded ? position : -1);
   const share = (seconds: number) => (total > 0 ? seconds / total : 0);
+  // Page Up and Page Down move the playhead a whole second; the arrows keep the range's tenth.
+  const leap = (event: KeyboardEvent<HTMLInputElement>) => {
+    const by = event.key === 'PageUp' ? 1 : event.key === 'PageDown' ? -1 : 0;
+    if (!by) return;
+    event.preventDefault();
+    player.seek(node.id, Math.min(total, Math.max(0, position + by)), total);
+  };
 
   return (
     <div className={s.inspector}>
       <div className={s.stage}>
-        <Waveform peaks={facts?.peaks ?? []} count={128} progress={loaded ? share(position) : 0}
+        <Waveform peaks={facts?.peaks ?? []} count={128} progress={loaded ? share(position) : 0} normalized={hidden}
           loop={loop ? {start: share(loop.start), end: share(loop.end)} : null}/>
-        <input type="range" className={s.scrub} min={0} max={total} step={0.01} value={Math.min(position, total)}
+        <input type="range" className={s.scrub} min={0} max={total} step={0.1} value={Math.min(position, total)}
           disabled={total <= 0} aria-label="Playhead" aria-valuetext={`${clock(position)} of ${clock(total)}`}
-          onChange={event => player.seek(node.id, Number(event.target.value), total)}/>
+          onKeyDown={leap} onChange={event => player.seek(node.id, Number(event.target.value), total)}/>
       </div>
       <div className={s.transport}>
         <button type="button" onClick={() => void player.toggle(node.id, {duration: total})}>{playing ? 'Pause' : 'Play'}</button>
@@ -96,9 +109,9 @@ export function AudioInspector({node}: {node: Material}) {
       )}
       <dl className={s.facts}>
         <dt>Length</dt><dd>{clock(total)}</dd>
-        <dt>Loudness</dt><dd>{facts?.loudness_lufs == null ? 'Too short or too quiet to measure' : `${facts.loudness_lufs.toFixed(1)} LUFS`}</dd>
-        <dt>Peak</dt><dd>{facts?.peak_dbfs == null ? 'Not measured' : `${facts.peak_dbfs.toFixed(1)} dBFS`}</dd>
-        <dt>Plays at</dt><dd>{levelLine(level)}</dd>
+        <dt>Loudness</dt><dd>{hidden ? LEVEL_WITHHELD : facts?.loudness_lufs == null ? 'Too short or too quiet to measure' : `${facts.loudness_lufs.toFixed(1)} LUFS`}</dd>
+        <dt>Peak</dt><dd>{hidden ? LEVEL_WITHHELD : facts?.peak_dbfs == null ? 'Not measured' : `${facts.peak_dbfs.toFixed(1)} dBFS`}</dd>
+        <dt>Plays at</dt><dd>{levelLine(level, hidden)}</dd>
         <dt>Format</dt><dd>{formatLine(facts, hidden)}</dd>
         <dt>Engine</dt><dd>{engineLabel(node, 'source', hidden)}</dd>
         <dt>Voice</dt><dd>{voiceLine(facts?.voice ?? null, hidden)}</dd>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACTIONS, actionView, producedBy } from './actions';
 import type { Material } from './api';
-import { IMPORT_ACCEPT, MEDIA, mediumOf, sourceRoles } from './media';
+import { faceName, IMPORT_ACCEPT, MEDIA, mediumOf, sourceRoles } from './media';
 
 describe('media registry', () => {
   it('gives every medium its own hue token, named after its noun', () => {
@@ -43,6 +43,25 @@ describe('preparation actions', () => {
     expect(Object.values(ACTIONS).filter(action => action?.listed).map(action => action?.label)).toEqual([
       'Generate from words', 'Continue from one source', 'Combine sources', 'Edit a region', 'Custom operation',
       'Generate 3D from image', 'Reduce mesh', 'Texture mesh from image', 'Crop, resize or arrange',
+      'Design a voice', 'Speak a line', 'Make a sound',
     ]);
+  });
+});
+
+describe('the audio medium in the registry', () => {
+  const take = {id: 'n1', payload: 'audio', turn_idx: 2, slot_pos: 1, output_index: 0, audio: {duration_s: 4.4, peaks: [0.2]}} as unknown as Material;
+  it('is registered with its own hue, plate and inspection', () => {
+    expect(MEDIA.audio).toMatchObject({noun: 'audio', hue: 'var(--medium-audio)', inspectFrame: 'fullImage'});
+    expect(mediumOf('audio').Plate).toBeDefined();
+    expect(producedBy('speak')).toBe('audio');
+    expect(sourceRoles('speak')).toEqual(['Voice · audio']);
+  });
+  it("keeps the medium and length in a face's name, which a picture cannot say", () => {
+    expect(faceName(take)).toBe('Act on 2B, audio, 4.4 s');
+    expect(faceName({...take, payload: 'image'} as Material)).toBe('Act on 2B');
+  });
+  it('lists the measured length in the record (law 17)', () => {
+    expect(mediumOf('audio').facts?.(take)).toEqual([['Length', '0:04.4']]);
+    expect(mediumOf('audio').facts?.({...take, audio: null} as Material)).toEqual([]);
   });
 });
