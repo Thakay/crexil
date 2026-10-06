@@ -54,7 +54,7 @@ the run still fits its limits, submit accepts it without a new review.
 prices exceed either is refused before any engine is called. An unknown price counts as over the
 limit, never as zero, so a run that includes an engine with an unknown price is refused whole:
 nothing in it is sent. Free local engines reserve nothing. Only the artist changes a project's
-limits.
+or a sequence's limits.
 
 ### What an agent may and may not do
 
@@ -63,7 +63,9 @@ limits.
 | Discover engines, read projects, runs and the record | yes | `GET operations`, `GET projects/{id}`, `GET directions/{id}/run`, `GET projects/{id}/record` |
 | Create a project, prepare and review a run | yes | |
 | Submit a run | yes | Within the run's own limit and the project's |
-| Change a project's spending limits | no | `403`. A limit decides how much money may move. Other project edits stay open to agents |
+| Change a project's or a sequence's spending limits | no | `403`. A limit decides how much money may move. Other project edits stay open to agents |
+| Cancel one attempt | yes | `POST attempts/{slot}/cancel` with the attempt number it saw. Stopping never spends; a sent paid request keeps its cell and its charge facts |
+| Resume the engine that holds an attempt | free work only | `POST attempts/{slot}/resume`. `403` when the held attempts it would send reserve money: resuming paid work is the artist's act |
 | Propose takes or comment on a run, with a reason | yes | `POST projects/{id}/assessments`. Never changes the pick |
 | Set the displayed selection | through HTTP only | The MCP door leaves picking to the artist |
 | Reveal a blind run | no | `403`. Revealing would end the artist's blind comparison |
@@ -238,4 +240,16 @@ Two exports summarize a project:
   generates again.
 - **A failed cell.** Its `kind` and plain `cause` say what happened, once per cause, and the run
   view's `summary` names each cause once. Retries the scheduler makes itself are visible on the
-  cell.
+  cell. A take whose runtime stopped answering reads `uncertain`: it was not sent again, and
+  collecting looks it up.
+- **A held attempt.** `POST attempts/{slot}/resume` with `{"attempt": n}` resumes the engine that
+  holds it. A hold on one engine for one run (TRY ONCE MORE) and an engine's own hold lift on
+  request; a runtime's hold (a runner, ComfyUI, a key, the card) lifts only once that runtime
+  answers, else `422` says what to fix. The hold lifts once even when the request is sent again,
+  every attempt it sends meets the spending limits again, and the record names who resumed it.
+- **One attempt to stop.** `POST attempts/{slot}/cancel` with `{"attempt": n}` skips an unsent
+  attempt; a running one is asked to stop; a request already sent to a paid provider keeps its
+  cell, and its charge stays unverified until the provider reports it. A later attempt of the same
+  slot answers `409`: read again.
+- **Retries.** The review's `automatic_retry` says per operation whether its attempts retry on
+  their own: audio attempts do, visibly; image and 3D attempts never do.

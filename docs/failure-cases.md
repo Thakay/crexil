@@ -52,6 +52,7 @@ An executor reports every failure to the scheduler as one `EngineFailure` with a
 | `internal` | the cockpit's own code failed on the take | none |
 | `collection` | files were reported but could not be collected, or an audio take could not be measured; the bytes are kept | none |
 | `preflight` | the request was stopped before it reached the provider; nothing was sent | none |
+| `uncertain` | the runtime accepted the request, then stopped answering about it, or a restart could not confirm its outcome; it is never sent again, and collecting looks it up | A2, C1 |
 
 A `dead_key` or `unreachable` failure from an audio provider benches that provider only (`provider:elevenlabs`, `provider:voice-runner`), so its engines wait while every other engine keeps working (law 1). OpenRouter's failures bench the external lane, as before.
 
@@ -69,8 +70,8 @@ A pause is a **bench**. A bench has a scope. Queued takes under that scope becom
 
 | Trigger | Bench scope |
 |---|---|
-| `dead_key` | `lane:external` |
-| `unreachable` | the failing take's lane. For a 3D engine: that engine only |
+| `dead_key` | the key's own scope: `provider:elevenlabs` for ElevenLabs, `lane:external` for OpenRouter |
+| `unreachable`, `uncertain` | the runtime's own scope: `provider:comfy`, `provider:voice-runner`, `provider:elevenlabs`, or `lane:external` for OpenRouter. For a 3D engine: that engine only |
 | `model_down`, `timeout` | that engine |
 | second `error`, `oom` or `charged_blank` of one engine in one turn (A9) | that engine, that turn only |
 | `oom` on a local take while another program holds the card (C2) | `lane:local`, kind `gpu_held` |
@@ -80,7 +81,7 @@ A pause is a **bench**. A bench has a scope. Queued takes under that scope becom
 
 These never bench anything: `moderation`, `rate_limit`, `interrupted`, `blank`, `internal`, `restart`, and a single `error`, `oom` or `charged_blank`. A full disk does not pause the queue at run time (see A7).
 
-A bench is written as an `engine.benched` event and replayed at startup, so it survives a restart. It is lifted by `POST /api/unbench` with the scope. The buttons UNBENCH and TRY ONCE MORE call that route. The C2 bench lifts itself when the card is free. At startup a missing-key or unreachable bench clears when the service answers again, and a key bench clears when the key check succeeds.
+A bench is written as an `engine.benched` event and replayed at startup, so it survives a restart. It is lifted by `POST /api/unbench` with the scope. The legacy canvas's UNBENCH and TRY ONCE MORE call that route. On the project surface a held attempt's RESUME ENGINE and TRY ONCE MORE call `POST /api/crexil/attempts/{slot}/resume`. It records the participant and lifts the bench that holds that attempt, named by the `engine.benched` event that installed it, so a replayed or restarted request lifts it once and never a bench installed again since. A runtime's bench (an unreachable runner or ComfyUI, a dead or missing key, the card held) lifts only when a live check finds its cause gone; otherwise the answer says what is still wrong and what to do. An agent may resume free local work only. The C2 bench lifts itself when the card is free. At startup a missing-key or unreachable bench clears when the service answers again, and a key bench clears when the key check succeeds.
 
 Code: `bench_scope_for`, `bench`, `unbench` in `scheduler.py`, `startup_checks` in `wiring.py`. Tests: the bench section of `test_scheduler.py`, `test_law_10_*` in `test_laws.py`.
 
@@ -93,7 +94,7 @@ Only two kinds retry on their own (`default_retry_policy` in `scheduler.py`):
 | `rate_limit` | `COCKPIT_RATE_LIMIT_RETRIES` (4, so 5 attempts) | the provider's own window, capped at `COCKPIT_RATE_LIMIT_MAX_WAIT_S` (120 s). If the provider names none: `COCKPIT_RATE_LIMIT_BACKOFF_S` (10 s) |
 | `unreachable` | 1 | `COCKPIT_RETRY_BACKOFF_S` (2 s) |
 
-The provider's window is read from the `Retry-After` header (seconds or a date) or from `X-RateLimit-Reset` (`retry_after_from` in `openrouter.py`). While an external take waits, it gives back its concurrency permit, so one slow provider does not block the others. A take re-queued under C2 is also marked as a retry (`gpu_held`). Every other kind is final. Running it again is the artist's choice.
+The provider's window is read from the `Retry-After` header (seconds or a date) or from `X-RateLimit-Reset` (`retry_after_from` in `openrouter.py`). While an external take waits, it gives back its concurrency permit, so one slow provider does not block the others. A take re-queued under C2 is also marked as a retry (`gpu_held`). Every other kind is final. Running it again is the artist's choice. The voice runner's `unreachable` retry happens only at its door, before it names a job. Once it has, a poll it does not answer asks about the same job again for up to 60 s; then the take fails as `uncertain`, is never sent again, and COLLECT FILES looks the job up (law 14). The review answers `automatic_retry` per operation, and the drawer says from it whether the run retries on its own.
 
 A project run freezes whether its slots may retry on their own: audio slots do, image and 3D slots do not. Both kinds that retry mean the provider refused the request or never received it, so a retry never pays twice. The refused attempt's known zero charge is recorded on its `slot.retrying` event, so its reservation stops counting against every cap (law 22).
 
@@ -122,7 +123,7 @@ When a paid take returns a cost above zero and no image, the amount the response
 - **Charged** is what the provider's response reported for that take. The two are separate values everywhere, including the manifest of a promoted take.
 - The ledger is the `charged_usd` column of the append-only events table. A confirmed charge enters it exactly once: when a take lands, when a take fails as `charged_blank`, or as a separate `slot.charged` entry (a bill correction, or a paid result that arrived after its slot had already moved on). Totals sum charged amounts only (`GET /api/costs` for today and this month, plus the workspace total). A quote never counts. Local takes never write a charge.
 - When a charge cannot be confirmed, no amount is invented. A `slot.charge_unverified` event states the committed amount and the reason: `cancel`, `timeout`, `restart`, `bill_check` or `no_job_id`.
-- **Caps.** On the project surface every run states a spending limit and the project may set its own. A run whose known prices exceed either is refused before any engine is called, and a run with any engine whose price is unknown is refused whole (law 22). Only the artist changes a project's limits; an agent's change answers `403`. On the legacy canvas, what limits paid work: the LOCAL ONLY switch (`local_only`), under which the server refuses any Run with external takes and any reroll or backfill of a paid cell. A Run holds at most 16 takes (8 on the 3D route). `COCKPIT_EXTERNAL_CONCURRENCY` (4) limits calls in flight, not money.
+- **Caps.** On the project surface every run states a spending limit and the project may set its own. A run whose known prices exceed either is refused before any engine is called, and a run with any engine whose price is unknown is refused whole (law 22). Only the artist changes a project's or a sequence's limits; an agent's change answers `403`. On the legacy canvas, what limits paid work: the LOCAL ONLY switch (`local_only`), under which the server refuses any Run with external takes and any reroll or backfill of a paid cell. A Run holds at most 16 takes (8 on the 3D route). `COCKPIT_EXTERNAL_CONCURRENCY` (4) limits calls in flight, not money.
 
 Tests: the money section of `test_scheduler.py`, `test_local_only_is_proved_on_every_money_verb` in `test_api_v4.py`, `e2e/costs.spec.ts`.
 
@@ -137,7 +138,7 @@ Tests: the money section of `test_scheduler.py`, `test_local_only_is_proved_on_e
 | `running`, local | the executor stops the job. For ComfyUI it interrupts only when the running job is ours. The slot fails with cause "cancelled", kind `interrupted`. No bench |
 | `running`, external | the call is never cut, because the money is already in flight. The slot becomes `late` and `slot.charge_unverified` states the committed amount |
 
-A `late` slot keeps its cell. If the call still delivers, the take lands into that same cell, the charge is recorded, and a `slot.late_landed` event is written. If the call ends without an image, the slot stays `late` and a `slot.late_failed` event is written. A `late` cell has no button and cannot be rerolled, because the cell is reserved for that arrival. Cancelling a turn flags every slot first, then cancels each one, and writes one `turn.cancelled` summary event. Tests: the cancel and late sections of `test_scheduler.py`.
+A `late` slot keeps its cell. If the call still delivers, the take lands into that same cell, the charge is recorded, and a `slot.late_landed` event is written. If the call ends without an image, the slot stays `late` and a `slot.late_failed` event is written. A `late` cell has no button and cannot be rerolled, because the cell is reserved for that arrival. Cancelling a turn flags every slot first, then cancels each one, and writes one `turn.cancelled` summary event. One attempt is cancelled with `POST /api/crexil/attempts/{slot}/cancel` and the attempt number its participant saw; it records the same durable stop a run's cancel records for each attempt, with its participant, and follows the table above. Tests: the cancel and late sections of `test_scheduler.py`, `test_authored_slot_controls.py`.
 
 ## 3. Family A: generation failures
 
@@ -149,9 +150,9 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 
 ### A2 · Engine crashed or its process died mid-take
 **Status: partly implemented.**
-- **System does:** there is no crash detector of its own. A service that stops answering is `unreachable`: one visible retry, then the slot fails and the lane is benched (for a 3D engine, only that engine). A job that fails is `error`: no retry, and a second one in the same turn benches the engine (A9). A 3D runner that lost the job says it may have restarted.
+- **System does:** there is no crash detector of its own. A service that stops answering is `unreachable`: one visible retry, then the slot fails and the lane is benched (for a 3D engine, only that engine). A job that fails is `error`: no retry, and a second one in the same turn benches the engine (A9). A 3D runner that lost the job says it may have restarted. The voice runner is the exception: once it names a take's job, an unanswered poll is asked again for up to 60 s, then the outcome is `uncertain` (collectable, never sent again) and the runner is benched.
 - **Missing:** a hung engine is not detected by default, because local takes have no timeout (A6).
-- **Lives in:** `executors.py`, `mesh.py`, `scheduler.py`. Tests: `test_unreachable_retries_once_then_fails_and_benches` and `test_comfy_unreachable_benches_the_local_lane` in `test_scheduler.py`, `test_an_unreachable_runner_never_benches_the_whole_local_lane` in `test_mesh.py`.
+- **Lives in:** `executors.py`, `mesh.py`, `local_voice.py`, `scheduler.py`. Tests: `test_unreachable_retries_once_then_fails_and_benches` and `test_comfy_unreachable_benches_the_local_lane` in `test_scheduler.py`, `test_an_unreachable_runner_never_benches_the_whole_local_lane` in `test_mesh.py`.
 
 ### A3 · Model file missing or moved
 **Status: not implemented.** No check for a missing model file was found. A graph that ComfyUI refuses or fails becomes a plain `error` (A2, A9). `GET /api/health` reports whether the models folder exists and is not empty.
@@ -186,8 +187,8 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 ### A9 · Repeat failure of the same engine inside one turn
 **Status: implemented.**
 - **Artist sees:** one footer line naming the two slots that failed. The engine's remaining cells in that turn read HELD, each with TRY ONCE MORE. The queue strip says the engine is benched for this turn only.
-- **System does:** after the second `error`, `oom` or `charged_blank` of one engine in one turn, `_repeat_check` benches that engine for that turn. Its queued takes are held, not dropped. Other engines and other turns keep running. TRY ONCE MORE lifts the bench. `blank`, `moderation` and `rate_limit` do not count.
-- **Lives in:** `scheduler.py` (`A9_KINDS`, `_repeat_check`, `turn_scope`), `db.py` (`failed_in_turn`), `batch/grid.ts`. Tests: the `test_a9_*` tests and `test_the_queue_view_names_a_turn_scoped_bench_on_its_held_cells` in `test_hardware_cases.py`, `A9:` in `e2e/hardware-cases.spec.ts`.
+- **System does:** after the second `error`, `oom` or `charged_blank` of one engine in one turn, `_repeat_check` benches that engine for that turn. Its queued takes are held, not dropped. Other engines and other turns keep running. TRY ONCE MORE lifts the bench. On the project surface, TRY ONCE MORE calls `POST /api/crexil/attempts/{slot}/resume` and records who pressed it. `blank`, `moderation` and `rate_limit` do not count.
+- **Lives in:** `scheduler.py` (`A9_KINDS`, `_repeat_check`, `turn_scope`), `db.py` (`failed_in_turn`), `batch/grid.ts`. Tests: the `test_a9_*` tests and `test_the_queue_view_names_a_turn_scoped_bench_on_its_held_cells` in `test_hardware_cases.py`, `A9:` in `e2e/hardware-cases.spec.ts`, `test_authored_slot_controls.py`.
 
 ### A10 · Model swap thrash
 **Status: not implemented.** The queue never reorders. A Run lays its slots out engine by engine and the local lane runs them in slot order, so one turn's takes on one engine run back to back (`test_run_lays_out_batches_engine_by_engine_each_with_its_own_raws` in `test_api_v4.py`). No time estimate exists (law 17).
@@ -296,7 +297,7 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 ### C7 · Dropping a queued slot gives its turn back
 **Status: implemented.**
 - **Artist sees:** a queued or held cell has a cancel mark. The cell then reads SKIPPED and says no GPU time was spent and its turn was given back. It states no number of seconds (law 17). A reroll runs it after all.
-- **System does:** `cancel_slot` moves the slot to `skipped` with the note "nothing spent" and removes it from the local queue.
+- **System does:** `cancel_slot` moves the slot to `skipped` with the note "nothing spent" and removes it from the local queue. On the project surface, one attempt is cancelled through `POST /api/crexil/attempts/{slot}/cancel`.
 - **Lives in:** `scheduler.py`, `batch/SlotCell.tsx`, `batch/grid.ts` (`costLine`). Tests: `test_cancel_skips_queued_slots_and_says_nothing_spent` in `test_scheduler.py`, `batch/TurnGrid.test.tsx`.
 
 ## 6. Family D: data integrity
