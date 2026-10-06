@@ -340,7 +340,7 @@ test("cancel is one breath: landed stay, queued drop free, nothing vanishes", as
   request,
 }) => {
   const wid = await createWorkspace(request, `laws-d-${Date.now()}`);
-  const turn = await runTurn(request, wid, {
+  await runTurn(request, wid, {
     prompt: "law test D",
     local: [{ preset_id: "raw-flux2", takes: 2 }], // immune to test C's raw-zimage bench history
   });

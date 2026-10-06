@@ -73,7 +73,7 @@ async function lift(page: Page, id: string) {
   return box;
 }
 
-async function centre(page: Page, sel: ReturnType<Page["locator"]>) {
+async function centre(sel: ReturnType<Page["locator"]>) {
   const b = (await sel.boundingBox())!;
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
 }
@@ -135,7 +135,7 @@ test("onto another card: the card goes back, the two pair in the dock, and the r
 
   const before = await lift(page, d);
   const aBefore = (await card(page, a).boundingBox())!;
-  const to = await centre(page, card(page, a));
+  const to = await centre(card(page, a));
   await page.mouse.move(to.x, to.y, { steps: 10 });
   await expect(ring(page, a)).toHaveAttribute("data-drag", "over");
   await expect(legend(page).locator('[data-kind="node"]')).toHaveAttribute(
@@ -173,7 +173,7 @@ test("onto the tray: set aside — the zone while closed, the open column while 
   const sent = posts(page);
 
   await lift(page, a);
-  const to = await centre(page, zone(page));
+  const to = await centre(zone(page));
   await page.mouse.move(to.x, to.y, { steps: 10 });
   await expect(zone(page)).toHaveAttribute("data-over", "true");
   await expect(legend(page).locator('[data-kind="tray"]')).toHaveAttribute(
@@ -194,7 +194,7 @@ test("onto the tray: set aside — the zone while closed, the open column while 
   await lift(page, b);
   await expect(zone(page)).toHaveCount(0);
   await expect(tray).toHaveAttribute("data-drag", "target");
-  const onTray = await centre(page, tray.getByText("SET ASIDE · 2"));
+  const onTray = await centre(tray.getByText("SET ASIDE · 2"));
   await page.mouse.move(onTray.x, onTray.y, { steps: 10 });
   await expect(tray).toHaveAttribute("data-drag", "over");
   await page.mouse.up();
@@ -213,7 +213,7 @@ test("released over nothing is a clean no-op (F5): back where it was, nothing se
 
   const before = await lift(page, d);
   const aBefore = (await card(page, a).boundingBox())!;
-  const to = await centre(page, row(page)); // the dock — no destination
+  const to = await centre(row(page)); // the dock — no destination
   await page.mouse.move(to.x, to.y, { steps: 6 });
   await expect(legend(page).locator("[data-over]")).toHaveCount(0);
   await page.mouse.up();
@@ -306,7 +306,7 @@ test("⇧drag sweeps a rubber band, and the tray takes the whole lift", async ({
   await expect(legend(page)).toContainText(
     "hands over one at a time — 2 are lifted",
   );
-  const to = await centre(page, zone(page));
+  const to = await centre(zone(page));
   await page.mouse.move(to.x, to.y, { steps: 10 });
   await expect(zone(page)).toHaveAttribute("data-over", "true");
   await page.mouse.up();

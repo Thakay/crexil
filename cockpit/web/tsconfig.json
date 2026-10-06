@@ -11,7 +11,8 @@
     "isolatedModules": true,
     "useDefineForClassFields": true,
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "types": []
   },
   "include": ["src"]
 }

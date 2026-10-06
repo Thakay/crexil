@@ -534,7 +534,8 @@ def turntable(glb: Path, outdir: Path, frames: int, size: int) -> dict:
             [np.cos(elev) * np.sin(yaw), np.sin(elev), np.cos(elev) * np.cos(yaw)]
         )
         fwd = (center - eye) / np.linalg.norm(center - eye)
-        right = np.cross(fwd, [0, 1, 0]); right /= np.linalg.norm(right)
+        right = np.cross(fwd, [0, 1, 0])
+        right /= np.linalg.norm(right)
         up = np.cross(right, fwd)
         pose = np.eye(4)
         pose[:3, 0], pose[:3, 1], pose[:3, 2], pose[:3, 3] = right, up, -fwd, eye
