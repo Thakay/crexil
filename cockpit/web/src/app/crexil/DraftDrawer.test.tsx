@@ -72,6 +72,33 @@ describe('preparing an audio run', () => {
   });
 });
 
+describe('the drawer names its action and keeps focus on the next move', () => {
+  it('heads the drawer with the action in words, and a new name follows its action until it is changed', () => {
+    const fresh = {...direction('published_tariff'), title: 'Voice design'} as Direction;
+    render(<DraftDrawer direction={fresh} directions={[]} nodes={[]} operations={[design, local]} onSaved={() => {}} onClose={() => {}} onCopied={() => {}}/>);
+    expect(screen.getByText('Design a voice · preparation')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', {name: 'Action'}), {target: {value: 'sfx'}});
+    expect(screen.getByRole('textbox', {name: 'Direction name'})).toHaveValue('Sound effect');
+    fireEvent.change(screen.getByRole('textbox', {name: 'Direction name'}), {target: {value: 'Forge sounds'}});
+    fireEvent.change(screen.getByRole('combobox', {name: 'Action'}), {target: {value: 'voice-design'}});
+    expect(screen.getByRole('textbox', {name: 'Direction name'})).toHaveValue('Forge sounds');
+  });
+  it('carries each operation\'s price beside its name, before it is chosen', () => {
+    open();
+    expect(screen.getByText('Design voice · ElevenLabs Voice Design')).toBeInTheDocument();
+    expect(screen.getByText('$0.08 per 1,000 characters')).toBeInTheDocument();
+  });
+  it('keeps Review in reach while it works, then moves focus to Run', async () => {
+    reviews = [review(0.0084, 'a'.repeat(64))];
+    open();
+    const reviewButton = screen.getByRole('button', {name: 'Review run'});
+    reviewButton.focus();
+    fireEvent.click(reviewButton);
+    const run = await screen.findByRole('button', {name: 'Run 1 attempt · reserves $0.0084'});
+    await waitFor(() => expect(run).toHaveFocus());
+  });
+});
+
 describe("the review says whether the run retries on its own (law 9)", () => {
   const reviewed = async (automatic_retry?: Record<string, boolean>) => {
     reviews = [review(0.0084, 'a'.repeat(64), automatic_retry)];
@@ -148,7 +175,11 @@ describe('starting from words already in the family', () => {
       'Start from the words of Spoken line', 'Start from the words of Dwarf blacksmith', 'Start from the words of Blacksmith voice']);
     expect(within(offer).getByRole('button', {name: 'Start from the words of Dwarf blacksmith'})).toHaveAccessibleDescription(BRIEF);
     fireEvent.click(within(offer).getByRole('button', {name: 'Start from the words of Spoken line'}));
-    expect(screen.getByRole('textbox', {name: 'Line to speak'})).toHaveValue('Bring me the ore.');
+    const line = screen.getByRole('textbox', {name: 'Line to speak'}) as HTMLTextAreaElement;
+    expect(line).toHaveValue('Bring me the ore.');
+    // focus goes to the words to edit, caret at their end, before the offer goes away
+    expect(line).toHaveFocus();
+    expect(line.selectionStart).toBe('Bring me the ore.'.length);
     expect(screen.queryByRole('group', {name: 'Start from the words of'})).toBeNull();
     await waitFor(() => expect(sent.find(item => item.method === 'PATCH')?.body).toMatchObject({setup: {prompt: 'Bring me the ore.'}}));
   });

@@ -241,9 +241,10 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
           <span className={s.mono} id={`carry-head-${direction.id}`}>Start from the words of</span>
           <div>{carry.map(item => <button key={item.direction} type="button" aria-label={`Start from the words of ${item.title}`}
             aria-describedby={`carry-words-${item.direction}`} onClick={() => {
+              // The words are here to edit: focus moves to them now, before this offer goes, and
+              // the caret lands at their end when they arrive.
+              words.current?.focus();
               update({prompt: item.words});
-              // The words are here to edit: the caret waits at their end.
-              requestAnimationFrame(() => {words.current?.focus(); words.current?.setSelectionRange(item.words.length, item.words.length);});
             }}>
             <strong>{item.title}</strong><span id={`carry-words-${item.direction}`}>{item.words}</span></button>)}</div>
           <p className={s.hint}>Copies the words here to edit. The section they come from keeps its own.</p>
