@@ -1,7 +1,11 @@
 """Review and freeze shared creative requests before handing them to the lanes.
 
-Reviews have no engine side effects. Their token binds preparation, project
-instructions, source bytes, operation revisions, destination and cost bounds.
+Reviews have no engine side effects. Their token binds three parts separately:
+the request (preparation, brief, project instructions, source bytes, operation
+revisions, destination and cost bounds), the spending limits, and the spending
+already recorded. Submission names the part that moved since review. Spending
+recorded by other work alone never refuses a request that still fits its limits,
+because the limits are checked again inside the submitting transaction (law 22).
 Submission and its receipt commit with every prepared slot before scheduling.
 A delivered command can only adopt that same committed turn, including after
 restart. Estimates never count as enforceable spending bounds. Preset zero-cost
@@ -27,6 +31,32 @@ from .db import new_id
 
 def digest(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+class SpendingChanged(Conflict):
+    """Spending or its limits moved since review while the request stayed the same.
+    Answered as a 409 whose `X-Crexil-Conflict` header says `spending`, so a
+    client reviews again and shows the current totals."""
+    code = 'spending'
+
+
+# A review token stays 64 hex characters: the request, then the limits, then the
+# spending already recorded, each the leading characters of its own digest.
+TOKEN_PARTS = (('request', 32), ('limits', 16), ('spending', 16))
+
+
+def review_token(request: dict, limits: dict, spending: dict) -> str:
+    return digest(request)[:32] + digest(limits)[:16] + digest(spending)[:16]
+
+
+def token_change(reviewed: str, current: str) -> str | None:
+    """The first token part that differs, or None when the tokens match."""
+    start = 0
+    for name, width in TOKEN_PARTS:
+        if reviewed[start:start + width] != current[start:start + width]:
+            return name
+        start += width
+    return None
 
 
 def workflow_hashes(preset: dict) -> dict[str, str]:
@@ -341,8 +371,12 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
             maximum += Decimal(str(bound)) * choice.count
     if maximum > Decimal(str(setup.spending_limit_usd)):
         global_errors.append(f'The reserved ${maximum} exceeds the ${setup.spending_limit_usd} spending limit.')
+    # Everything above depends on the request alone; what follows also depends on
+    # spending other work recorded, which the token keeps in its own part.
+    request_errors = list(global_errors)
+    request_operations = [dict(op) for op in chosen]
     accounting = await crexil_budget.accounting(stack.db, direction['workspace_id'])
-    global_errors += crexil_budget.violations(project['limits'], accounting,
+    spending_errors = crexil_budget.violations(project['limits'], accounting,
         attempts=sum(op['count'] for op in chosen if op['ready']), reserved=float(maximum), tariff=uses_tariff)
     sequence_budget = None
     if sequence_id is not None:
@@ -351,8 +385,9 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
         if sequence['workspace_id'] != direction['workspace_id']:
             raise ValueError('The sequence and preparation must belong to the same project.')
         sequence_budget = {'id': sequence_id, 'limits': sequence['limits'], 'accounting': sequence['accounting']}
-        global_errors += crexil_budget.violations(sequence['limits'], sequence['accounting'],
+        spending_errors += crexil_budget.violations(sequence['limits'], sequence['accounting'],
             attempts=sum(op['count'] for op in chosen if op['ready']), reserved=float(maximum), tariff=uses_tariff, label='Sequence')
+    global_errors += spending_errors
     if global_errors:
         for op in chosen:
             op['ready'] = False
@@ -365,7 +400,16 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
                 'sequence_budget': sequence_budget,
                 'region': region_prepared['details'] if region_prepared else None,
                 'blocking_errors': global_errors}
-    return {'direction_id': did, 'revision': direction['revision'], 'token': digest(snapshot),
+    # A project rename or limit change moves project_revision, so the request part
+    # binds the brief and instructions themselves and the limits get their own part.
+    request = {'direction_id': did, 'revision': direction['revision'], 'setup': snapshot['setup'],
+               'brief': project['brief'], 'project_instructions': project['instructions'],
+               'sources': sources, 'operations': request_operations, 'sequence_id': sequence_id,
+               'region': snapshot['region'], 'blocking_errors': request_errors}
+    limits = {'project': project['limits'], 'sequence': sequence_budget and sequence_budget['limits']}
+    spending = {'project': accounting, 'sequence': sequence_budget and sequence_budget['accounting']}
+    return {'direction_id': did, 'revision': direction['revision'],
+            'token': review_token(request, limits, spending), 'spending_errors': spending_errors,
             'ready': ready_count > 0, 'errors': errors, 'attempts': count,
             'ready_attempts': ready_count, 'blocked_attempts': count - ready_count,
             'maximum_usd': None if uses_tariff or unknown and not ready_count else float(maximum),
@@ -382,8 +426,15 @@ async def freeze(stack, did: str, body, *, staged_directories: list | None = Non
         raise ValueError('This preparation is a sequence template. Review and start its sequence to run it.')
     reviewed = await review(stack, did, compiled=compiled,
                             sequence_id=sequence_context['id'] if sequence_context else None)
-    if body.revision != reviewed['revision'] or body.review_token != reviewed['token']:
+    change = 'request' if body.revision != reviewed['revision'] else token_change(body.review_token, reviewed['token'])
+    if change == 'request':
         raise Conflict('Preparation, sources or operations changed. Review the current request before submitting.')
+    if change == 'limits':
+        raise SpendingChanged('Spending limits changed since review. Review again to see the current limits.')
+    if change == 'spending' and reviewed['spending_errors']:
+        raise SpendingChanged("Other work changed this project's spending since review, and this run no longer "
+                              'fits its limits. ' + ' '.join(reviewed['spending_errors'])
+                              + ' Review again to see the current totals.')
     if not reviewed['ready']:
         raise ValueError(' '.join(reviewed['errors']))
     snapshot = reviewed['snapshot']
