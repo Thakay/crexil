@@ -58,6 +58,17 @@ describe('the audio plate', () => {
     render(<AudioCell node={take('n1', {audio: null})}/>);
     expect(screen.getByText('Audio take')).toBeInTheDocument();
   });
+  it("draws a blind take's waveform at its own full height, so its picture never tells its level", () => {
+    const quiet = take('q', {audio: facts({peaks: [0.1, 0.2, 0.1, 0.05]})});
+    const tallest = (node: Material) => {
+      const view = render(<AudioCell node={node}/>);
+      const heights = [...view.container.querySelectorAll('rect')].map(rect => Number(rect.getAttribute('height')));
+      view.unmount();
+      return Math.max(...heights);
+    };
+    expect(tallest(quiet)).toBeCloseTo(19.2);
+    expect(tallest({...quiet, identity_hidden: true} as Material)).toBeCloseTo(96);
+  });
   it('shows which take is playing', async () => {
     render(<AudioCell node={take('n1')}/>);
     await act(() => player.play('n1'));
@@ -82,6 +93,9 @@ describe('the audio inspector', () => {
     expect(screen.getAllByText('Withheld until the run is revealed')).toHaveLength(2);
     expect(screen.queryByText('Seed')).toBeNull();
     expect(screen.queryByText('elevenlabs-v4')).toBeNull();
+    expect(screen.queryByText('-18.0 LUFS')).toBeNull();                       // levels tell engines apart
+    expect(screen.queryByText('-1.2 dBFS')).toBeNull();
+    expect(screen.getAllByText('Level matched · figures shown after the reveal')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', {name: 'Play'}));
     await act(() => Promise.resolve());
     expect(played()).toEqual(['n1']);
@@ -116,7 +130,29 @@ describe('the audio inspector', () => {
     press('Space');
     expect(player.store.getState().playing).toBe(false);
   });
+  it('keeps Space for a focused loop control, which Space presses', async () => {
+    render(<AudioInspector node={take('n1')}/>);
+    await act(() => player.play('n1'));
+    act(() => player.seek('n1', 1));
+    const loopIn = screen.getByRole('button', {name: 'Loop in'});
+    loopIn.focus();
+    expect(press('Space')).toBe(true);                                         // not prevented: the button keeps it
+    expect(player.store.getState().playing).toBe(true);
+  });
+  it('moves the playhead a tenth with the arrows and a second with Page Up and Page Down', async () => {
+    render(<AudioInspector node={take('n1')}/>);
+    const scrub = screen.getByRole('slider', {name: 'Playhead'});
+    expect(scrub).toHaveAttribute('step', '0.1');
+    await act(() => player.play('n1'));
+    act(() => player.seek('n1', 2));
+    fireEvent.keyDown(scrub, {key: 'PageUp'});
+    expect(player.store.getState().position).toBeCloseTo(3);
+    fireEvent.keyDown(scrub, {key: 'PageDown'});
+    fireEvent.keyDown(scrub, {key: 'PageDown'});
+    expect(player.store.getState().position).toBeCloseTo(1);
+  });
   it('words the level, voice and format lines plainly', () => {
+    expect(levelLine({gainDb: -4.14, volume: 0.6, matched: true}, true)).toBe('Matched level');
     expect(levelLine(null)).toBe('As recorded · not level matched');
     expect(levelLine({gainDb: -4.14, volume: 0.6, matched: true})).toBe('Matched level · turned down 4.1 dB');
     expect(levelLine({gainDb: 0, volume: 1, matched: true})).toBe('Matched level · as recorded');
@@ -173,6 +209,46 @@ describe('keyboard audition', () => {
     press('Digit1');
     await act(() => Promise.resolve());
     expect(plays).toEqual([]);
+  });
+  it('keeps a digit on its grid position across empty cells, which play nothing', async () => {
+    const onPlay = vi.fn();
+    render(<Audition takes={[null, takes[0], null, takes[2]]} onPlay={onPlay}/>);
+    press('Digit1');
+    press('Digit3');
+    await act(() => Promise.resolve());
+    expect(plays).toEqual([]);
+    press('Digit4');
+    await act(() => Promise.resolve());
+    expect(played()).toEqual(['c']);
+    expect(onPlay).toHaveBeenCalledWith(takes[2]);
+  });
+  it('rests the digits while the verb card is open, and keeps Space and X live', async () => {
+    const card = (key: string) => key !== 'digit';
+    render(<Audition takes={takes} ready={card} focused={() => 'a'} pair={() => ['a', 'c']}/>);
+    press('Digit3');
+    await act(() => Promise.resolve());
+    expect(plays).toEqual([]);
+    press('Space');
+    await act(() => Promise.resolve());
+    expect(player.store.getState()).toMatchObject({nodeId: 'a', playing: true});
+    press('KeyX');
+    await act(() => Promise.resolve());
+    expect(player.store.getState().nodeId).toBe('c');
+  });
+  it('leaves Space to a focused button that is not an audio face', async () => {
+    function Room() {
+      useAudition({takes, focused: () => 'a'});
+      return <><button>Esc · Project</button><button data-audio-face="">Act on 0A</button></>;
+    }
+    render(<Room/>);
+    screen.getByRole('button', {name: 'Esc · Project'}).focus();
+    expect(press('Space')).toBe(true);
+    await act(() => Promise.resolve());
+    expect(plays).toEqual([]);
+    screen.getByRole('button', {name: 'Act on 0A'}).focus();
+    expect(press('Space')).toBe(false);
+    await act(() => Promise.resolve());
+    expect(played()).toEqual(['a']);
   });
   it('switches between the two marked takes at the same playhead with X', async () => {
     render(<Audition takes={takes} pair={() => ['a', 'c']}/>);

@@ -5,9 +5,10 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // same tokens and return to their entry point, one Escape layer at a time. Which
 // rooms and layers are open lives in the project view store (view.ts); media
 // differences live in the registry (media.tsx).
-import { useCallback, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { $api, fetchClient } from '../../api/client';
+import { player } from '../audio/player';
 import { useHash, useHashRoute } from '../routes';
 import { DraftDrawer,hasPendingSubmission } from './DraftDrawer';
 import {hasLocalPreparation} from './usePreparationDraft';
@@ -16,7 +17,10 @@ import {ProjectDetails,hasProjectEdits} from './ProjectDetails';
 import { OperationLibrary } from './OperationLibrary';
 import { deliverControl, ExecutionControls } from './ExecutionControls';
 import { AttemptFace } from './AttemptFace';
-import { attemptFace, sharedCauses, type AttemptFaceVM, type QueueFacts, type RemedyId } from './attempts';
+import { attemptFace, blindFace, sharedCauses, type AttemptFaceVM, type QueueFacts, type RemedyId } from './attempts';
+import { auditionTakes } from './audition';
+import { isWithheld, withheldRuns } from './blind';
+import { RoomLine, useFastPick, useRoomAudition } from './GridRoom';
 import { SequenceRoom } from './SequenceRoom';
 import { DeliveryRoom } from './DeliveryRoom';
 import { BackupRoom } from './BackupRoom';
@@ -32,11 +36,22 @@ import { blankPreparation, command, engineIdentity, engineLabel, imageUrl, impor
   projectHref, result, type Direction, type Material, type Snapshot } from './api';
 import { gridCells, type Slot } from './cells';
 import { faceCost, pickerGroups } from './faces';
-import { useCommandKey, useEscapeBase, useEscapeKey } from './keys';
-import { IMPORT_ACCEPT, mediumOf } from './media';
-import { cardVerbs, type CardVerb } from './verbCard';
-import { createViewStore, overlay, useView, useViewStore, ViewContext, type FocusReturn, type Overlay } from './view';
+import { AUDIO_FACE, useCommandKey, useEscapeBase, useEscapeKey } from './keys';
+import { faceName, IMPORT_ACCEPT, mediumOf } from './media';
+import { cardVerbs, SPEAK_VERB, type CardVerb } from './verbCard';
+import { covered, createViewStore, overlay, useView, useViewStore, ViewContext, type FocusReturn, type Overlay, type View } from './view';
 import s from './Filmstrip.module.css';
+
+/** A grid room's take positions, every section of its row in order (empty positions kept). */
+function roomTakes(data: Snapshot | undefined, room: View['room']): (Material | null)[] {
+  if (!data || typeof room !== 'number') return [];
+  return auditionTakes(data.directions.filter(direction => direction.state !== 'discarded' && direction.row_idx === room)
+    .flatMap(direction => gridCells(direction, data, true)));
+}
+
+/** A slot holding several takes keeps room for all of them from Run (law 8). */
+const SPAN_GAP = 8;
+const spanWidth = (span: number) => span * 158 + (span - 1) * SPAN_GAP;
 
 function keepFocus(event: ReactKeyboardEvent<HTMLElement>) {
   if(event.key!=='Tab')return;
@@ -51,6 +66,8 @@ export function Crexil() {
   // The page comes from the one route parser; each page reads its own query state.
   const route = useHashRoute();
   useEscapeKey();
+  // Nothing plays once the surface is gone, whichever room started it.
+  useEffect(() => () => player.pause(), []);
   const health = $api.useQuery('get', '/api/health', {}, {refetchInterval: 15000});
   const bundle = import.meta.env.VITE_BUILD_ID ?? 'dev';
   const healthBody = health.data ?? (health.error as unknown as {preview?: boolean; build?: {id: string}});
@@ -178,12 +195,22 @@ function ProjectWorkspace({id}: {id: string}) {
       store.getState().prepared(made.id);
     });
   };
-  // Plain keys reach the Filmstrip only when no drawer, picker, inspection, room or record covers it.
-  const covered = () => {const now = store.getState(); return Boolean(now.drawer || overlay(now, 'picker') || overlay(now, 'inspect') || now.panel || now.record);};
+  // Plain keys reach the Filmstrip only when nothing covers it (view.ts `covered`).
+  const isCovered = () => covered(store.getState());
   const actingNow = () => nodes.filter(n => store.getState().acting.includes(n.id));
-  useCommandKey('n', () => void newDirection(), () => !covered() && working.current === 0);
-  useCommandKey('v', () => inspectNode(store.getState().acting[0]), () => !covered() && store.getState().acting.length === 1);
-  useCommandKey('m', () => void newDirection(undefined,'combine',actingNow()), () => !covered() && working.current === 0 && actingNow().length > 1);
+  useCommandKey('n', () => void newDirection(), () => !isCovered() && working.current === 0);
+  useCommandKey('v', () => inspectNode(store.getState().acting[0]), () => !isCovered() && store.getState().acting.length === 1);
+  useCommandKey('m', () => void newDirection(undefined,'combine',actingNow()), () => !isCovered() && working.current === 0 && actingNow().length > 1);
+  // L speaks a line in the acting take's voice, when the card offers that verb live.
+  const speakVerb = () => cardVerbs(actingNow(), operations.data).find(verb => verb.label === SPEAK_VERB && verb.live);
+  useCommandKey('l', () => {const verb = speakVerb(); if (verb) void newDirection(undefined, verb.action, verb.parents);},
+    () => !isCovered() && working.current === 0 && Boolean(speakVerb()));
+  // The open grid room's take positions: audition, and S to select the focused take.
+  const takes = roomTakes(data, room);
+  useRoomAudition(takes);
+  const fastPick = useFastPick(data, takes, refresh);
+  const {settle} = fastPick;
+  useEffect(() => {settle(null); return () => player.pause();}, [room, settle]);
   if (!data) return <main className={s.projects}><a href={projectHref()}>‹ Projects</a>
     {query.error ? <p className={s.error} role="alert">{message(query.error)} <button onClick={() => void query.refetch()}>Try again</button></p> : <p role="status">Opening project…</p>}</main>;
   const visible = directions.filter(d => d.state !== 'discarded' && (room === 'tray' ? d.set_aside : room!==null||!d.set_aside));
@@ -219,10 +246,14 @@ function ProjectWorkspace({id}: {id: string}) {
     const bench = queue.data?.benches.find(b => b.scope === held.bench);
     return {bench: held.bench ?? null, benchKind: bench?.kind ?? null, benchCause: bench?.cause ?? null};
   };
+  // A blind run's held attempt is never linked to its queue row, which would name its lane.
   const faceOf = (slot: Slot): AttemptFaceVM | null => {
     const turn = turns.find(t => t.id === slot.turn_id);
-    return turn ? attemptFace(slot, {turn, operations: operations.data ?? [], controls, queue: queueFacts(slot)}) : null;
+    return turn ? attemptFace(slot, {turn, operations: operations.data ?? [], controls,
+      queue: slot.identity_hidden === true ? null : queueFacts(slot)}) : null;
   };
+  const withheld = withheldRuns(data);
+  const roomTurns = typeof room === 'number' ? turns.filter(turn => visible.some(d => d.row_idx === room && d.turn_ids.includes(turn.id))) : [];
   const remedy = (direction: Direction, slot: Slot, face: AttemptFaceVM) => (which: RemedyId) => {
     const run = controls.find(c => c.scope === 'run' && c.target_id === slot.turn_id);
     const project = controls.find(c => c.scope === 'project');
@@ -263,6 +294,7 @@ function ProjectWorkspace({id}: {id: string}) {
       inspect={id=>{nestedRecordFocus.current=document.activeElement as HTMLElement;inspectNode(id);}} openDirection={recordOpenDirection} openRun={recordOpenRun}/></div>}
     <div className={s.workspacePane} hidden={Boolean(record)&&!recordDestination}>
     {room !== null && <div className={s.roomHead}><strong>{room === 'tray' ? 'Tray' : `Grid · Turn ${room}`}</strong><span className={s.hint}>{room === 'tray' ? 'Directions kept aside. Their sources and decisions remain.' : 'Every attempt keeps its place. Display choices are shared with the Filmstrip.'}</span><button onClick={()=>restoreFocus(store.getState().leaveRoom())}>Esc · {recordDestination?'Record':sequenceReturn?'Sequence':'Project'}</button></div>}
+    {typeof room === 'number' && !panel && <RoomLine data={data} turns={roomTurns} takes={takes} fastPick={fastPick} refresh={refresh}/>}
     {panel?.kind==='reuse'?<ReuseRoom wid={id} close={closeLayer} chooseFiles={()=>file.current?.click()} refresh={refresh} inspect={node=>store.getState().inspectFromPanel(node)}/>
       :panel?.kind==='backup'?<BackupRoom project={data.project} close={closeLayer} restored={()=>{}}/>
       :panel?.kind==='delivery'?<DeliveryRoom data={data} initial={panel.ids} close={closeLayer} refresh={refresh}/>
@@ -309,20 +341,24 @@ function ProjectWorkspace({id}: {id: string}) {
               </div>
               {cells.map(cell => {
                 const node = cell.material, slot = cell.slot;
-                const face = !node && slot ? faceOf(slot) : null;
-                return <div key={cell.key} className={room===row?s.slotBox:undefined}>
-                  {!node ? (face ? <AttemptFace face={face} busy={busy} onRemedy={remedy(direction, slot!, face)}/> : null) : <button data-lineage-node={node.id} aria-label={`Act on ${label(node)}`} className={`${s.face} ${acting.includes(node.id) ? s.acting : ancestry.has(node.id)?s.ancestor:''}`} aria-pressed={acting.includes(node.id)} onDoubleClick={() => inspectNode(node.id)}
-                    onClick={e => {focusOrigin.current=e.currentTarget; store.getState().act(e.shiftKey ? acting.includes(node.id) ? acting.filter(n => n !== node.id) : [...acting,node.id] : [node.id]);}}>
-                    <div className={s.plate}><MaterialThumbnail key={node.id} node={node}/>{acting.includes(node.id) && <span className={s.actingMark}>Acting on</span>}{node.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
-                    <footer><span>{label(node)} · {engineLabel(node,'face')}</span><span>{faceCost(node)}</span></footer>
-                  </button>}
-                  {room===row&&slot&&<div className={s.slotFoot}><span>{node?slot.status:''}</span>{cell.group&&<button onClick={fromHere(()=>store.getState().openGroup(cell.group!.id))}>{cell.group.outputs.length} {cell.group.outputs.length===1?'file':'files'} ›</button>}</div>}
+                const turn = slot ? turns.find(t => t.id === slot.turn_id) : undefined;
+                const face = cell.withheld && slot && turn ? blindFace(turn, slot) : !node && slot ? faceOf(slot) : null;
+                const wide = room===row && cell.span > 1;
+                return <div key={cell.key} className={room===row?s.slotBox:undefined} style={wide?{width:spanWidth(cell.span)}:undefined}>
+                  {face ? <AttemptFace face={face} busy={busy} onRemedy={remedy(direction, slot!, face)}/> : cell.takes.length > 0 &&
+                    <div className={s.takeRow}>{cell.takes.map(take => <button key={take.id} data-lineage-node={take.id} data-take={take.id} {...(take.payload === 'audio' ? {[AUDIO_FACE]: ''} : {})}
+                      aria-label={faceName(take)} className={`${s.face} ${acting.includes(take.id) ? s.acting : room===row&&direction.selection.includes(take.id) ? s.selected : ancestry.has(take.id)?s.ancestor:''}`} aria-pressed={acting.includes(take.id)} onDoubleClick={() => inspectNode(take.id)}
+                      onClick={e => {focusOrigin.current=e.currentTarget; store.getState().act(e.shiftKey ? acting.includes(take.id) ? acting.filter(n => n !== take.id) : [...acting,take.id] : [take.id]);}}>
+                      <div className={s.plate}><MaterialThumbnail key={take.id} node={take}/>{acting.includes(take.id) && <span className={s.actingMark}>Acting on</span>}{take.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
+                      <footer><span>{label(take)} · {engineLabel(take,'face')}</span><span>{faceCost(take)}</span></footer>
+                    </button>)}</div>}
+                  {room===row&&slot&&<div className={s.slotFoot}><span>{node&&!cell.withheld?slot.status:''}</span>{cell.group&&<button onClick={fromHere(()=>store.getState().openGroup(cell.group!.id))}>{cell.group.outputs.length} {cell.group.outputs.length===1?'file':'files'} ›</button>}</div>}
                 </div>;
               })}
             </div>
-            {room===row&&<SharedCauses faces={cells.flatMap(cell=>!cell.material&&cell.slot?[faceOf(cell.slot)]:[]).filter((face):face is AttemptFaceVM=>face!==null)}/>}
+            {room===row&&<SharedCauses faces={cells.flatMap(cell=>!cell.material&&cell.slot&&!cell.withheld?[faceOf(cell.slot)]:[]).filter((face):face is AttemptFaceVM=>face!==null)}/>}
             <div className={s.sectionFoot}><span>{direction.selection.length} of {material.length} selected{direction.state === 'draft' ? ' · Preparation' : ''}</span>
-              <span className={s.actions}>{direction.sequence_id&&<button className={s.door} onClick={fromHere(()=>store.getState().showSequence(direction.sequence_id!))}>Sequence ›</button>}<button className={s.door} onClick={e => {focusOrigin.current=e.currentTarget; const box=e.currentTarget.closest('section')!.getBoundingClientRect(); store.getState().openPicker(direction,Math.min(box.left,window.innerWidth-530),Math.min(box.top,window.innerHeight-440));}}>Strip ›</button></span></div>
+              <span className={s.actions}>{direction.sequence_id&&<button className={s.door} onClick={fromHere(()=>store.getState().showSequence(direction.sequence_id!))}>Sequence ›</button>}<button className={s.door} onClick={e => {focusOrigin.current=e.currentTarget; const box=e.currentTarget.closest('section')!.getBoundingClientRect(); store.getState().openPicker(direction.id,Math.min(box.left,window.innerWidth-530),Math.min(box.top,window.innerHeight-440));}}>Strip ›</button></span></div>
           </section>;
         })}<button className={s.addSection} disabled={busy} onClick={() => void newDirection(row)}>+ Section</button></div>
       </div>)}
@@ -330,7 +366,8 @@ function ProjectWorkspace({id}: {id: string}) {
       </LineageCanvas>
     </main>}
     </div>
-    {picker && <Picker key={picker.direction.id} state={picker} nodes={nodes} current={directions.find(d => d.id === picker.direction.id) ?? picker.direction}
+    {picker && directions.some(d => d.id === picker.direction) && <Picker key={picker.direction} state={picker} nodes={nodes}
+      current={directions.find(d => d.id === picker.direction)!} withheld={withheld}
       close={closeLayer} saved={refresh} onInspect={inspectNode} stateAction={stateAction}/>}
     {actingNodes.length > 0 && !drawer && !inspected && <section className={s.verbCard} aria-label="Actions on material">
       <div className={s.drawerHead}><span className={s.mono}>Acting on · {actingNodes.length}</span><button onClick={() => store.getState().clearActing()}>Esc</button></div>
@@ -357,29 +394,35 @@ function ProjectWorkspace({id}: {id: string}) {
   </>;
 }
 
-function Picker({state,nodes,current,close,saved,onInspect,stateAction}: {
-  state:PickerState; nodes:Material[]; current:Direction; close:()=>void; saved:()=>void;
+// The picker reads the live direction while takes land; its choice applies to the revision
+// it opened on, so a change made meanwhile elsewhere is refused, never overwritten. A blind
+// run's takes join it once the run settles.
+function Picker({state,nodes,current,withheld,close,saved,onInspect,stateAction}: {
+  state:PickerState; nodes:Material[]; current:Direction; withheld:ReadonlySet<string>; close:()=>void; saved:()=>void;
   onInspect:(id:string)=>void; stateAction:(d:Direction, action:'set_aside'|'restore'|'reuse'|'discard')=>Promise<string|null>;
 }) {
-  const [selected,setSelected]=useState(state.direction.selection);
+  const [opened]=useState(()=>({revision:current.revision,selection:current.selection}));
+  const [selected,setSelected]=useState(opened.selection);
   const [reason,setReason]=useState('');
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const pending=useRef<ReturnType<typeof command> | null>(null);
-  const material=nodes.filter(n=>current.node_ids.includes(n.id));
+  const arrived=nodes.filter(n=>current.node_ids.includes(n.id));
+  const material=arrived.filter(n=>!isWithheld(n,withheld));
   const groups=pickerGroups(material);
   // A direction action closes the picker only when it succeeded; a failure stays here with its words.
   const settle=async(done:Promise<string|null>)=>{const failed=await done;if(failed)setError(failed);else close();};
   const apply=async()=>{
     setBusy(true);setError('');pending.current??=command();
-    try {await result(fetchClient.PUT('/api/crexil/directions/{did}/selection',{params:{path:{did:state.direction.id}},
-      body:{...pending.current,revision:state.direction.revision,node_ids:selected,reason}}));saved();close();}
+    try {await result(fetchClient.PUT('/api/crexil/directions/{did}/selection',{params:{path:{did:current.id}},
+      body:{...pending.current,revision:opened.revision,node_ids:selected,reason}}));saved();close();}
     catch(err){setError(message(err));}finally{setBusy(false);}
   };
   return <section className={s.picker} style={{left:Math.max(16,state.left),top:Math.max(56,state.top)}} aria-label="Choose displayed takes">
     <div className={s.pickerBody}>{groups.map(group=><div className={s.pickerRow} key={group.label}><span className={s.micro}>{group.label}</span><div className={s.thumbs}>{group.nodes.map(node=><button key={node.id} className={`${s.thumb} ${selected.includes(node.id)?s.selected:''}`} disabled={!node.available} aria-pressed={selected.includes(node.id)} aria-label={`Display ${label(node)}`} onDoubleClick={()=>onInspect(node.id)} onClick={()=>{pending.current=null;setSelected(previous=>previous.includes(node.id)?previous.filter(id=>id!==node.id):[...previous,node.id]);}}>
       <MaterialThumbnail key={node.id} node={node} decorative/><span>{label(node)}</span></button>)}</div></div>)}
-      {material.length===0&&<p>This direction has no outputs yet. Open its starter to continue preparation.</p>}
+      {arrived.length===0&&<p>This direction has no outputs yet. Open its starter to continue preparation.</p>}
+      {arrived.length>material.length&&<p>Takes from a blind run still in flight show here when it settles.</p>}
     </div>
     <label className={s.reason}>Reason <input placeholder="Optional, kept with your choice" value={reason} onChange={e=>{setReason(e.target.value);pending.current=null;}}/></label>
     {error&&<p className={s.error} role="alert">{error}</p>}
@@ -403,7 +446,8 @@ export function Inspection({node,data,close,navigate,openGroup,openRecord,return
         {origin&&<><h3>Source information</h3><p>{origin.kind==='execution'?'Collected from this execution. Its related files retain their own identities.':origin.kind==='prepared_image'?'Prepared from these sources by Crexil. Its pixel transform and source hashes were recorded.':origin.kind==='project_reuse'?'Imported from another project with an independent copy and its recorded origin.':origin.kind==='reported_external'?'Returned external work. Relationships were reported by a participant.':'Imported original. No generation was observed by Crexil.'}</p>{origin.tool&&<p>Tool · {String(origin.tool)}</p>}{origin.explanation&&<p>{String(origin.explanation)}</p>}{origin.kind==='prepared_image'&&<details><summary>Preparation recipe and source hashes</summary><pre>{JSON.stringify(origin.transform,null,2)}</pre></details>}</>}
         {origin?.kind==='project_reuse'&&<><h3>Original project</h3><a href={`${projectHref(String((origin.source as {project_id:string}).project_id))}?material=${encodeURIComponent(String((origin.source as {node_id:string}).node_id))}`}>{String((origin.source as {project_name:string}).project_name)} ›</a><p className={s.hash}>Source {String((origin.source as {node_id:string}).node_id)}</p><details><summary>Recorded source provenance</summary><pre>{JSON.stringify(origin.source_record,null,2)}</pre></details></>}
         {Boolean(node.retained_files?.length)&&<><h3>Retained related files</h3>{node.retained_files!.map(file=><div key={file.id}><strong>{file.filename}</strong><p>{file.role}{file.required?' · Required':''}</p>{file.available?<a href={`/api/crexil/material/${node.id}/files/${file.id}`} download>Download {file.filename}</a>:<p>{file.error??'File unavailable; its record remains.'}</p>}</div>)}</>}
-        {node.material&&<dl><dt>Original file</dt><dd>{node.material.filename}</dd>{node.material.width!==null&&node.material.height!==null&&<><dt>Dimensions</dt><dd>{node.material.width} × {node.material.height}</dd></>}<dt>Content hash</dt><dd className={s.hash}>{node.material.sha256}</dd></dl>}
+        {node.material&&<dl><dt>Original file</dt><dd>{node.material.filename}</dd>{node.material.width!==null&&node.material.height!==null&&<><dt>Dimensions</dt><dd>{node.material.width} × {node.material.height}</dd></>}
+          {medium.facts?.(node).map(([name,value])=><Fragment key={name}><dt>{name}</dt><dd>{value}</dd></Fragment>)}<dt>Content hash</dt><dd className={s.hash}>{node.material.sha256}</dd></dl>}
         {group&&<><h3>Related outputs</h3><button onClick={()=>openGroup(group.id)}>{group.outputs.length} {group.outputs.length===1?'file':'files'} · {group.state} ›</button></>}
         {node.parents.length>0&&<><h3>Sources</h3>{node.parents.map(id=>{const parent=data.nodes.find(n=>n.id===id);return parent?<button key={id} onClick={()=>navigate(id)}>{label(parent)}{!parent.available?' · unavailable':''} ›</button>:<p key={id}>Source {id} · record unavailable</p>;})}</>}
         {data.nodes.some(n=>n.parents.includes(node.id))&&<><h3>Continued in</h3>{data.nodes.filter(n=>n.parents.includes(node.id)).map(n=><button key={n.id} onClick={()=>navigate(n.id)}>{label(n)} ›</button>)}</>}

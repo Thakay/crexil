@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Direction, Snapshot } from './api';
-import { gridCells } from './cells';
+import { gridCells, takesPerAttempt } from './cells';
 import { cardVerbs } from './verbCard';
 
 const slot = (id: string, attempt = 1, status = 'landed') => ({id, attempt, status, engine: 'flux', turn_id: 't1'});
@@ -74,7 +74,8 @@ describe('cardVerbs', () => {
   });
   it('keeps every verb in the card: a wrong medium drops to its own group with the reason (law 12)', () => {
     const verbs = cardVerbs([image('a')]);
-    expect(verbs).toHaveLength(9);
+    expect(verbs).toHaveLength(10);
+    expect(find([image('a')], 'Speak with this voice · L')).toMatchObject({live: false, tier: 'notForThis', reason: 'Works on audio; this is an image.'});
     expect(find([image('a')], 'Reduce mesh')).toMatchObject({live: false, tier: 'notForThis', reason: 'Works on meshes; this is an image.'});
     expect(find([mesh('m')], 'Edit regions')).toMatchObject({live: false, tier: 'notForThis', reason: 'Works on images; this is a mesh.'});
     expect(find([audio('v')], 'Generate 3D').reason).toBe('Works on images; this is audio.');
@@ -99,5 +100,71 @@ describe('cardVerbs', () => {
     const allowed = [...ops, {id: 'eleven', actions: ['continue'], provider: 'elevenlabs'}] as never[];
     expect(find([image('a', terms)], 'Continue from image', allowed).live).toBe(true);
     expect(find([image('a', terms)], 'Crop, resize or arrange', ops).live).toBe(true);
+  });
+});
+
+describe('gridCells for runs whose attempts return several takes (law 8)', () => {
+  const take = (id: string, slot_id: string, output_index: number, extra: Record<string, unknown> = {}) =>
+    ({id, slot_id, take: 1, output_index, payload: 'audio', turn_id: 't1', available: true, ...extra});
+  const designs = (status = 'landed', blind?: {revealed: boolean}) => ({
+    nodes: status === 'landed' ? [take('a3', 'sa', 2), take('a1', 'sa', 0), take('a2', 'sa', 1)] : [],
+    turns: [{id: 't1', dials: {crexil: {operations: [{takes_per_attempt: 3}, {takes_per_attempt: 1}]}},
+      slots: [slot('sa', 1, status), slot('sb', 1, 'failed')]}],
+    execution_groups: status === 'landed' ? [group('g', 'sa', 1, [{id: 'o1', node_id: 'a1'}, {id: 'o2', node_id: 'a2'}, {id: 'o3', node_id: 'a3'}], 'o1')] : [],
+    blind_runs: blind ? [{turn_id: 't1', ...blind}] : [],
+  }) as unknown as Snapshot;
+  const run = {node_ids: ['a1', 'a2', 'a3'], turn_ids: ['t1'], selection: []} as unknown as Direction;
+
+  it('holds room in every slot for the most takes one attempt of the run returns', () => {
+    expect(takesPerAttempt(designs().turns[0])).toBe(3);
+    expect(takesPerAttempt({dials: {}} as never)).toBe(1);
+    expect(takesPerAttempt({dials: {crexil: {operations: [{takes_per_attempt: 40}]}}} as never)).toBe(8);
+    expect(gridCells(run, designs(), true).map(cell => cell.span)).toEqual([3, 3]);
+  });
+  it('shows every take the attempt landed, primary first, then in output order', () => {
+    const [landed, failed] = gridCells(run, designs(), true);
+    expect(landed.takes.map(node => node.id)).toEqual(['a1', 'a2', 'a3']);
+    expect(landed.material?.id).toBe('a1');
+    expect(failed.takes).toEqual([]);
+  });
+  it('withholds every take of a blind run still in flight, and shows them all once it settles', () => {
+    const flying = {...designs(), turns: [{...designs().turns[0], slots: [slot('sa'), slot('sb', 1, 'running')]}]} as Snapshot;
+    const hidden = gridCells(run, {...flying, blind_runs: [{turn_id: 't1', revealed: false}]} as unknown as Snapshot, true);
+    expect(hidden.map(cell => [cell.withheld, cell.takes.length, cell.group])).toEqual([[true, 0, null], [true, 0, null]]);
+    const revealed = gridCells(run, {...flying, blind_runs: [{turn_id: 't1', revealed: true}]} as unknown as Snapshot, true);
+    expect(revealed[0].takes).toHaveLength(3);
+    expect(gridCells(run, designs('landed', {revealed: false}), true)[0].takes).toHaveLength(3);
+  });
+});
+
+describe('the audio verb on the action card', () => {
+  const ELEVEN = {no_ai_input: true, allows: ['elevenlabs'], reason: "ElevenLabs' terms do not allow its audio as input to another AI model."};
+  const voice = (id: string, extra: Record<string, unknown> = {}) => ({id, payload: 'audio', available: true,
+    audio: {voice: {kind: 'designed', provider: 'voice-runner', generated_voice_id: id}}, material: null, ...extra}) as never;
+  const speakers = [{id: 'audio:speak:qwen3-tts', actions: ['speak'], provider: 'voice-runner'}] as never[];
+  const verb = (nodes: never[], ops = speakers) => cardVerbs(nodes, ops).find(item => item.label === 'Speak with this voice · L')!;
+
+  it('speaks a line in one take whose recorded voice an engine can use, with that take as the voice', () => {
+    const found = verb([voice('v1')]);
+    expect(found).toMatchObject({live: true, action: 'speak', tier: 'main'});
+    expect(found.parents.map(parent => (parent as {id: string}).id)).toEqual(['v1']);
+  });
+  it('stays in the card, inert with its reason, for a sound, a lost file or two takes', () => {
+    expect(verb([voice('s', {audio: {voice: null}})]).reason).toBe('This take records no voice to speak with.');
+    expect(verb([voice('gone', {available: false})]).reason).toBe("This take's audio is unavailable. Its record remains.");
+    expect(verb([voice('a'), voice('b')]).reason).toBe('Acts on one source; 2 are selected.');
+  });
+  it("de-emphasises an ElevenLabs take offered only to the local engine, with the provider's terms (law 12)", () => {
+    const eleven = voice('e', {material: {origin: {terms: ELEVEN}}});
+    expect(verb([eleven])).toMatchObject({live: false, reason: ELEVEN.reason});
+    expect(verb([eleven], [...speakers, {id: 'audio:speak:elevenlabs-v4', actions: ['speak'], provider: 'elevenlabs'}] as never[]).live).toBe(true);
+  });
+  it("starts nothing from a blind run's take before the reveal, and names no provider", () => {
+    const hidden = voice('h', {identity_hidden: true, audio: {voice: null}, material: {origin: {terms: ELEVEN}}});
+    const verbs = cardVerbs([hidden], speakers);
+    const main = verbs.filter(item => item.tier === 'main');
+    expect(main.length).toBeGreaterThan(0);
+    for (const item of main) expect(item).toMatchObject({live: false, reason: "This take's run is blind. Reveal it to continue from its takes."});
+    expect(verbs.map(item => `${item.label} ${item.reason}`).join(' ')).not.toMatch(/ElevenLabs|voice-runner/);
   });
 });

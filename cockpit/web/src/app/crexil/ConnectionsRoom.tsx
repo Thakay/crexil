@@ -1,15 +1,22 @@
 // Setup reads configured adapters; credentials use the existing guarded local
 // setup API. Opening this room never changes a connection or requests generation.
+// Each audio provider says whether it can be reached and, per operation, what Crexil
+// sends to it and where.
 import {useState} from 'react';
 import {$api,fetchClient} from '../../api/client';
 import {useHash} from '../routes';
 import {message,projectHref,result} from './api';
 import {useEscapeLayer} from './keys';
+import {dataLine} from './operationFacts';
 import s from './Filmstrip.module.css';
+
+/** The connections with a card of their own above; every other one is listed with its operations. */
+const OWN_CARDS=['comfyui','openrouter'];
 
 export function ConnectionsRoom() {
   const project=new URLSearchParams(useHash().split('?')[1]).get('project')??'';
   const query=$api.useQuery('get','/api/crexil/setup');
+  const catalogue=$api.useQuery('get','/api/crexil/operations');
   const [key,setKey]=useState('');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -68,6 +75,14 @@ export function ConnectionsRoom() {
           </details>
           <a href={operations}>Choose and inspect an operation ›</a>
         </section>
+        {(connections.connections??[]).filter(line=>!OWN_CARDS.includes(line.provider)).length>0&&<section className={s.connectionWide} aria-label="Audio engines">
+          <span className={s.eyebrow}>Voices and sounds</span><h2>Audio engines</h2>
+          {(connections.connections??[]).filter(line=>!OWN_CARDS.includes(line.provider)).map(line=><div key={line.provider} className={s.connectionLine}>
+            <h3>{line.label} · {line.ok?'Ready':'Not ready'}</h3><p>{line.detail}</p>
+            {(catalogue.data??[]).filter(op=>op.provider===line.provider).map(op=><p key={op.id}>{op.label} · {dataLine(op,op.actions[0])}</p>)}
+          </div>)}
+          <p className={s.hint}>The preparation drawer repeats what each operation sends and where, before you choose it.</p>
+        </section>}
       </div>}
       <section className={s.connectionCustom}><h2>Have your own workflow?</h2><p>Import its API export or supplied definition in Operations. The original stays intact while you map controls, sources and outputs. An incomplete registration can be saved and finished later.</p><a href={`${operations}${project?'&':'?'}import=1`}>Import a custom operation ›</a></section>
     </main>

@@ -454,3 +454,40 @@
 .notForThis summary {padding:8px 14px;font:9px var(--font-mono);letter-spacing:.07em;color:var(--muted);cursor:pointer;}
 /* Law 6: a Run that spends money wears the hue of money about to move, never the default frame. */
 .app .paidRun {border-color:var(--money);color:var(--money);background:var(--tint-money);}
+/* A slot of a run whose attempts return several takes holds room for all of them from Run (law 8);
+   its takes stand side by side, closer than neighbouring slots, and its attempt face fills the slot. */
+.takeRow {display:flex;gap:8px;}
+.slotBox>.attemptFace {width:100%;}
+/* The grid room's working line, the second line of its head: the audition keys, the take that plays,
+   the reason for a take just selected, each blind run's reveal. One line high, so it never moves a cell. */
+.roomLine {min-height:34px;flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;padding:4px 24px;background:var(--panel-alt);border-bottom:1px solid var(--hairline);font-size:11px;color:var(--secondary);}
+.keyHint {font:9px var(--font-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--secondary);white-space:nowrap;}
+.roomSaid {color:var(--secondary);min-width:0;}
+.pickReason,.blindRun {display:flex;align-items:center;gap:10px;min-width:0;}
+.pickReason strong,.blindRun strong {font:9px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;font-weight:400;color:var(--text);white-space:nowrap;}
+.app .pickReason input,.app .blindRun input {width:260px;padding:4px 8px;font-size:11px;}
+.app .pickReason button,.app .blindRun button {font:9px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 8px;white-space:nowrap;}
+.app .quietButton {border-style:dashed;}
+/* The drawer's blind choice, the route line every operation states, and the tariff offer. */
+.app label.blindChoice {flex-direction:row;align-items:center;gap:8px;color:var(--text);font-size:12px;}
+.app .blindChoice input {width:auto;margin:0;}
+.dataLine {font-size:10.5px;line-height:1.4;color:var(--secondary);overflow-wrap:anywhere;}
+.tariffOffer {display:flex;align-items:center;gap:12px;padding:8px 10px;border:1px solid var(--money);border-radius:var(--r-control);background:var(--tint-money);}
+.tariffOffer p {margin:0;flex:1;font-size:11px;color:var(--secondary);}
+.app .tariffOffer button {flex:none;font-size:11px;}
+/* The record's export and the name it gives this browser's artist. */
+.recordExport {display:flex;align-items:flex-end;gap:16px;margin-left:auto;}
+.app .recordExport label {flex-direction:row;align-items:center;gap:8px;white-space:nowrap;}
+.app .recordExport input {width:160px;padding:5px 8px;}
+.recordExportNote {margin:0;padding:8px 28px 0;}
+/* Connections: providers without a card of their own, each with what Crexil sends it. */
+.connectionCards>section.connectionWide {grid-column:1/-1;}
+.connectionLine {border-top:1px solid var(--hairline);padding:12px 0;}
+.connectionLine h3 {margin:0 0 6px;font-size:10px;letter-spacing:.1em;color:var(--text);font-weight:400;}
+.connectionLine p {margin:2px 0;}
+/* An audio take's plate drawn at each size images use: the starter, the picker's thumb, the
+   drawer's source chip and the record's material card. */
+.starter>div:has(svg) {padding:0;}
+.thumb>div {height:63px;}
+.source>div:first-child {width:70px;height:55px;flex:none;border:1px solid var(--border);border-radius:3px;overflow:hidden;}
+.recordMaterial>div:first-child {height:140px;width:100%;flex:none;}

@@ -4,16 +4,16 @@
 // fixed order (closeTop). Server-owned state never lives here.
 import { createContext, useContext } from 'react';
 import { createStore, useStore, type StoreApi } from 'zustand';
-import type { Direction } from './api';
 import type { RecordScope } from './RecordRoom';
 
 /** A room that replaces the canvas. At most one is open. */
 export type Panel = {kind: 'reuse'} | {kind: 'backup'} | {kind: 'delivery'; ids: string[]}
   | {kind: 'returned'; ids: string[]} | {kind: 'sequences'};
 
-/** A layer over the canvas or a room. Escape closes them top first: group, inspect, picker, project edit. */
+/** A layer over the canvas or a room. Escape closes them top first: group, inspect, picker, project edit.
+ *  The picker names its direction by id; the room reads the live direction while takes land. */
 export type Overlay = {kind: 'group'; id: string} | {kind: 'inspect'; id: string}
-  | {kind: 'picker'; direction: Direction; left: number; top: number} | {kind: 'projectEdit'};
+  | {kind: 'picker'; direction: string; left: number; top: number} | {kind: 'projectEdit'};
 const OVERLAY_ORDER: Overlay['kind'][] = ['group', 'inspect', 'picker', 'projectEdit'];
 
 export type View = {
@@ -47,6 +47,12 @@ const without = (view: View, kind: Overlay['kind']) => view.overlays.filter(laye
 const withOverlay = (view: View, layer: Overlay) => [...without(view, layer.kind), layer];
 /** Opening a room that replaces the canvas closes the record beneath it. */
 const panelOpen = (panel: Panel): Partial<View> => ({panel, record: null, recordDestination: false, nestedRecord: null});
+
+/** Whether anything lies over the Filmstrip or its grid room: the drawer, any overlay, a
+ *  room that replaces the canvas, or the record (unless it waits beneath a grid room it
+ *  opened). Plain keys act on the Filmstrip only while nothing covers it. */
+export const covered = (view: View): boolean => Boolean(view.drawer || view.overlays.length || view.panel
+  || ((view.record || view.nestedRecord) && !view.recordDestination));
 
 /** Close the top layer. The order is fixed: overlays, a room over the canvas, the record
  * and its destinations, the acting set, then a grid room or the tray. */
@@ -91,7 +97,7 @@ export type ViewActions = {
   inspect: (id: string) => void;
   openGroup: (id: string) => void;
   closeGroup: () => void;
-  openPicker: (direction: Direction, left: number, top: number) => void;
+  openPicker: (direction: string, left: number, top: number) => void;
   toggleProjectEdit: () => void;
   openProjectEdit: () => void;
   closeProjectEdit: () => void;

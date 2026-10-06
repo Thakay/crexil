@@ -25,12 +25,19 @@ describe('operationStanding (law 12: badge, never filter)', () => {
     expect(operationStanding(op({actions: ['voice-design']}), 'region', [])).toEqual({tier: 'notForThis',
       reasons: ['This operation cannot edit a region. Its saved inputs remain available.']});
     expect(actionPhrase('mesh')).toBe('generate 3D from image');
-    expect(actionPhrase('voice-design')).toBe('perform voice-design');
+    expect(actionPhrase('voice-design')).toBe('design a voice');
+    expect(actionPhrase('not-an-action')).toBe('perform not-an-action');
   });
   it('blocks with every reason: the server reasons, too many sources, and provider terms', () => {
     const standing = operationStanding(op({actions: ['speak'], provider: 'voice-runner', reasons: ['Runner offline.']}), 'speak',
       [take(ELEVEN), take()]);
     expect(standing).toEqual({tier: 'blocked', reasons: ['Runner offline.', 'Accepts 1 source. All 2 sources remain in preparation.', ELEVEN.reason]});
+  });
+  it("refuses a blind run's take with one reason that names no provider", () => {
+    const hidden = {id: 'h', payload: 'audio', identity_hidden: true, material: null} as never;
+    const standing = operationStanding(op({actions: ['speak'], provider: 'voice-runner'}), 'speak', [hidden]);
+    expect(standing).toEqual({tier: 'blocked', reasons: ["This take's run is blind. Reveal it to continue from its takes."]});
+    expect(JSON.stringify(standing)).not.toMatch(/elevenlabs|voice runner/i);
   });
   it('is ready when nothing stands in the way, and says unavailable when the server says so without a reason', () => {
     expect(operationStanding(op({}), 'generate', [])).toEqual({tier: 'ready', reasons: []});

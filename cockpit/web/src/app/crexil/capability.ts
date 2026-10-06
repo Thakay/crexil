@@ -4,9 +4,12 @@
 // reasons and stays selectable, so the artist always sees the whole roster. A
 // provider's terms ride on each take; a take whose provider forbids its output as
 // input to another model is refused for every engine those terms do not allow,
-// with the provider's own reason (law 21).
+// with the provider's own reason (law 21). A take from a blind run that is not yet
+// revealed is refused with one reason that names no provider, since its terms would
+// tell its engine.
 import { actionView } from './actions';
-import type { Material, Operation } from './api';
+import { isHidden, type Material, type Operation } from './api';
+import { BLIND_SOURCE } from './blind';
 
 export type Standing = {tier: 'ready' | 'blocked' | 'notForThis'; reasons: string[]};
 
@@ -34,7 +37,7 @@ export function operationStanding(op: Operation, action: string, sources: readon
   if (sources.length > op.source_limit)
     reasons.push(`Accepts ${op.source_limit} source${op.source_limit === 1 ? '' : 's'}. All ${sources.length} sources remain in preparation.`);
   for (const node of sources) {
-    const why = termsRefusal(node, op.provider);
+    const why = isHidden(node) ? BLIND_SOURCE : termsRefusal(node, op.provider);
     if (why) reasons.push(why);
   }
   if (op.availability === 'unavailable' && reasons.length === 0) reasons.push('Unavailable now.');

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useCommandKey, useEscapeBase, useEscapeKey, useEscapeLayer, type EscapeHandler } from './keys';
+import { spaceActivates, useCommandKey, useEscapeBase, useEscapeKey, useEscapeLayer, type EscapeHandler } from './keys';
 
 function Surface({base}: {base?: () => void}) {
   useEscapeKey();
@@ -94,5 +94,32 @@ describe('plain-key commands', () => {
     press('n');
     press('n');
     expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Space and focused controls (WCAG 2.1.1)', () => {
+  function Space({run}: {run: () => void}) {
+    useCommandKey('space', run, () => true, spaceActivates);
+    return <><button>Loop in</button><button data-audio-face="">Act on 0A, audio, 4.4 s</button><span tabIndex={0}>plain</span>
+      <a href="#here">Link</a><div role="switch" tabIndex={0} aria-checked="false">Switch</div></>;
+  }
+  const space = () => fireEvent.keyDown(document.activeElement ?? document.body, {key: ' ', code: 'Space'});
+  it('leaves Space to a focused button, link or switch, which Space activates', () => {
+    const run = vi.fn();
+    const view = render(<Space run={run}/>);
+    for (const name of ['Loop in', 'Link', 'Switch']) {
+      (view.getByText(name) as HTMLElement).focus();
+      expect(space()).toBe(true);               // not prevented: the control keeps its own activation
+    }
+    expect(run).not.toHaveBeenCalled();
+  });
+  it("keeps Space for an audio take's face and for anything that is not a control", () => {
+    const run = vi.fn();
+    const view = render(<Space run={run}/>);
+    view.getByText('Act on 0A, audio, 4.4 s').focus();
+    expect(space()).toBe(false);
+    view.getByText('plain').focus();
+    space();
+    expect(run).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,5 +1,6 @@
 // Inspection reads the accepted request and the take's actual controls. Current
-// operation definitions never substitute for missing historical evidence.
+// operation definitions never substitute for missing historical evidence. A blind
+// take withholds its operation, seed, charge and landing time until the reveal.
 import {useEffect} from 'react';
 import {$api} from '../../api/client';
 import {DecisionCard} from './RecordRoom';
@@ -31,7 +32,7 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
     {query.error&&<p role="alert">{message(query.error)}<button onClick={()=>void query.refetch()}>Read request again</button></p>}
     {hidden?<dl><dt>Operation</dt><dd>{WITHHELD}</dd>
       <dt>Requested by</dt><dd>{request?.actor?`${request.actor.kind==='agent'?'Agent':'Artist'} · ${request.actor.name}`:'Not recorded'}</dd>
-      <dt>Attempt</dt><dd>{node.take} · {new Date(node.created_at).toLocaleString()}</dd>
+      <dt>Attempt</dt><dd>{node.take} · landing time {WITHHELD.toLowerCase()}</dd>
       <dt>Seed</dt><dd>{WITHHELD}</dd>
       <dt>Charge</dt><dd>Shown after the reveal. The run's totals stay visible.</dd>
     </dl>:node.engine&&<dl><dt>Operation</dt><dd>{operation?.label??node.engine}</dd>

@@ -184,6 +184,18 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
   return face;
 }
 
+/** A blind run's attempt while the run is still in flight. Every attempt of the run wears
+ *  this one face, landed or not, so which takes come first, or wait for the one GPU, cannot
+ *  tell its engines apart; all its takes show together once it settles. */
+export function blindFace(turn: Turn, slot: Slot): AttemptFaceVM {
+  const done = turn.slots.filter(item => !['queued', 'running'].includes(item.status)).length;
+  return {
+    slotId: slot.id, label: slotLabel(turn, slot), title: 'IN PROGRESS', tone: 'waiting', engine: 'Blind',
+    cause: null, detail: null, cost: null, retry: null, remedies: [], receipt: null,
+    progress: `${done} of ${turn.slots.length} attempts done. Every take shows when the run settles.`,
+  };
+}
+
 /** Law 1: failed attempts that share one cause keep their own faces, and the run
  *  names the shared cause once. Only causes shared by two or more are returned. */
 export function sharedCauses(faces: readonly AttemptFaceVM[]): {cause: string; labels: string[]}[] {

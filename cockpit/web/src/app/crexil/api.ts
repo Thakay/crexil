@@ -10,9 +10,26 @@ export type Operation = components['schemas']['OperationView'];
 export type Snapshot = components['schemas']['ProjectSnapshot'];
 export type Actor = components['schemas']['Actor'];
 export const HUMAN: Actor = { kind: 'human', name: 'Artist' };
+const ARTIST_NAME = 'crexil-artist-name';
+/** The person at this browser, named as the record names them: the name kept in this
+ *  browser's settings, else "Artist". */
+export function artist(): Actor {
+  try {
+    const name = localStorage.getItem(ARTIST_NAME)?.trim();
+    if (name) return {kind: 'human', name: name.slice(0, 120)};
+  } catch { /* storage unavailable: the default name stands */ }
+  return HUMAN;
+}
+/** Keeps the name the record gives this browser's artist; an empty name restores "Artist". */
+export function setArtistName(name: string) {
+  try {
+    if (name.trim()) localStorage.setItem(ARTIST_NAME, name.trim().slice(0, 120));
+    else localStorage.removeItem(ARTIST_NAME);
+  } catch { /* storage unavailable: nothing is kept */ }
+}
 // Every write names its participant (law 23). Keys, buttons and agent tools build
 // their commands here, so an agent passes its own actor and nothing else differs.
-export const command = (actor: Actor = HUMAN) => ({ request_id: crypto.randomUUID(), actor });
+export const command = (actor: Actor = artist()) => ({ request_id: crypto.randomUUID(), actor });
 
 export function message(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -23,9 +40,16 @@ export function message(error: unknown): string {
   return 'The server could not confirm this change. Your preparation is still here. Try again.';
 }
 
+/** A refused or failed request, with its status and the kind of conflict a 409 names
+ *  in its X-Crexil-Conflict header, such as `spending`. */
 export class ActionError extends Error {
-  constructor(error:unknown, public readonly status?:number) {super(message(error));}
+  constructor(error:unknown, public readonly status?:number, public readonly conflict:string|null=null) {super(message(error));}
 }
+
+/** Spending moved since the run was reviewed: review again and show the new totals before
+ *  asking again. Any other conflict means the request itself changed. */
+export const isSpendingConflict = (error: unknown): boolean =>
+  error instanceof ActionError && error.status === 409 && error.conflict === 'spending';
 
 // A saved command may be dropped only when the server definitely refused it: a client
 // error other than a timeout (408) or a rate limit (429). Network failures, server errors
@@ -37,7 +61,8 @@ export function isDefiniteRefusal(error: unknown): boolean {
 
 export async function result<T>(request: Promise<{data?: T; error?: unknown; response?:Response}>): Promise<T> {
   const response = await request;
-  if (response.error || response.data === undefined) throw new ActionError(response.error,response.response?.status);
+  if (response.error || response.data === undefined)
+    throw new ActionError(response.error, response.response?.status, response.response?.headers?.get('X-Crexil-Conflict') ?? null);
   return response.data;
 }
 

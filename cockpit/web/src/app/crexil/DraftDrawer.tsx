@@ -2,14 +2,19 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // The drawer floats above the Filmstrip. Closing saves preparation, never dispatches.
 // The local draft owns recoverable saves and explicit conflict choices. Operation
 // changes preserve the remaining source/control values; Run needs a fresh review.
+// Every operation says where its request goes and what goes with it before it is
+// chosen. A run can be blind: its engines stay hidden until the artist reveals them.
+// When spending moved since review, submitting reviews again once and shows the new
+// totals before Run is asked for again; any other conflict means the request changed.
 import { useEffect, useRef, useState } from 'react';
 import type { components } from '../../generated/openapi';
 import { fetchClient } from '../../api/client';
 import { ACTIONS, actionView } from './actions';
-import { ActionError, blankPreparation, command, isDefiniteRefusal, label, message,
+import { ActionError, blankPreparation, command, isDefiniteRefusal, isSpendingConflict, label, message,
   result, money, type Direction, type Material, type Operation, type Preparation } from './api';
 import { useEscapeLayer } from './keys';
 import { operationStanding } from './capability';
+import { dataLine, priceLine, tariffOffer, tariffPriced } from './operationFacts';
 import { runFace } from './runFace';
 import { sourceRoles as rolesOf } from './media';
 import s from './Filmstrip.module.css';
@@ -101,11 +106,15 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
   const choices = setup.operations ?? [];
   const preparingImage = setup.action === 'prepare';
   const meshAction = actionView(setup.action)?.recordedDescription ?? false;
+  const spoken = actionView(setup.action)?.words;
+  const wordsName = meshAction ? 'Recorded description' : spoken ?? 'Prompt';
+  const tariffChosen = operations.filter(op => choices.some(choice => choice.operation_id === op.id) && tariffPriced(op));
   const sourceRoles = rolesOf(setup.action);
   const count = choices.reduce((sum, choice) => sum + choice.count, 0);
-  const reviewRun = async () => {
-    if(submission)return;
-    setRunning(true); setRunError('');
+  // `note` stays beside the new review, such as why the run was reviewed again.
+  const reviewRun = async (note = '') => {
+    if(pendingSubmission.current)return;
+    setRunning(true); setRunError(note);
     const revision=draft.revision;
     try {
       const next=await result(fetchClient.GET(preparingImage ? '/api/crexil/directions/{did}/image-review' : '/api/crexil/directions/{did}/review', {params:{path:{did:direction.id}}}));
@@ -120,6 +129,7 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
     if (!submission && (!review?.ready || review.revision!==draft.revision || maskPending || changed || draft.unresolved || saving || error || direction.sequence_template || direction.state!=='draft')) return;
     setRunning(true); setRunError('');
     const accepted=submission??{body:{...command(),revision:review!.revision,review_token:review!.token},image:preparingImage,title,setup};
+    let rereview='';
     try {
       sessionStorage.setItem(submissionKey(direction.id),JSON.stringify(accepted));
       pendingSubmission.current=accepted;setSubmission(accepted);
@@ -130,10 +140,13 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
     } catch (err) {
       if(isDefiniteRefusal(err)){
         sessionStorage.removeItem(submissionKey(direction.id));pendingSubmission.current=null;setSubmission(null);setReview(null);
-        if(err instanceof ActionError&&err.status===409)draft.requireComparison();
+        // Spending moved, not the request: review once more and show the new totals before asking again.
+        if(isSpendingConflict(err))rereview=`${message(err)} It was reviewed again: the totals below are current.`;
+        else if(err instanceof ActionError&&err.status===409)draft.requireComparison();
       }
       setRunError(message(err));
     } finally {setRunning(false);}
+    if(rereview)await reviewRun(rereview);
   };
   return <section className={s.drawer} aria-label="Preparation">
     <div className={s.drawerHead} inert={regionEditing}>
@@ -205,8 +218,10 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
         }}>
           {Object.entries(ACTIONS).filter(([,action])=>action?.listed).map(([id,action])=><option key={id} value={id}>{action!.label}</option>)}
         </select></label>
-        <label>{meshAction?'Recorded description':'Prompt'}<textarea aria-label={meshAction?'Recorded description':'Prompt'} placeholder={meshAction?'Describe this direction for the record…':'Describe the next result…'} value={setup.prompt} onChange={e => update({prompt:e.target.value})}/></label>
+        <label>{wordsName}<textarea aria-label={wordsName} placeholder={meshAction?'Describe this direction for the record…':spoken?`Write the ${spoken.toLowerCase()}…`:'Describe the next result…'} value={setup.prompt} onChange={e => update({prompt:e.target.value})}/></label>
         <label>Instructions for the next participant<input value={setup.instructions} onChange={e => update({instructions:e.target.value})}/></label>
+        <label className={s.blindChoice}><input type="checkbox" checked={setup.blind===true} onChange={e=>update({blind:e.target.checked})}/>Blind run</label>
+        <p className={s.hint}>{setup.blind?'Engines, prices and level figures stay hidden until you reveal the run. Takes are placed once at Run and never move.':'Each take names its engine and price as it lands.'}</p>
         {setup.action==='region'&&<div className={s.regionSummary}>
           <h3>Regions · {(setup.regions??[]).length}</h3>
           <button disabled={refs.length!==1} onClick={()=>setRegionEditing(true)}>Draw, import or reuse masks</button>
@@ -227,6 +242,8 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
             onChange={e => update({spending_limit_usd:Number(e.target.value)})}/></label>
         </div>
         {setup.spending_policy==='published_tariff'&&<p>Hosted prices are checked before dispatch. The budget reserves the published amount, but the provider does not guarantee a final charge ceiling. Unknown charges keep their reservation.</p>}
+        {setup.spending_policy!=='published_tariff'&&tariffChosen.length>0&&<div className={s.tariffOffer}><p>{tariffOffer(tariffChosen)}</p>
+          <button onClick={()=>update({spending_policy:'published_tariff'})}>Budget from published tariffs</button></div>}
       </div>
       <div className={s.roster}>
         <h3>Configured operations</h3>
@@ -238,14 +255,15 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
           });
           const standing = operationStanding(operation, setup.action??'generate', refs.map(ref => nodes.find(n => n.id === ref.node_id)).filter((n): n is Material => Boolean(n)));
           return <div className={`${s.operation} ${standing.tier!=='ready'?s.operationUnavailable:''}`} data-standing={standing.tier} key={operation.id}>
-            <div><span>{operation.label}</span><span className={s.micro}>{standing.tier==='notForThis'?'Not for this action':`${operation.evidence} · ${operation.availability}`}</span></div>
+            <div><span>{operation.label}</span><span className={s.micro}>{standing.tier==='notForThis'?'Not for this action':`${operation.evidence} · ${operation.availability}`}</span>
+              <span className={s.dataLine}>{dataLine(operation, standing.tier==='notForThis' ? operation.actions[0] : setup.action)}</span></div>
             <label className={s.count}>Attempts<input type="number" min={0} max={operation.attempt_max??16} value={choice?.count ?? 0} aria-label={`${operation.label} attempts`}
               onChange={e => update({operations:[...choices.filter(c => c.operation_id !== operation.id), ...(Number(e.target.value) > 0 ? [{operation_id:operation.id, revision:operation.revision, count:Number(e.target.value), controls: choice?.controls ?? {}}] : [])]})}/></label>
             {standing.reasons.length > 0 && <p className={s.hint}>{standing.reasons.join(' ')}</p>}
             {choice&&(operation.limitations??[]).map(note=><p key={note} className={s.hint}>{note}</p>)}
             {choice && choice.revision !== operation.revision && <p className={s.hint}>The operation changed. Your inputs are kept. <button onClick={() => setChoice({revision:operation.revision})}>Accept current revision</button></p>}
             <details><summary>Inputs, cost and route</summary><p>{operation.execution_location} · {operation.data_destination}</p>
-              <p>{operation.maximum_usd_per_attempt === null ? `${operation.price_usd === null ? 'Price unknown' : `${money(operation.price_usd)} estimated per attempt`}. ${operation.cost_basis}.` : `Maximum ${money(operation.maximum_usd_per_attempt)} per attempt. ${operation.cost_basis}.`}</p>
+              <p>{priceLine(operation)}</p>
               {operation.inputs.map((input, i) => {
                 const key=String(input.key);
                 const values=Object.fromEntries(operation.inputs.map(spec=>[String(spec.key),choice?.controls?.[String(spec.key)]??setup.controls?.[String(spec.key)]??spec.default]));
@@ -279,6 +297,7 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
       {Boolean(review.snapshot.project_instructions) && <p>Project instructions: {String(review.snapshot.project_instructions)}</p>}
       {Boolean(review.snapshot.region)&&<RegionReview value={review.snapshot.region as Record<string,unknown>}/>}
       {review.ready && <p>The saved sources, controls and operation revisions will be frozen in the record. This run makes no automatic retries.</p>}
+      {review.ready && setup.blind && <p>Blind run: each take's engine and price stay hidden until you reveal the run. Its total stays visible.</p>}
     </section>}
     {runError && <p className={s.error} role="alert">{runError}</p>}
     <div className={s.drawerFoot} inert={regionEditing}><span>{preparingImage ? `${refs.length} sources · New derived image` : `${count} planned attempts · ${refs.length > 1 ? 'sources together' : 'one direction'}`}</span>

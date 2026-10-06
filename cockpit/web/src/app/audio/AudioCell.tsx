@@ -1,6 +1,7 @@
 // An audio take's plate on a face, a thumb or a source chip: its waveform, its length and
-// whether it is playing. Faces are buttons, so the plate holds no controls of its own;
-// playback comes from the audition keys and the inspector.
+// whether it is playing. A blind take's waveform is normalized, so its picture never tells
+// its level. Faces are buttons, so the plate holds no controls of its own; playback comes
+// from the audition keys and the inspector.
 import { label, type Material } from '../crexil/api';
 import s from './audio.module.css';
 import { usePlayer } from './player';
@@ -29,7 +30,7 @@ export function AudioCell({node, decorative = false}: {node: Material; decorativ
   return (
     <div className={s.cell} data-playing={playing ? 'true' : undefined} {...naming}>
       {facts && facts.peaks.length > 0
-        ? <Waveform peaks={facts.peaks} count={48} progress={progress} className={s.cellWave}/>
+        ? <Waveform peaks={facts.peaks} count={48} progress={progress} normalized={node.identity_hidden === true} className={s.cellWave}/>
         : <span className={s.placeholder}>Audio take</span>}
       {span && <span className={s.duration}>{span}</span>}
       {playing && <PlayingMark/>}
