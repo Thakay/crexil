@@ -7,7 +7,10 @@ The versioned shared_request extension retains the accepted preparation and
 matching operation snapshot, with actual attempt controls identified separately.
 Sequence authorization comes from the last matching event before acceptance,
 never a sequence's mutable current authorization. This is an asset record, not
-a project backup or permission to submit work.
+a project backup or permission to submit work. An audio take's manifest carries
+its measured format, length and loudness, the words it speaks, the voice that
+speaks them and its provider's terms on its use (law 20); every other
+manifest's `audio` is null.
 
 Model files are identified by name + size + sha256; hashes are computed once
 per file and cached in SQLite (an 8 GB checkpoint hashes in ~15 s the first
@@ -24,7 +27,7 @@ import mimetypes
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config
+from . import audio, config
 from .execution_outputs import inventory
 from .db import Database
 
@@ -100,6 +103,8 @@ def extract_loras(graph: dict) -> list[dict]:
 #   - `replayable` states the tier on the asset itself: an external take
 #     is a record, not a recipe, because providers move weights behind
 #     stable version names
+#   - `audio` describes an audio take for an engine importer and a mixer;
+#     its `transport` and `provider` name the provider that made it
 # Dormant: `loras` and `carry_channels` wait for their features (LoRA use
 # at generation time, attribute carry channels).
 
@@ -126,6 +131,17 @@ REPLAY_IMPORTED = "record only: original material is retained; its creation was 
 REPLAY_MESH = ("close: the engine, its seed and its arguments are verbatim "
                "and the mesh file is pinned by sha256, but the engine's own "
                "weights are not hashed — it runs outside the cockpit")
+# A local voice take is the same third tier: the runner's request and seed are
+# verbatim and the take is pinned, but its weights live in the runner's own
+# environment, where nothing hashes them.
+REPLAY_LOCAL_AUDIO = ("close: the engine, its seed and its request are verbatim "
+                      "and the take is pinned by sha256, but the voice runner's "
+                      "own weights are not hashed; it runs outside the cockpit")
+
+# The audio facts a manifest repeats from the take's measurement and its
+# provider's report. Peaks and timing alignment stay in the project.
+AUDIO_FACTS = ("container", "codec", "sample_rate", "channels", "duration_s",
+               "loudness_lufs", "peak_dbfs", "text", "voice")
 
 
 def _png_resolution(path: Path) -> dict:
@@ -186,6 +202,19 @@ def _mesh_blob(node: dict) -> dict | None:
         "textured": v.get("texture_present"),
         "file_mb": v.get("file_mb"),
     }
+
+
+async def _audio_blob(db, node: dict, material: dict | None) -> dict:
+    """What an audio take is, for an engine importer and a mixer: its container,
+    codec, sample rate, channels, length, measured loudness (ITU-R BS.1770
+    integrated, LUFS) and peak, the words it speaks (for a voice design, its
+    preview line), the voice that speaks them as the provider reported it, and the
+    provider's terms on its use, such as ElevenLabs' rule that its audio is never
+    input to another AI model. A fact the record does not carry stays null
+    (law 12)."""
+    facts = await db.audio_fact(node["id"]) or {}
+    terms = ((material or {}).get("origin") or {}).get("terms")
+    return {key: facts.get(key) for key in AUDIO_FACTS} | {"terms": terms}
 
 
 def _sampler_blob(dials: dict) -> dict:
@@ -430,6 +459,14 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         material_record['origin'].pop('retained_files', None)
     prepared_image = bool(material_record and material_record['origin'].get('kind') == 'prepared_image')
     unknown_creation = node.get('verb') == 'import' and not prepared_image
+    # An audio take names the provider that made it from its own request: the
+    # voice runner is a local engine, ElevenLabs a hosted one. The request a
+    # provider reports keeps the body it sent, seed included.
+    is_audio = node["payload"] == audio.PAYLOAD
+    audio_provider = (external or {}).get("provider") if is_audio else None
+    local_audio = audio.PROVIDERS.get(audio_provider) == "local"
+    audio_seed = ((external or {}).get("seed") if "seed" in (external or {})
+                  else (((external or {}).get("request") or {}).get("body") or {}).get("seed"))
     keep_hash = region_record.get('keep_mask_sha256') or (region or {}).get('keep_mask_sha256')
     keep_input = next((item for item in runtime_inputs
                        if item['identity'] == (region_record.get('keep') or {}).get('identity')), None)
@@ -454,20 +491,26 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         "landed_at": node["created_at"],
         "restoration": restoration,
         "engine": node.get("engine"),
-        "transport": None if unknown_creation else "openrouter" if external else "local",
-        "provider": None if external or is_mesh or not graph or unknown_creation else "comfyui",
+        "transport": (None if unknown_creation
+                      else ("local" if local_audio else audio_provider) if is_audio
+                      else "openrouter" if external else "local"),
+        "provider": (None if unknown_creation else audio_provider if is_audio
+                     else None if external or is_mesh or not graph else "comfyui"),
         # Two different facts, both the manifest's: what this ASSET is (it involved
         # no external call), and whether the artist's LOCAL ONLY switch was
         # down for the run that made it (the claim is recorded on the
         # turn; the switch being off doesn't make an asset non-local).
-        "local_only": None if unknown_creation else external is None,
+        "local_only": None if unknown_creation else local_audio if is_audio else external is None,
         "run_local_only": None if unknown_creation else bool(turn_dials.get("local_only")),
-        "replayable": (REPLAY_IMPORTED if unknown_creation else REPLAY_EXTERNAL if external else REPLAY_MESH if is_mesh
+        "replayable": (REPLAY_IMPORTED if unknown_creation
+                       else (REPLAY_LOCAL_AUDIO if local_audio else REPLAY_EXTERNAL) if is_audio
+                       else REPLAY_EXTERNAL if external else REPLAY_MESH if is_mesh
                        else 'recipe: the recorded pixel transform, renderer version and source hashes describe this prepared image'
                        if prepared_image else REPLAY_IMPORTED
                        if not graph else REPLAY_LOCAL),
         "model": {
-            "family": (external or {}).get("model") if external
+            "family": (external or {}).get("model_id") if is_audio
+            else (external or {}).get("model") if external
             else node.get("engine"),
             "files": [] if dials.get("crexil_restore") else await model_files_meta(db, *graphs),
         },
@@ -482,7 +525,7 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         },
         # What was ACTUALLY sent (no silent lies): an external model
         # that takes no seed records None, whatever the turn's policy said.
-        "seed": external.get("seed") if external else node.get("seed"),
+        "seed": audio_seed if is_audio and external else external.get("seed") if external else node.get("seed"),
         "sampler": {} if external else _sampler_blob(dials),
         "input_images": input_images,
         "runtime_inputs": runtime_inputs,
@@ -498,10 +541,12 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
         # resolution to read, and asking PIL for one would answer
         # {null, null} through a swallowed exception — the same shape a
         # corrupt PNG produces. Stated, not inferred: the mesh block below
-        # carries the measurements a mesh actually has.
-        "resolution": (None if is_mesh
+        # carries the measurements a mesh actually has. Audio has none either:
+        # its block says what it is.
+        "resolution": (None if is_mesh or is_audio
                        else _png_resolution(Path(node["output_path"]))),
         "mesh": mesh,
+        "audio": await _audio_blob(db, node, material_record) if is_audio else None,
         # committed is what the run promised, charged is what the
         # provider said it took. Both, always — a divergence is a fact
         # about this asset, not a rounding error to hide.
