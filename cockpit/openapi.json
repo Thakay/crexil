@@ -12437,6 +12437,7 @@
     },
     "/api/crexil/projects/{wid}/directions": {
       "post": {
+        "description": "Create a preparation on `row_idx`. Without one, a preparation with sources\nlands on the row after its sources' last row, beside its family's other\ncontinuations, and words alone open a new row, whoever creates it.",
         "operationId": "create_direction_api_crexil_projects__wid__directions_post",
         "parameters": [
           {

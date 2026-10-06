@@ -456,10 +456,14 @@ async def reuse_sequence(sid: str, body: Command):
 
 @router.post('/projects/{wid}/directions', response_model=DirectionView, status_code=201)
 async def create_direction(wid: str, body: CreateDirection):
+    """Create a preparation on `row_idx`. Without one, a preparation with sources
+    lands on the row after its sources' last row, beside its family's other
+    continuations, and words alone open a new row, whoever creates it."""
     async def apply():
-        await check_references(wid, [r.node_id for r in body.setup.references])
-        return await store().new_direction(wid, body.title, body.setup.model_dump(),
-                                           body.actor.model_dump(), body.row_idx)
+        sources = [r.node_id for r in body.setup.references]
+        await check_references(wid, sources)
+        row = body.row_idx if body.row_idx is not None else await store().continuation_row(wid, sources)
+        return await store().new_direction(wid, body.title, body.setup.model_dump(), body.actor.model_dump(), row)
     return await command(body, 'directions.create:' + wid, apply)
 
 
@@ -481,8 +485,11 @@ async def direction_state(did: str, body: DirectionState):
         if before['revision'] != body.revision:
             raise Conflict('This direction changed in another view. Reload it first.')
         if body.action == 'reuse':
+            # A reused continuation lands with its family, as a new one does.
+            sources = [ref['node_id'] for ref in before['setup'].get('references') or []]
             return await creative.new_direction(before['workspace_id'], before['title'] + ' copy',
-                                                 before['setup'], body.actor.model_dump())
+                                                 before['setup'], body.actor.model_dump(),
+                                                 await creative.continuation_row(before['workspace_id'], sources))
         if body.action == 'discard':
             if before['state'] != 'draft':
                 raise ValueError('Only unfinished preparation can be discarded. Set this direction aside instead.')

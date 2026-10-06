@@ -672,7 +672,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Direction */
+        /**
+         * Create Direction
+         * @description Create a preparation on `row_idx`. Without one, a preparation with sources
+         *     lands on the row after its sources' last row, beside its family's other
+         *     continuations, and words alone open a new row, whoever creates it.
+         */
         post: operations["create_direction_api_crexil_projects__wid__directions_post"];
         delete?: never;
         options?: never;

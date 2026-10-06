@@ -157,3 +157,39 @@ async def test_version_seven_copy_gains_directions_without_losing_record(tmp_pat
         assert original.read_bytes() == before
     finally:
         await db.close()
+
+
+async def test_a_continuation_joins_its_familys_row_whoever_creates_it(tmp_path, monkeypatch):
+    from fakes import Step
+    from test_crexil_controls import submit
+    from test_crexil_execution import attest, draft, settled
+    agent = {'kind': 'agent', 'name': 'Voice director'}
+    async with booted(tmp_path, monkeypatch) as (client, fakes):
+        attest()
+        fakes['comfy'].default = Step(data=image_bytes())
+        p = await project(client)
+        path = f"/api/crexil/projects/{p['id']}/directions"
+        start = await draft(client, p['id'])                                   # words open row 0
+        await submit(client, start)
+        await settled(p['id'])
+        take = (await store().list_nodes(p['id']))[0]['id']
+        assert (await client.post(path, json=command(title='Words', setup={'prompt': 'a lantern'}))).json()['row_idx'] == 1
+        source = [{'node_id': take, 'contribution': 'Keep the shape.'}]
+
+        # The browser names the row after the source's row; an agent names none.
+        browser = await client.post(path, json=command(title='Voice', row_idx=1, setup={'prompt': '', 'references': source}))
+        agent_made = await client.post(path, json={**command(title='Voice', setup={'prompt': '', 'references': source}),
+                                                   'actor': agent})
+        assert browser.json()['row_idx'] == agent_made.json()['row_idx'] == 1
+        reused = await client.post(f"/api/crexil/directions/{agent_made.json()['id']}/state",
+                                   json=command(revision=agent_made.json()['revision'], action='reuse'))
+        assert reused.status_code == 200, reused.text
+        assert reused.json()['row_idx'] == 1 and [r['node_id'] for r in reused.json()['setup']['references']] == [take]
+
+        # Words alone, and a reused start, still open a row of their own.
+        words = await client.post(path, json={**command(title='Words', setup={'prompt': 'a bell'}), 'actor': agent})
+        assert words.json()['row_idx'] == 2
+        again = await client.post(f"/api/crexil/directions/{start['id']}/state",
+                                  json=command(revision=(await CreativeStore(store()).direction(start['id']))['revision'],
+                                               action='reuse'))
+        assert again.json()['row_idx'] == 3
