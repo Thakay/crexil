@@ -222,7 +222,7 @@ test('new ink invalidates a ready review before its save completes',async({page,
  });
  let submits=0;page.on('request',request=>{if(request.url().endsWith('/submit'))submits++;});
  await drawer.getByRole('button',{name:'Review run',exact:true}).click();
- await expect(drawer.getByRole('button',{name:'Run 1 attempts'})).toBeVisible();
+ await expect(drawer.getByRole('button',{name:/^Run 1 attempt · /})).toBeVisible();
  await drawer.getByRole('button',{name:'Draw, import or reuse masks'}).click();
  const accepted=gate();
  await page.route(`**/api/crexil/projects/${project.id}/masks`,async route=>{
@@ -230,11 +230,11 @@ test('new ink invalidates a ready review before its save completes',async({page,
   await route.continue();
  });
  await centerStroke(page);
- await expect(drawer.getByRole('button',{name:'Run 1 attempts',includeHidden:true})).toHaveCount(0);
+ await expect(drawer.getByRole('button',{name:/^Run 1 attempt · /,includeHidden:true})).toHaveCount(0);
  await expect(editor.getByRole('button',{name:'Back to preparation · Esc'})).toBeDisabled();
  accepted.release();await expect(editor.getByRole('status')).toHaveText('Saved masks');
  await page.keyboard.press('Escape');await expect(drawer.getByRole('status')).toHaveText('Saved');
- await expect(drawer.getByRole('button',{name:'Run 1 attempts'})).toHaveCount(0);expect(submits).toBe(0);
+ await expect(drawer.getByRole('button',{name:/^Run 1 attempt · /})).toHaveCount(0);expect(submits).toBe(0);
 });
 
 test('choosing the saved preparation clears discarded ink before the next stroke',async({page,request})=>{

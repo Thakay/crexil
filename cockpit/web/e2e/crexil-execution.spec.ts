@@ -19,7 +19,7 @@ test('review preserves invalid controls and navigation saves pending preparation
   const review=drawer.getByRole('region',{name:'Run review'});
   await expect(review).toContainText('steps must be between 1 and 32');
   await expect(operation.getByRole('spinbutton',{name:'Steps',exact:true})).toHaveValue('40');
-  await expect(drawer.getByRole('button',{name:'Run 2 attempts',exact:true})).not.toBeVisible();
+  await expect(drawer.getByRole('button',{name:/^Run 2 attempts · /})).not.toBeVisible();
   await drawer.getByRole('textbox',{name:'Prompt',exact:true}).fill('Saved even when I leave immediately.');
   await page.getByRole('link',{name:'Projects',exact:true}).click();
   await expect(page).toHaveURL(/#\/projects$/);
@@ -41,7 +41,7 @@ test('shared run freezes slots and shows partial success in their original order
   await expect(drawer.getByRole('status')).toHaveText('Saved');
   await drawer.getByRole('button',{name:'Review run',exact:true}).click();
   await expect(drawer.getByRole('region',{name:'Run review'})).toContainText('Ready to submit');
-  await drawer.getByRole('button',{name:'Run 2 attempts',exact:true}).click();
+  await drawer.getByRole('button',{name:/^Run 2 attempts · /}).click();
   await expect(drawer).not.toBeVisible();
   const snapshot=await (await request.get(`/api/crexil/projects/${project.id}`)).json();
   expect(snapshot.turns).toHaveLength(1);
@@ -52,9 +52,9 @@ test('shared run freezes slots and shows partial success in their original order
   await expect.poll(async()=> (await (await request.get(`/api/crexil/projects/${project.id}`)).json()).turns[0].slots.map((slot:{status:string})=>slot.status)).toEqual(['failed','landed']);
   await page.getByRole('button',{name:'Grid ›',exact:true}).click();
   const section=page.getByRole('region',{name:'New direction',exact:true});
-  await expect(section.getByText('failed',{exact:true})).toBeVisible();
+  await expect(section.getByRole('group',{name:'Attempt 0A · failed',exact:true})).toBeVisible();
   await expect(section.getByRole('button',{name:'Act on 0B',exact:true})).toBeVisible();
-  const failed=await section.getByText('failed',{exact:true}).boundingBox();
+  const failed=await section.getByRole('group',{name:'Attempt 0A · failed',exact:true}).boundingBox();
   const landed=await section.getByRole('button',{name:'Act on 0B',exact:true}).boundingBox();
   expect(failed!.x).toBeLessThan(landed!.x);
   await page.getByRole('button',{name:'Strip ›',exact:true}).click();
@@ -78,7 +78,7 @@ test('project and run pauses compose before a run cancellation takes effect',asy
   await drawer.getByRole('spinbutton',{name:'Raw · FLUX.2 klein attempts',exact:true}).fill('2');
   await expect(drawer.getByRole('status')).toHaveText('Saved');
   await drawer.getByRole('button',{name:'Review run',exact:true}).click();
-  await drawer.getByRole('button',{name:'Run 2 attempts',exact:true}).click();
+  await drawer.getByRole('button',{name:/^Run 2 attempts · /}).click();
   await expect(drawer).not.toBeVisible();
   const states=async()=> (await(await request.get(`/api/crexil/projects/${project.id}`)).json()).turns[0].slots.map((slot:{status:string})=>slot.status);
   await expect.poll(states).toEqual(['held','held']);
@@ -114,7 +114,7 @@ test('a lost accepted submission survives polling and reload without another exe
     else await route.continue();
   });
   await drawer.getByRole('button',{name:'Review run',exact:true}).click();
-  await drawer.getByRole('button',{name:'Run 1 attempts',exact:true}).click();
+  await drawer.getByRole('button',{name:/^Run 1 attempt · /}).click();
   await expect(drawer.getByRole('button',{name:'Check submission',exact:true})).toBeEnabled();
   await expect(page.getByRole('button',{name:'Reuse setup: New direction',exact:true})).toBeVisible();
   const before=await(await request.get(`/api/crexil/projects/${project.id}`)).json();expect(before.turns).toHaveLength(1);

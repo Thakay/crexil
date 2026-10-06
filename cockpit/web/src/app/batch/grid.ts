@@ -24,6 +24,7 @@ import type {
   SlotStatus,
   Turn,
 } from "../../types";
+import { usd } from "../costs";
 
 // Column count is a function of SLOT COUNT alone — frozen at Run because the
 // count is (law 8): results, failures and rerolls can never reflow the grid.
@@ -265,7 +266,7 @@ export function cancelBreath(slots: Slot[]): string {
   if (inFlightExt.length > 0)
     parts.push(
       `${inFlightExt.length} external in flight already paid` +
-        (paid > 0 ? ` ($${paid.toFixed(2)})` : ""),
+        (paid > 0 ? ` (${money(paid)})` : ""),
     );
   return parts.join(" · ") || "nothing is moving";
 }
@@ -330,7 +331,7 @@ export function stopLines(slots: Slot[], nowMs: number): string[] {
 }
 
 export function money(v: number | null): string {
-  return v === null ? "" : `$${v.toFixed(2)}`;
+  return v === null ? "" : usd(v);
 }
 
 export function elapsedLabel(ms: number): string {
@@ -595,16 +596,21 @@ export function causeGroups(
 }
 
 // Law 9: an automatic retry is visible while it runs — gold, the attempt
-// counted, the reason in words (B2 is the canonical shape).
-const RETRY_WHY: Record<string, string> = {
-  rate_limit: "rate limited — trying once more on the provider's clock; nothing is charged until an image lands",
-  unreachable: "couldn't be reached — trying once more; if that fails the lane benches",
+// counted, the reason in words (B2 is the canonical shape). `lands` names what
+// a landing is for the medium ("an image" here; "a take" on mixed surfaces).
+const RETRY_WHY: Record<string, (lands: string) => string> = {
+  rate_limit: (lands) => `rate limited — trying once more on the provider's clock; nothing is charged until ${lands} lands`,
+  unreachable: () => "couldn't be reached — trying once more; if that fails the lane benches",
   // C2: the OOM was the hold's, not the frame's. The take went
   // back to the queue and waits for the card, nothing spent
-  gpu_held: "ran out of memory while something else held the card — it waits its turn; the size isn't the problem",
+  gpu_held: () => "ran out of memory while something else held the card — it waits its turn; the size isn't the problem",
 };
 
-export function retryLine(cell: CellVM, nowMs: number = Date.now()): { label: string; why: string } | null {
+export function retryLine(
+  cell: CellVM,
+  nowMs: number = Date.now(),
+  lands = "an image",
+): { label: string; why: string } | null {
   if (cell.retryOf === null) return null;
   if (cell.status !== "queued" && cell.status !== "running") return null;
   const attempt = cell.status === "queued" ? cell.attempt + 1 : cell.attempt;
@@ -615,13 +621,13 @@ export function retryLine(cell: CellVM, nowMs: number = Date.now()): { label: st
     const clock = w.window === "provider" ? "its clock" : "the cockpit's clock";
     const why =
       cell.retryOf === "rate_limit"
-        ? `${cell.engine} is holding us at the door — retrying on ${clock}; nothing is charged until an image lands · next try in ${secs}s`
-        : `${RETRY_WHY[cell.retryOf] ?? `after: ${cell.retryOf} — trying once more`} · next try in ${secs}s`;
+        ? `${cell.engine} is holding us at the door — retrying on ${clock}; nothing is charged until ${lands} lands · next try in ${secs}s`
+        : `${RETRY_WHY[cell.retryOf]?.(lands) ?? `after: ${cell.retryOf} — trying once more`} · next try in ${secs}s`;
     return { label: `RETRYING · ATTEMPT ${w.attempt} OF ${w.of}`, why };
   }
   return {
     label: `RETRYING · ATTEMPT ${attempt}`,
-    why: RETRY_WHY[cell.retryOf] ?? `after: ${cell.retryOf} — trying once more`,
+    why: RETRY_WHY[cell.retryOf]?.(lands) ?? `after: ${cell.retryOf} — trying once more`,
   };
 }
 
@@ -633,8 +639,61 @@ export function benchTurn(scope: string): string | null {
   return i === -1 ? null : scope.slice(i + 6);
 }
 
+// A bench is named in plain words (law 3), never by its raw scope: the shared GPU
+// for the local lane, the hosted lane, a provider by its display name, an engine
+// by the name the caller gives it (a blind surface gives one that withholds it).
+const PROVIDER_NAMES: Record<string, string> = {
+  comfy: "ComfyUI",
+  comfyui: "ComfyUI",
+  openrouter: "OpenRouter",
+  elevenlabs: "ElevenLabs",
+  "voice-runner": "Voice runner",
+  threed: "3D runner",
+};
+const BENCH_STATE: Record<string, string> = {
+  unreachable: "not answering",
+  dead_key: "key missing or refused",
+  no_key: "key missing or refused",
+  model_down: "model unavailable",
+  timeout: "timed out",
+};
+
+/** A bench's subject and state from its scope and kind, in plain words. */
+export function benchName(
+  b: Pick<Bench, "scope" | "kind">,
+  engineName: (id: string) => string = (id) => id,
+): string {
+  const cut = b.scope.indexOf(":");
+  const prefix = cut === -1 ? b.scope : b.scope.slice(0, cut);
+  const rest = cut === -1 ? "" : b.scope.slice(cut + 1);
+  const state = BENCH_STATE[b.kind ?? ""];
+  if (b.kind === "gpu_held") return "Shared GPU held: the card is taken";
+  if (prefix === "lane" && rest === "local")
+    return b.kind === "unreachable" ? "Shared GPU paused: ComfyUI not answering" : "Shared GPU paused";
+  if (prefix === "lane") return state ? `Hosted lane paused: OpenRouter ${state}` : "Hosted lane paused";
+  if (prefix === "provider") return `${PROVIDER_NAMES[rest] ?? `The ${rest} provider`} ${state ?? "paused"}`;
+  if (prefix === "engine") {
+    const turn = benchTurn(b.scope);
+    const id = turn === null ? rest : rest.slice(0, rest.indexOf("@turn:"));
+    if (turn !== null)
+      return `${engineName(id)} benched for this run${b.kind === "repeat" ? " after repeated failures" : ""}`;
+    return `${engineName(id)} ${state ?? "benched"}`;
+  }
+  return "An engine is held";
+}
+
+/** A bench as a sentence: its own plain cause when the view carries one,
+ *  else its name. */
+export function benchWords(
+  b: Pick<Bench, "scope" | "kind"> & { cause?: string | null },
+  engineName?: (id: string) => string,
+): string {
+  const cause = b.cause?.trim();
+  return cause ? cause : `${benchName(b, engineName)}.`;
+}
+
 /** The strip's one-line name for a bench: the card held (C2), an engine
- *  benched for one turn (A9), else the bare scope. */
+ *  benched for one turn (A9), else the bench's plain name. */
 export function benchLabel(b: Pick<Bench, "scope" | "kind">): string {
   if (b.kind === "gpu_held") return "LOCAL LANE HELD · THE CARD IS TAKEN";
   const turn = benchTurn(b.scope);
@@ -642,7 +701,7 @@ export function benchLabel(b: Pick<Bench, "scope" | "kind">): string {
     const engine = b.scope.slice("engine:".length, b.scope.indexOf("@turn:"));
     return `${engine.toUpperCase()} BENCHED · THIS TURN ONLY`;
   }
-  return `${b.scope.toUpperCase()} BENCHED`;
+  return benchName(b).toUpperCase();
 }
 
 /** The turn footer's bench notices (law 1: one cause, one message): every

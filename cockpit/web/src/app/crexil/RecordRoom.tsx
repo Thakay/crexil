@@ -6,6 +6,7 @@ import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
 import {ActionError,command,engineLabel,isDefiniteRefusal,label,message,result,type Snapshot} from './api';
 import {MaterialThumbnail} from './MaterialThumbnail';
+import {runLine} from './faces';
 import s from './Filmstrip.module.css';
 
 export type Decision=components['schemas']['DecisionView'];
@@ -79,7 +80,7 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
       </article>)}{record&&!directions.length&&<p>No directions match this search.</p>}</>}
       {tab==='attempts'&&<>{turns.map(turn=><article key={turn.id} className={s.decision}>
         <span className={s.micro}>Run {turn.idx} · {new Date(turn.created_at).toLocaleString()}</span><p>{turn.prompt}</p>
-        <p>{turn.slots.map(slot=>`${slot.engine} · ${slot.status}`).join(' / ')}</p><div className={s.actions}><button onClick={()=>openRun(turn.id)}>Open execution grid ›</button><button onClick={()=>{setFiltered({turn_id:turn.id});setBefore(undefined);setTab('decisions');}}>Decisions ›</button></div>
+        <p>{runLine(turn.slots)}</p><div className={s.actions}><button onClick={()=>openRun(turn.id)}>Open execution grid ›</button><button onClick={()=>{setFiltered({turn_id:turn.id});setBefore(undefined);setTab('decisions');}}>Decisions ›</button></div>
       </article>)}{record&&!turns.length&&<p>No runs match this search.</p>}</>}
     </div>
   </section>;

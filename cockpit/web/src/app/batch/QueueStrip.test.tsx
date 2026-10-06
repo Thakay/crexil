@@ -129,7 +129,7 @@ test("a bench shows scope + cause honestly and offers unbench", async () => {
   const user = userEvent.setup();
   mount();
   expect(
-    await screen.findByText("ENGINE:Z-IMAGE-TURBO BENCHED"),
+    await screen.findByText("Z-IMAGE-TURBO BENCHED"),
   ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "UNBENCH" }));
   expect(posts).toEqual([

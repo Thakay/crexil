@@ -323,7 +323,8 @@ test("one dead engine benches itself and never stops the others; resume is visib
 
   // law 2: the pause is a queue state with a VISIBLE resume control — in
   // the strip, and (law 4) on the held cell itself
-  await expect(page.getByText("ENGINE:RAW-ZIMAGE BENCHED")).toBeVisible(T);
+  // law 3: the bench is named in words, never by its raw scope
+  await expect(page.getByText("RAW-ZIMAGE MODEL UNAVAILABLE")).toBeVisible(T);
   await expect(page.getByRole("button", { name: "UNBENCH", exact: true }))
     .toBeVisible();
   await cell(page, 1).getByRole("button", { name: "UNBENCH · RESUME" }).click();
