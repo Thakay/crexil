@@ -3,20 +3,27 @@
 The capability matrix's audio rows (`audio.engines()`) publish the engines; each
 verb a row serves becomes one operation. Per verb, a row declares its public
 controls (`params`), the model it asks for (`models`), provider fields fixed by
-configuration (`fixed`), its published price (`tariffs`) and how many takes one
-attempt returns (`takes_per_attempt`). Rows may declare the voices their speech
-accepts (`voice_providers`) and the provider's terms on their outputs (`terms`).
+configuration (`fixed`), its published price (`tariffs`), how many takes one
+attempt returns (`takes_per_attempt`) and the longest text one request takes
+(`text_limits`). Rows may declare the voices their speech accepts
+(`voice_providers`), the provider's terms on their outputs (`terms`) and the
+seeds the engine takes (`seed_range`, lowest and highest).
 
-Review binds the voice take's bytes and checks its recorded terms (laws 12, 21).
-Each attempt freezes one envelope in the slot's `external` field, transport
-`audio`: provider, engine, verb, model, the text, validated controls, fixed
-fields, seed, takes, voice, tariff, measures and the exact reservation in
-micro-dollars. Executors turn the envelope into their provider's request;
-nothing here calls a provider.
+Review binds the voice take's bytes and checks its recorded terms (laws 12, 21),
+and refuses a fixed or locked seed whose attempts would leave the engine's seed
+range. Each attempt freezes one envelope in the slot's `external` field,
+transport `audio`: provider, engine, verb, model, the text, validated controls,
+fixed fields, seed, takes, voice, tariff, measures and the exact reservation in
+micro-dollars. Every frozen seed lies inside the engine's range, so the seed
+recorded is the seed sent. Audio slots retry visibly on their own (law 9): the
+kinds that retry are refused before generation, so a retry never pays twice.
+Executors turn the envelope into their provider's request; nothing here calls a
+provider.
 """
 
 from __future__ import annotations
 
+import secrets
 from decimal import Decimal
 from pathlib import Path
 
@@ -33,15 +40,48 @@ def destination(provider: str) -> str:
     return config.ELEVENLABS_URL if provider == 'elevenlabs' else config.VOICE_RUNNER_URL
 
 
+def seed_range(row: dict) -> tuple[int, int]:
+    """The lowest and highest seed this engine takes: its row's `seed_range`,
+    never beyond the cockpit's own seeds."""
+    low, high = row.get('seed_range') or (0, presets.MAX_SEED - 1)
+    return int(low), min(int(high), presets.MAX_SEED - 1)
+
+
 def inputs(row: dict, verb: str) -> list[dict]:
-    """The verb's published controls, plus the seed when the engine's seed
-    capability says it takes one (the matrix publishes the seed there)."""
+    """The verb's published controls, plus the seed and its range when the
+    engine's seed capability says it takes one (the matrix publishes the seed
+    there)."""
     specs = [{'key': key, **spec, 'reason': spec.get('why', '')}
              for key, spec in (row.get('params') or {}).get(verb, {}).items()]
     if ((row.get('capabilities') or {}).get('seed') or {}).get('value'):
+        low, high = seed_range(row)
         specs.append({'key': 'seed', 'label': 'Seed', 'type': 'seed', 'default': {'mode': 'random'},
-                      'reason': row['capabilities']['seed'].get('note', '')})
+                      'min': low, 'max': high, 'reason': row['capabilities']['seed'].get('note', '')})
     return specs
+
+
+def check_seeds(row: dict, raw, count: int) -> None:
+    """Refuse a fixed or locked seed whose attempts would leave the engine's
+    seed range, in plain words; a random seed is drawn inside it at freeze."""
+    policy = presets.resolve_seed_policy(raw)
+    if policy['mode'] == 'random':
+        return
+    low, high = seed_range(row)
+    first = int(policy['value'])
+    last = first + (count - 1 if policy['mode'] == 'fixed' else 0)
+    if first < low or last > high:
+        reach = (f'seed {first} is outside it. Choose a seed in that range.' if last == first else
+                 f'{count} attempts from seed {first} reach {last}. Choose a lower seed or fewer attempts.')
+        raise ValueError(f"{row['name']} takes seeds from {low} to {high}; {reach}")
+
+
+def take_seed(policy: dict, index: int, low: int, high: int) -> int:
+    """The seed attempt `index` sends, inside the engine's range: drawn for a
+    random policy, the fixed seed plus the index, or the locked seed. Review
+    keeps every fixed or locked sequence inside the range (`check_seeds`)."""
+    if policy['mode'] == 'random':
+        return low + secrets.randbelow(high - low + 1)
+    return int(policy['value']) + (index if policy['mode'] == 'fixed' else 0)
 
 
 def takes(row: dict, verb: str) -> int:
@@ -99,12 +139,11 @@ def reasons(stack, row: dict) -> list[str]:
         return [getattr(executor, 'message', None) or f'{audio_executors.LABELS[provider]} adapter is not built yet.']
     if provider == 'elevenlabs' and not config.ELEVENLABS_API_KEY:
         return ['Needs an ElevenLabs key. Set ELEVENLABS_API_KEY in .env, then restart.']
-    benches = stack.scheduler.snapshot()['benches']
-    if (f'provider:{provider}' in benches or f"engine:{row['id']}" in benches
-            or (lane == 'local' and 'lane:local' in benches)):
-        return ['The local runtime is paused or unavailable.' if lane == 'local'
-                else 'The provider is paused or unavailable.']
-    return []
+    # The bench a new take would wait behind, by the rule that holds takes, in
+    # its own words: they name the fault and the next move (law 4), such as the
+    # voice runner's start command or a key to replace.
+    bench = stack.scheduler.bench_holding(row['id'])
+    return [bench.cause] if bench is not None else []
 
 
 PER_UNIT = {'1k_characters': 'per 1,000 characters', 'second': 'per second',
@@ -244,6 +283,8 @@ async def compile_request(db, op: dict, setup, choice, nodes: list[dict]) -> dic
         if spec.get('type') == 'bool' and type(value) is not bool:
             raise ValueError(f'{key} must be true or false.')
         values[key] = _text_value(spec, value) if spec.get('type') == 'text' else strict_value(spec, value)
+    if 'seed' in values:
+        check_seeds(row, values['seed'], choice.count)
     price = tariff(row, verb)
     counted = measures(price, text, values)
     reserved = crexil_budget.audio_reservation(price, counted)
@@ -254,23 +295,29 @@ async def compile_request(db, op: dict, setup, choice, nodes: list[dict]) -> dic
                'tariff': price, 'measures': counted, 'reserved_micro_usd': reserved,
                'destination': destination(row['provider']), 'engine_revision': op['revision']}
     return {'request': request, 'controls': values, 'reserved_micro_usd': reserved,
-            'paid': price is None or price['micro_usd'] > 0, 'source_uploads': uploads}
+            'paid': price is None or price['micro_usd'] > 0, 'source_uploads': uploads,
+            'seed_range': seed_range(row)}
 
 
 def frozen_specs(op: dict, compiled: dict, parents: list[str], setup) -> list[dict]:
-    """One slot spec per attempt; each attempt's seed follows the seed policy."""
+    """One slot spec per attempt; each attempt's seed follows the seed policy
+    inside the engine's seed range, and is the seed the slot records and the
+    executor sends."""
     values = compiled['controls']
     policy = presets.resolve_seed_policy(values.get('seed')) if 'seed' in values else None
+    low, high = compiled['seed_range']
     committed = float(Decimal(compiled['reserved_micro_usd']) / crexil_budget.MICRO_USD)
     specs = []
     for index in range(op['count']):
-        seed = presets.take_seed(policy, index) if policy else None
+        seed = take_seed(policy, index, low, high) if policy else None
         specs.append({'engine': op['engine_id'], 'seed': seed, 'submitted_graph': None,
             'external': {**compiled['request'], 'seed': seed}, 'committed_usd': committed,
             'dials': {'capability': 'audio', 'verb': op['audio_verb'], 'prompt': setup.prompt, 'parents': parents,
                 'controls': {k: v for k, v in values.items() if k != 'seed'},
                 'crexil': {'operation_id': op['id'], 'operation_revision': op['revision'],
-                    'automatic_retry': False,
+                    # A rate limit or an unreachable provider is refused before
+                    # generation, so these visible, bounded retries never pay twice.
+                    'automatic_retry': True,
                     'spending_policy': setup.spending_policy if compiled['paid'] else 'hard_cap',
                     'source_uploads': compiled['source_uploads'], 'kind_of_work': setup.purpose,
                     'output_ports': [], 'output_payload': 'audio'}}})

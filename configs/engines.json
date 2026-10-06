@@ -475,6 +475,7 @@
       },
       "price": "Published tariff: the preview line's characters at the design model's speech rate, once per attempt ($0.08 per 1,000 characters list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
       "note": "Designs three voice previews from a description. A preview becomes a saved ElevenLabs voice the first time it speaks, which uses one of the account's voice slots.",
+      "seed_range": [0, 4294967295],
       "capabilities": {
         "seed": {
           "value": true,
@@ -489,7 +490,7 @@
         "textLimit": {
           "value": 1000,
           "state": "unverified",
-          "note": "The preview line takes 100 to 1,000 characters."
+          "note": "The preview line takes 100 to 1,000 characters. The description's limit is not published; it waits for a live key to confirm it."
         }
       }
     },
@@ -563,6 +564,7 @@
       },
       "price": "Published tariff: $0.08 per 1,000 characters of the line (list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
       "note": "Reads lines in a voice designed or saved at ElevenLabs. v4 honours stability and similarity only.",
+      "seed_range": [0, 4294967295],
       "capabilities": {
         "seed": {
           "value": true,
@@ -666,7 +668,7 @@
         "textLimit": {
           "value": null,
           "state": "unverified",
-          "note": "The description's limit is not published."
+          "note": "The description's limit is not published; it waits for a live key to confirm it."
         }
       }
     },
@@ -678,6 +680,11 @@
       "provider": "voice-runner",
       "enabled": true,
       "voice_reference_min_seconds": 3,
+      "text_limits": {
+        "voice-design": 2000,
+        "speak": 2000
+      },
+      "seed_range": [0, 9007199254740991],
       "verbs": [
         "voice-design",
         "speak"
@@ -766,9 +773,10 @@
           "note": "Speaks in the voice of any audio take its provider's terms allow, read with that take's words."
         },
         "textLimit": {
-          "value": null,
-          "state": "unverified",
-          "note": "The practical line limit is not measured."
+          "value": 2000,
+          "state": "verified",
+          "evidence": "tools/tts/runner.py refuses a line or a voice description over 2,000 characters (MAX_TEXT)",
+          "note": "Up to 2,000 characters for a line and for a voice description."
         }
       }
     }

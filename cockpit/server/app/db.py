@@ -1186,7 +1186,16 @@ class Database:
         return json.loads(row["origin_json"]) if row else {}
 
     async def saved_voice(self, provider: str, generated_voice_id: str) -> str | None:
-        """The provider voice an earlier take saved from this designed voice."""
+        """The provider voice saved from this designed voice: the save kept the
+        moment the provider named it (`voice.saved`), else the voice an earlier
+        speech take landed with."""
+        row = await self._one(
+            "SELECT json_extract(payload_json,'$.voice_id') AS voice_id FROM events WHERE type='voice.saved' "
+            "AND json_extract(payload_json,'$.provider')=? "
+            "AND json_extract(payload_json,'$.generated_voice_id')=? ORDER BY seq DESC LIMIT 1",
+            (provider, generated_voice_id))
+        if row and row["voice_id"]:
+            return row["voice_id"]
         row = await self._one(
             "SELECT json_extract(voice_json,'$.voice_id') AS voice_id FROM audio_info "
             "WHERE json_extract(voice_json,'$.provider')=? "
@@ -1194,6 +1203,60 @@ class Database:
             "AND json_extract(voice_json,'$.voice_id') IS NOT NULL ORDER BY rowid DESC LIMIT 1",
             (provider, generated_voice_id))
         return row["voice_id"] if row else None
+
+    async def record_saved_voice(self, slot: dict, provider: str, generated_voice_id: str, voice_id: str,
+                                 *, found: bool) -> None:
+        """Keep, once, the provider voice an attempt learned for a designed
+        voice: one it just saved, or (`found`) one already in the account under
+        its Crexil label. The event names the attempt, so the voice slot it used
+        has an author (law 23). Crexil never deletes a saved voice."""
+        async with self._tx():
+            if await self.saved_voice(provider, generated_voice_id) == voice_id:
+                return
+            await self._append_event("voice.saved", **await self._slot_ids(slot), payload={
+                "provider": provider, "generated_voice_id": generated_voice_id, "voice_id": voice_id,
+                "found_in_account": found, "attempt": slot["attempt"]})
+
+    async def provider_attempts(self, provider: str, *, slot_id: str, attempt: int) -> dict:
+        """What the record says about one provider's attempts, for an adapter
+        that binds a lost answer to one attempt (`slot_id`, `attempt`): `bound`,
+        every request and history item id another attempt's receipt records;
+        `unsettled`, every other attempt sent to this provider that no receipt
+        records and whose charge no event settles (in flight, stopped late, or
+        lost), with its frozen request and send time; and `sent_at`, when this
+        attempt was sent. Times are Unix seconds."""
+        bound: set[str] = set()
+        receipted: set[tuple] = set()
+        for row in await self._all(
+                "SELECT g.slot_id, g.take, o.descriptor_json FROM execution_outputs o "
+                "JOIN execution_groups g ON g.id=o.group_id WHERE o.role='provider receipt'"):
+            external = (json.loads(row["descriptor_json"]).get("receipt") or {}).get("external") or {}
+            if external.get("provider") != provider:
+                continue
+            receipted.add((row["slot_id"], row["take"]))
+            if (row["slot_id"], row["take"]) != (slot_id, attempt):
+                bound.update(v for v in (external.get("request_id"), external.get("history_item_id")) if v)
+        sent = await self._all(
+            "SELECT e.slot_id, e.ts, json_extract(e.payload_json,'$.attempt') AS attempt, s.external_json "
+            "FROM events e JOIN slots s ON s.id=e.slot_id WHERE e.type='slot.provider_sending' "
+            "AND json_extract(s.external_json,'$.provider')=? ORDER BY e.seq", (provider,))
+        settled: set[tuple] = set()
+        if sent:
+            for row in await self._all(
+                    "SELECT slot_id, payload_json FROM events WHERE slot_id IN (SELECT value FROM json_each(?)) "
+                    "AND (charged_usd IS NOT NULL OR type='slot.charge_verified')",
+                    (json.dumps(sorted({r["slot_id"] for r in sent})),)):
+                payload = json.loads(row["payload_json"])
+                settled.add((row["slot_id"], payload.get("attempt", payload.get("take"))))
+        unsettled, sent_at = [], None
+        for row in sent:
+            key, when = (row["slot_id"], row["attempt"]), datetime.fromisoformat(row["ts"]).timestamp()
+            if key == (slot_id, attempt):
+                sent_at = when
+            elif key not in settled and key not in receipted:
+                unsettled.append({"slot_id": row["slot_id"], "attempt": row["attempt"], "sent_at": when,
+                                  "external": json.loads(row["external_json"])})
+        return {"bound": bound, "unsettled": unsettled, "sent_at": sent_at}
 
     async def mark_blind_run(self, turn_id: str, workspace_id: str, actor: dict) -> None:
         """Record, inside the caller's transaction, that a run is blind."""

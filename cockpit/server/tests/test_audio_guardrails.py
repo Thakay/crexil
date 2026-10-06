@@ -234,13 +234,6 @@ async def test_a_dead_elevenlabs_key_stops_only_elevenlabs_once_while_every_othe
 
 # --- 3. nothing retries silently, and retries are bounded (law 9) ---
 
-NO_AUDIO_RETRY = (
-    "crexil_audio.frozen_specs freezes every audio slot with automatic_retry False, so a 429 fails the take "
-    "at once and journey J7's visible retry never happens. A rate limit and an unreachable provider are "
-    "refused before generation, nothing charged, so retrying them cannot pay twice: audio slots should "
-    "allow the scheduler's visible, bounded retries (default_retry_policy).")
-
-
 async def test_every_call_elevenlabs_receives_is_a_recorded_attempt(tmp_path, monkeypatch):
     fake = FakeElevenLabs().on('POST', '/v1/sound-generation',
                                refusal(429, 'rate_limit_exceeded', headers={'retry-after-ms': '10'}), sounded())
@@ -261,7 +254,6 @@ async def test_every_call_elevenlabs_receives_is_a_recorded_attempt(tmp_path, mo
             assert 'Nothing was charged.' in slot['detail']
 
 
-@pytest.mark.xfail(strict=True, reason=NO_AUDIO_RETRY)
 async def test_a_rate_limited_take_waits_visibly_on_the_providers_clock_and_lands(tmp_path, monkeypatch):
     fake = FakeElevenLabs().on('POST', '/v1/sound-generation',
                                refusal(429, 'rate_limit_exceeded', headers={'retry-after-ms': '400'}), sounded())
@@ -287,10 +279,6 @@ async def test_a_rate_limited_take_waits_visibly_on_the_providers_clock_and_land
         assert (await accounting(store(), p['id']))['charged_usd'] == pytest.approx(.003)   # the take, once
 
 
-@pytest.mark.xfail(strict=True, reason=NO_AUDIO_RETRY + (
-    " Once audio slots retry, scheduler._requeue_failed_attempt must also settle each refused attempt's "
-    "known zero charge: it records none, so after three refusals that charged nothing the project still "
-    "reserves $0.006 and the caps count money that was never at risk."))
 async def test_a_take_that_stays_rate_limited_fails_after_its_bounded_retries(tmp_path, monkeypatch):
     fake = FakeElevenLabs().on('POST', '/v1/sound-generation',
                                refusal(429, 'rate_limit_exceeded', headers={'retry-after-ms': '10'}))
@@ -306,6 +294,7 @@ async def test_a_take_that_stays_rate_limited_fails_after_its_bounded_retries(tm
         assert len(fake.calls('POST', '/v1/sound-generation')) == 3              # bounded: three tries, no more
         assert (await client.get('/api/queue')).json()['benches'] == []
         counts = await accounting(store(), p['id'])
+        # Every refused try settled at a known zero, so no cap counts money never at risk (law 22).
         assert (counts['charged_usd'], counts['reserved_usd']) == (0, 0)
 
 
@@ -479,17 +468,12 @@ async def test_a_blind_take_held_by_a_limit_still_says_which_limit_holds_it(tmp_
     assert held['cause'] == 'Project spending limit is $0.003; charged and reserved spending totals $0.006.'
 
 
-# --- 6. a refusal reads the provider's own plain words (laws 3, 4) ---
+# --- 6. a refusal reads the adapter's own plain words (laws 3, 4) ---
 #
-# A refusal before generation reaches the face today as a curated line that names the wrong
-# cause: "... the engine failed, not your text", or "turned the key away" for credit and
-# quota. The adapter's own plain words, which name the cause and the next move (change the
-# plan, choose another voice, add credit), reach only DETAILS. These are the acceptance tests
-# for making them the primary line.
-
-F7_REFUSAL_WORDS = (
-    "F7 (V1a-3, V1a-10): an audio provider's refusal before generation shows plain_cause's curated line as its "
-    "primary line; the adapter's own words reach only DETAILS")
+# A refusal before generation shows the adapter's words as its primary line: they name the
+# real cause, never "the engine failed, not your text", and the next move (change the plan,
+# choose another voice, add credit, free a voice slot). ElevenLabs' own message stays under
+# DETAILS.
 
 INVALID = [{'loc': ['body', 'text'], 'msg': 'field required', 'type': 'missing'}]
 REFUSALS = {   # where the refusal comes, the answer, and the primary line it should give
@@ -504,12 +488,11 @@ REFUSALS = {   # where the refusal comes, the answer, and the primary line it sh
     'voice no longer in the account': ('speech', refusal(404, 'voice_not_found'),
                                        'ElevenLabs no longer has this voice; it may have been deleted from the account.'),
     'voice slots full': ('save', refusal(400, 'voice_limit_reached', message='You have reached your voice limit'),
-                         'ElevenLabs refused the request. Nothing was charged. ElevenLabs said: You have reached your '
-                         'voice limit'),
+                         'Every ElevenLabs voice slot on this account is in use, so this designed voice could not be '
+                         'saved. Nothing was charged. Free a voice slot in the ElevenLabs account'),
 }
 
 
-@pytest.mark.xfail(strict=True, reason=F7_REFUSAL_WORDS)
 @pytest.mark.parametrize('primary_line', list(REFUSALS))
 async def test_a_provider_refusal_reads_the_providers_own_plain_words(tmp_path, monkeypatch, primary_line):
     at, answer, words = REFUSALS[primary_line]
@@ -531,9 +514,6 @@ async def test_a_provider_refusal_reads_the_providers_own_plain_words(tmp_path, 
     assert 'the engine failed' not in slot['cause'] and slot['charged_usd'] == 0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "F7 (V1a-9): crexil_audio.reasons gives every benched audio engine one generic line, 'The provider is paused "
-    "or unavailable.', instead of the bench's own cause, which names the fault and the next move"))
 async def test_a_benched_providers_operations_give_the_benchs_own_cause_as_their_reason(tmp_path, monkeypatch):
     fake = FakeElevenLabs().on('POST', '/v1/sound-generation', refusal(401, 'invalid_api_key'))
     async with boot(tmp_path, monkeypatch, fake) as (client, _):
@@ -546,9 +526,6 @@ async def test_a_benched_providers_operations_give_the_benchs_own_cause_as_their
     assert all(bench['cause'] in o['reasons'] for o in operations)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "F7 (V1a-3): the qwen3-tts row declares no text_limits, so review lets a description or line past the "
-    "runner's 2,000 characters through, and the runner's refusal then reads as an engine failure"))
 async def test_a_description_longer_than_the_local_engine_takes_is_refused_at_review(tmp_path, monkeypatch):
     async with booted_audio(tmp_path, monkeypatch) as (client, fakes):
         p = await project(client)

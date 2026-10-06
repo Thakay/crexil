@@ -8,8 +8,10 @@ original slot without creating another request.
 
 The database arbitrates landing, cancellation and charges. A late external result
 keeps its original cell; missing billing evidence stays unverified. Shared actions
-freeze their attempt bounds and do not inherit legacy automatic retry policies.
-Executors return transport facts and bytes; only the scheduler writes outcomes.
+freeze their attempt bounds and whether their slots retry on their own; only audio
+slots do, and a refused attempt that goes back to the queue settles its known
+charge. Executors return transport facts and bytes; only the scheduler writes
+outcomes, including the facts an adapter keeps through its request's record.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from .audio_executors import LABELS as AUDIO_LABELS
 from .capture import Capture, describe
 from .db import Database
 from .executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult,
-                        Executor, GpuReading, Handle, SourceImage, is_region_payload)
+                        Executor, GpuReading, Handle, ProviderRecord, SourceImage, is_region_payload)
 from .mesh import MESH_ENGINES
 
 log = logging.getLogger("cockpit.scheduler")
@@ -894,7 +896,7 @@ class Scheduler:
                     self._takes.pop(slot_id, None)
                 await self._emit_new()
                 return None
-            req = self._collecting_request(req, slot)
+            req = self._collecting_request(req, slot, ex.name)
             take.request = req
             await self._emit_new()
             try:
@@ -990,7 +992,11 @@ class Scheduler:
             same_attempt = current and current['attempt'] == slot['attempt']
             stopped = take.cancel_requested or (same_attempt and await cancel_requested(self.db, current))
             if same_attempt and current['status'] == 'running' and not stopped:
-                await self.db.append_event('slot.retrying', **await self.db._slot_ids(slot), payload=payload)
+                # The refused attempt's known charge (zero before generation)
+                # settles it, so its reservation stops counting against every
+                # cap (law 22); an unknown charge keeps it reserved.
+                await self.db.append_event('slot.retrying', **await self.db._slot_ids(slot), payload=payload,
+                                           charged_usd=await self.db._unrecorded_charge(slot, failure.charged_usd))
                 await self.db.transition_slot(slot['id'], 'queued',
                     payload={'retry_of': retry_of}, retry_of=retry_of)
                 return True
@@ -1015,7 +1021,7 @@ class Scheduler:
         req = await self._rebuild_request(slot)
         if req is None:
             raise ValueError('The saved execution request is missing. No work was repeated.')
-        req = self._collecting_request(req, slot)
+        req = self._collecting_request(req, slot, ex.name)
         if ex.name == 'openrouter' and (req.external or {}).get('transport') == 'openrouter-images':
             receipt = await self.db._one('SELECT o.* FROM execution_outputs o JOIN execution_groups g ON g.id=o.group_id '
                 "WHERE g.slot_id=? AND g.take=? AND o.role='provider receipt'", (slot_id, attempt))
@@ -1071,7 +1077,7 @@ class Scheduler:
         await self._emit_new()
         return await execution_outputs.group(self.db, slot)
 
-    def _collecting_request(self, req: DispatchRequest, slot: dict) -> DispatchRequest:
+    def _collecting_request(self, req: DispatchRequest, slot: dict, provider: str) -> DispatchRequest:
         async def before_send() -> None:
             from .crexil_budget import guard_dispatch
             from .execution_controls import cancel_requested
@@ -1101,7 +1107,24 @@ class Scheduler:
                     if await asyncio.to_thread(execution_outputs.sha256_bytes, blob) == member['sha256']:
                         return blob
             return None
-        return replace(req, on_output=collected, before_send=before_send)
+        return replace(req, on_output=collected, before_send=before_send,
+                       record=self._provider_record(slot, provider))
+
+    def _provider_record(self, slot: dict, provider: str) -> ProviderRecord:
+        """The record one attempt's adapter reads and extends through the
+        server. A saved voice is kept the moment it is answered, shielded, so a
+        cancel or a stop right after the save never loses it."""
+        async def attempts() -> dict:
+            return await self.db.provider_attempts(provider, slot_id=slot['id'], attempt=slot['attempt'])
+
+        async def saved_voice(generated_voice_id: str) -> str | None:
+            return await self.db.saved_voice(provider, generated_voice_id)
+
+        async def keep_saved_voice(generated_voice_id: str, voice_id: str, *, found: bool = False) -> None:
+            await self._shield(self.db.record_saved_voice(slot, provider, generated_voice_id, voice_id, found=found))
+            await self._emit_new()
+
+        return ProviderRecord(attempts=attempts, saved_voice=saved_voice, keep_saved_voice=keep_saved_voice)
 
     async def resume_budget_holds(self, workspace_id: str | None = None) -> None:
         """Reconsider accepted, unsent work when its enclosing limits permit it."""
@@ -1289,7 +1312,9 @@ class Scheduler:
         facts: dict | None = None
         if e.kind == "oom" and not cancelled:
             facts = await self._oom_facts(req.engine, req.frame)
-        cause = ("cancelled" if cancelled else str(e) if e.kind == 'preflight' else
+        # A refusal the executor worded for the face (`plain`) keeps its own
+        # words: they name the real cause and the next move (laws 3, 4).
+        cause = ("cancelled" if cancelled else str(e) if e.kind == 'preflight' or e.plain else
                  plain_cause(e.kind, lane=take.lane, engine=req.engine,
                              frame=req.frame,
                              held_before=(facts or {}).get("held_before"),
@@ -1572,10 +1597,10 @@ class Scheduler:
             "slot.late_failed", **ids,
             payload={"kind": e.kind,
                      "attempt": slot['attempt'], "job_ref": e.job_ref, "charged_usd": e.charged_usd,
-                     "cause": plain_cause(e.kind, lane=take.lane,
-                                          engine=take.request.engine,
-                                          provider=take.executor.name,
-                                          verb=take.request.verb),
+                     "cause": str(e) if e.plain else plain_cause(e.kind, lane=take.lane,
+                                                                 engine=take.request.engine,
+                                                                 provider=take.executor.name,
+                                                                 verb=take.request.verb),
                      "detail": raw_detail(e),
                      "committed_usd": slot["committed_usd"],
                      "note": "Stopped before sending. No paid request was made." if unsent else
@@ -1843,7 +1868,7 @@ class Scheduler:
                     continue
                 if slot["job_ref"]:
                     try:
-                        req = self._collecting_request(req, slot) if req else None
+                        req = self._collecting_request(req, slot, ex.name) if req else None
                         rec = await ex.reconcile(slot, request=req)
                     except EngineFailure as e:
                         # no truth available: bench the executor's own

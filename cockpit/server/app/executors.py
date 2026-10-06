@@ -77,6 +77,24 @@ class CollectedOutput:
 
 
 @dataclass(frozen=True)
+class ProviderRecord:
+    """The server's record of one provider, as an adapter that owns no store
+    reads and extends it for one attempt (law 19: the server is the only writer).
+
+    `attempts()` answers `{'bound', 'unsettled', 'sent_at'}`: `bound` holds every
+    request and history item id another attempt's receipt records; `unsettled`
+    lists the provider's other sent attempts whose charge nothing settles yet (in
+    flight, stopped late, or lost), each as `{'external', 'sent_at'}`; `sent_at` is
+    when this attempt's own paid request was sent, or None. Times are Unix seconds.
+    `saved_voice(generated_voice_id)` is the provider voice an earlier save made
+    from a designed voice, and `keep_saved_voice(generated_voice_id, voice_id,
+    found=...)` records one the moment the provider names it."""
+    attempts: Callable[[], Awaitable[dict]]
+    saved_voice: Callable[[str], Awaitable[str | None]]
+    keep_saved_voice: Callable[..., Awaitable[None]]
+
+
+@dataclass(frozen=True)
 class DispatchRequest:
     """One prepared take: payload composed caller-side (the scheduler is
     payload-agnostic — presets/regions never enter it), plus the land-fields
@@ -109,6 +127,7 @@ class DispatchRequest:
     output_ports: tuple[dict, ...] = ()
     on_output: Callable[[CollectedOutput], Awaitable[bytes | None]] | None = None
     before_send: Callable[[], Awaitable[None]] | None = None
+    record: ProviderRecord | None = None
 
 
 @dataclass
@@ -156,14 +175,17 @@ class EngineFailure(Exception):
     ledger entry); `job_ref` the provider's generation id for the bill
     check and the receipt; `artefact` the empty frame's bytes (kept, law 7);
     `retry_after_s` the provider's own window on a rate limit (B2), None
-    when it named none.
+    when it named none. `plain` marks a message worded for the face: it names
+    the provider and the cause, carries no status code (law 3) and says the
+    next move (law 4), so the scheduler shows it as the cause instead of the
+    kind's curated line.
     """
 
     def __init__(self, kind: str, message: str, *,
                  status: int | None = None, detail: str | None = None,
                  charged_usd: float | None = None, job_ref: str | None = None,
                  artefact: bytes | None = None,
-                 retry_after_s: float | None = None):
+                 retry_after_s: float | None = None, plain: bool = False):
         super().__init__(message)
         self.kind = kind
         self.status = status
@@ -172,6 +194,7 @@ class EngineFailure(Exception):
         self.job_ref = job_ref
         self.artefact = artefact
         self.retry_after_s = retry_after_s
+        self.plain = plain
 
 
 # A5a's detector. A diffusion engine's "success with nothing in it" is a

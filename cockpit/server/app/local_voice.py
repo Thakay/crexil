@@ -11,6 +11,8 @@ owns every transition and serializes these jobs with the other local engines
 A voice take whose provider forbids its output as input to another AI model
 never reaches the runner (law 21). Review refuses it, and `start` refuses it
 again before anything is sent, using the terms of that provider's engine rows.
+A request the runner refuses (400, 413, 422) fails with the runner's own plain
+words as its cause, and nothing is generated.
 
 Recovery is a lookup of the runner's job records, and it never raises: a raised
 failure during recovery would bench the whole local lane and stop the image
@@ -102,8 +104,11 @@ class VoiceRunnerExecutor:
         except httpx.HTTPError as exc:
             raise self._unreachable(exc, 'at the door') from exc
         if answer.status_code in (400, 413, 422):
-            # the runner refused the request itself; its words are plain and name the field
-            raise EngineFailure('error', _detail(answer), status=answer.status_code, charged_usd=0)
+            # The runner refused the request itself, in plain words that name
+            # the field; they become the take's cause with the next move (laws 3, 4).
+            raise EngineFailure('error', f'The local voice runner refused this take: {_detail(answer)} Nothing '
+                                         'was generated. Change what it names, then prepare the take again.',
+                                status=answer.status_code, detail=_detail(answer), charged_usd=0, plain=True)
         if answer.status_code >= 400:
             raise EngineFailure('error', f'The local voice runner refused this take ({answer.status_code}). '
                                          f'{_detail(answer)}', status=answer.status_code, charged_usd=0)
