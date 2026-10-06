@@ -18,6 +18,7 @@ savepoints. Files belong to server storage callers; this module writes no artifa
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -253,6 +254,15 @@ ALLOWED = {
 # Statuses reroll_slot accepts as its starting point (reroll + backfill);
 # held->queued is resume and goes through transition_slot instead.
 REROLLABLE = {"landed", "failed", "set_aside", "skipped"}
+
+# transition_slot's default for `cause`: the row keeps the cause it has.
+KEEP_CAUSE = object()
+
+
+def sha256_file(path: Path) -> str:
+    """A whole file's SHA-256, read in chunks. Blocking: call it off the loop."""
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
 
 
 def now_iso() -> str:
@@ -807,20 +817,29 @@ class Database:
 
     async def transition_slot(self, slot_id: str, to_status: str,
                               *, payload: dict | None = None,
-                              retry_of: str | None = None) -> dict:
+                              retry_of: str | None = None,
+                              cause: str | None | object = KEEP_CAUSE) -> dict:
         """The generic guarded move (held / skipped / late / resume).
         `retry_of` marks a running -> queued move as the scheduler's own
         automatic retry of that failure kind (law 9): it stays on the row
         through the next dispatch so the cell says RETRYING while the
-        attempt runs, and only a reroll — the artist's verb — clears it."""
+        attempt runs, and only a reroll — the artist's verb — clears it.
+        `cause`, when given, is the row's plain line in the same statement
+        as the status: a held slot says why it waits, and None clears it
+        when the slot moves on. Left out, the row keeps its cause."""
         if to_status not in ALLOWED:
             raise ValueError(f"unknown slot status {to_status!r}")
         async with self._tx():
             slot = await self._require_slot(slot_id)
             self._guard_transition(slot, to_status)
-            await self.conn.execute(
-                "UPDATE slots SET status=?, retry_of=COALESCE(?, retry_of)"
-                " WHERE id=?", (to_status, retry_of, slot_id))
+            if cause is KEEP_CAUSE:
+                await self.conn.execute(
+                    "UPDATE slots SET status=?, retry_of=COALESCE(?, retry_of)"
+                    " WHERE id=?", (to_status, retry_of, slot_id))
+            else:
+                await self.conn.execute(
+                    "UPDATE slots SET status=?, retry_of=COALESCE(?, retry_of),"
+                    " cause=? WHERE id=?", (to_status, retry_of, cause, slot_id))
             ids = await self._slot_ids(slot)
             await self._append_event(
                 f"slot.{to_status}", **ids,
@@ -891,6 +910,15 @@ class Database:
             if cur.rowcount == 0:
                 raise ValueError(
                     f"slot {slot_id} is not running; job_ref not set")
+
+    async def set_late_job_ref(self, slot_id: str, attempt: int, job_ref: str) -> None:
+        """Stamp the runtime reference a stopped call reported after the
+        attempt went late, so recovery and the bill check can find it.
+        Guarded to that attempt while it is still late; otherwise a no-op."""
+        async with self._locked():
+            await self.conn.execute(
+                "UPDATE slots SET job_ref=? WHERE id=? AND attempt=? AND status='late'",
+                (job_ref, slot_id, attempt))
 
     async def slots_by_status(self, status: str,
                               *, engine: str | None = None) -> list[dict]:
@@ -1534,7 +1562,7 @@ class Database:
             (start_iso, end_iso))
         return round(row[0], 6)
 
-    # --- model hash cache (for manifests) ---
+    # --- file hash cache (model files for manifests, material facts) ---
 
     async def cached_hash(self, path: str, size: int, mtime: float) -> str | None:
         row = await self._one(
@@ -1548,6 +1576,25 @@ class Database:
             await self.conn.execute(
                 "INSERT OR REPLACE INTO model_hashes(path, size, mtime, sha256)"
                 " VALUES(?,?,?,?)", (path, size, mtime, sha256))
+
+    async def file_sha256(self, path: str | Path) -> str | None:
+        """A file's SHA-256 through the size-and-mtime cache. A miss is
+        hashed on a worker thread, never on the event loop, and remembered;
+        a changed file has a new size or mtime and is hashed again. None
+        when the file is gone or unreadable."""
+        target = Path(path)
+        try:
+            st = await asyncio.to_thread(target.stat)
+        except OSError:
+            return None
+        cached = await self.cached_hash(str(target), st.st_size, st.st_mtime)
+        if cached is None:
+            try:
+                cached = await asyncio.to_thread(sha256_file, target)
+            except OSError:
+                return None
+            await self.store_hash(str(target), st.st_size, st.st_mtime, cached)
+        return cached
 
     # --- app settings (the promote root's re-point) ---
 

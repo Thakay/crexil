@@ -15,7 +15,6 @@ Executors return transport facts and bytes; only the scheduler writes outcomes.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import time
@@ -26,7 +25,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Mapping, Sequence
 
-from . import config, execution_outputs
+from . import audio, config, execution_outputs
+from .audio_executors import LABELS as AUDIO_LABELS
 from .capture import Capture, describe
 from .db import Database
 from .executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult,
@@ -116,6 +116,42 @@ def smaller_frame(requested: tuple[int, int],
     return (w, h)
 
 
+# What an audio take was doing, and what the artist supplied, per verb: an
+# audio failure names its act and absolves the text the artist wrote.
+AUDIO_ACTS = {"speak": ("speaking", "your text"),
+              "voice-design": ("designing the voice", "your description"),
+              "sfx": ("making the sound", "your description")}
+# Where a local runner's start-up instructions live; never a machine path.
+RUNNER_HELP = {"voice-runner": "tools/tts/README.md says how to start it."}
+
+
+def audio_cause(kind: str, *, provider: str, lane: str, engine: str,
+                verb: str | None) -> str | None:
+    """The audio lane's own words: the provider by its display name, the
+    act by its verb, never a frame or an image (law 3). None where the
+    shared words already fit (moderation, rate_limit, model_down, timeout,
+    interrupted)."""
+    name = AUDIO_LABELS.get(provider, provider)
+    act, yours = AUDIO_ACTS.get(verb or "", ("working", "your text"))
+    if kind == "dead_key":
+        return f"{name} turned the key away: nothing runs on {name} until the key is fixed"
+    if kind == "unreachable":
+        if lane == "local":
+            return " ".join(filter(None, (f"{name} can't be reached. Is it running?",
+                                          RUNNER_HELP.get(provider))))
+        return f"{name} can't be reached: the network, most likely"
+    if kind == "oom":
+        return (f"{engine} ran out of video memory: free the card (close what else "
+                "is holding it) and try again")
+    if kind == "error":
+        return f"{engine} failed while {act}: the engine failed, not {yours}"
+    if kind == "blank":
+        return f"{engine} finished, but no audio came back: the engine failed, not {yours}"
+    if kind == "charged_blank":
+        return f"{engine} took the job and billed it, but no audio came back"
+    return None
+
+
 # Law 3: the primary message never carries a status code, a stack
 # trace or "something went wrong". One curated line per failure kind
 # (static text, nothing generated), naming the engine and — where it matters
@@ -124,7 +160,12 @@ def smaller_frame(requested: tuple[int, int],
 def plain_cause(kind: str, *, lane: str, engine: str,
                 frame: tuple[int, int] | None = None,
                 held_before: dict | None = None,
-                tries: int | None = None) -> str:
+                tries: int | None = None,
+                provider: str | None = None,
+                verb: str | None = None) -> str:
+    """One plain line per failure kind (law 3). `provider` is the executor
+    that reached the engine; an audio provider gets the audio lane's own
+    words, so a failure names the provider that failed, never another."""
     if kind == 'collection':
         return 'Some runtime files are missing. Collected files are kept. Collect again to retrieve this same attempt without generating.'
     if kind == 'source_changed':
@@ -149,6 +190,10 @@ def plain_cause(kind: str, *, lane: str, engine: str,
         if kind == "blank":
             return (f"{engine} finished without a mesh — that's the engine, "
                     "not your image")
+    if provider in audio.PROVIDERS:
+        words = audio_cause(kind, provider=provider, lane=lane, engine=engine, verb=verb)
+        if words:
+            return words
     if kind == "dead_key":
         return ("OpenRouter turned the key away — nothing external runs "
                 "until the key is fixed")
@@ -212,23 +257,39 @@ def raw_detail(e: EngineFailure) -> str:
     return text[:1600]
 
 
-def bench_scope_for(kind: str, lane: str, engine: str) -> str | None:
+def bench_scope_for(kind: str, lane: str, engine: str,
+                    provider: str | None = None) -> str | None:
     """Which scope an engine-level failure benches (law 1: nine slots killed
     by one cause produce one cause record). Content-specific and transient
     kinds never bench; an OOM is the slot's alone (A1: the artist chooses)
     unless the card is held, which the scheduler decides with the live
-    reading, not this table."""
+    reading, not this table. An audio provider's key and runtime are its
+    own: their failures bench `provider:<name>`, every engine that provider
+    serves and nothing else."""
+    own = provider in audio.PROVIDERS
     if kind == "dead_key":
-        return "lane:external"      # one key kills the whole external bench
+        # one key kills every engine behind it: OpenRouter's is the
+        # external lane's, another provider's is that provider's alone
+        return f"provider:{provider}" if own else "lane:external"
     if kind == "unreachable":
         # a down 3D runner is those two engines' problem, never the
         # local lane's — benching the lane would stop the ComfyUI takes
-        # beside them (law 1)
-        return (f"engine:{engine}" if engine in MESH_ENGINES
-                else f"lane:{lane}")
+        # beside them (law 1); a down voice runner or provider likewise
+        if engine in MESH_ENGINES:
+            return f"engine:{engine}"
+        return f"provider:{provider}" if own else f"lane:{lane}"
     if kind in ("model_down", "timeout"):
         return f"engine:{engine}"
     return None     # moderation | rate_limit | interrupted | error | blank | charged_blank | oom
+
+
+def lane_covers(ex: Executor, lane: str) -> bool:
+    """Whether a lane's bench holds this executor's takes. The external
+    lane's bench is OpenRouter's key and network: an audio provider has its
+    own scope, so another provider's fault never holds it (law 1). The local
+    lane's bench holds every local executor, a voice runner included: one
+    GPU, one held card (law 14)."""
+    return ex.lane == lane and not (lane == "external" and ex.name in audio.PROVIDERS)
 
 
 def turn_scope(engine: str, turn_id: str) -> str:
@@ -458,7 +519,11 @@ class Scheduler:
             b = self._benches.get(turn_scope(engine, turn_id))
             if b:
                 return b
-        return self._benches.get(f"lane:{self._executor_for(engine).lane}")
+        ex = self._executor_for(engine)
+        b = self._benches.get(f"provider:{ex.name}")
+        if b:
+            return b
+        return self._benches.get(f"lane:{ex.lane}") if lane_covers(ex, ex.lane) else None
 
     @property
     def started(self) -> bool:
@@ -625,8 +690,8 @@ class Scheduler:
             await self._skip_cancelled_retry(slot)
             return True
         except ExecutionPaused as exc:
-            await self.db.transition_slot(slot['id'], 'held', payload={'pause': True, 'reason': str(exc)})
-            await self.db.conn.execute('UPDATE slots SET cause=? WHERE id=?', (str(exc), slot['id']))
+            await self.db.transition_slot(slot['id'], 'held', payload={'pause': True, 'reason': str(exc)},
+                                          cause=str(exc))
             return True
         return False
 
@@ -792,8 +857,8 @@ class Scheduler:
                     await self._skip_cancelled_retry(await self.db.get_slot(slot_id))
                 elif isinstance(exc, (BudgetExceeded, ExecutionPaused)):
                     await self.db.transition_slot(slot_id, 'held', payload={'reason': str(exc),
-                        'limit': isinstance(exc, BudgetExceeded), 'pause': isinstance(exc, ExecutionPaused)})
-                    await self.db.conn.execute('UPDATE slots SET cause=? WHERE id=?', (str(exc), slot_id))
+                        'limit': isinstance(exc, BudgetExceeded), 'pause': isinstance(exc, ExecutionPaused)},
+                        cause=str(exc))
                     self._takes.pop(slot_id, None)
                 await self._emit_new()
                 return None
@@ -922,10 +987,12 @@ class Scheduler:
         if ex.name == 'openrouter' and (req.external or {}).get('transport') == 'openrouter-images':
             receipt = await self.db._one('SELECT o.* FROM execution_outputs o JOIN execution_groups g ON g.id=o.group_id '
                 "WHERE g.slot_id=? AND g.take=? AND o.role='provider receipt'", (slot_id, attempt))
-            if not receipt or not receipt['output_path'] or not receipt['sha256'] or not execution_outputs.matches_receipt(Path(receipt['output_path']), receipt['sha256']):
+            if not receipt or not receipt['output_path'] or not receipt['sha256'] or not await asyncio.to_thread(
+                    execution_outputs.matches_receipt, Path(receipt['output_path']), receipt['sha256']):
                 raise ValueError('No intact provider response was retained. No paid request was repeated.')
             try:
-                result = await ex.collect_receipt(req, json.loads(Path(receipt['output_path']).read_bytes()))
+                retained = await asyncio.to_thread(Path(receipt['output_path']).read_bytes)
+                result = await ex.collect_receipt(req, json.loads(retained))
                 from .executors import Reconciliation
                 rec = Reconciliation('landed', result=result)
             except EngineFailure as exc:
@@ -999,7 +1066,7 @@ class Scheduler:
             if output.data is None and member['output_path'] and not await execution_outputs.purged_at(self.db, member):
                 with suppress(OSError):
                     blob = await asyncio.to_thread(Path(member['output_path']).read_bytes)
-                    if hashlib.sha256(blob).hexdigest() == member['sha256']:
+                    if await asyncio.to_thread(execution_outputs.sha256_bytes, blob) == member['sha256']:
                         return blob
             return None
         return replace(req, on_output=collected, before_send=before_send)
@@ -1026,8 +1093,8 @@ class Scheduler:
                     continue
                 if await self._rebuild_request(slot) is None:
                     continue
-                await self.db.transition_slot(slot['id'], 'queued', payload={'reason': 'limits now permit this request'})
-                await self.db.conn.execute('UPDATE slots SET cause=NULL WHERE id=?', (slot['id'],))
+                await self.db.transition_slot(slot['id'], 'queued', payload={'reason': 'limits now permit this request'},
+                                              cause=None)
                 if slot['id'] in self._takes:
                     with suppress(ValueError):
                         self._local_q.remove(slot['id'])
@@ -1194,13 +1261,14 @@ class Scheduler:
                  plain_cause(e.kind, lane=take.lane, engine=req.engine,
                              frame=req.frame,
                              held_before=(facts or {}).get("held_before"),
-                             tries=slot["attempt"]))
+                             tries=slot["attempt"],
+                             provider=take.executor.name, verb=req.verb))
         detail = raw_detail(e)
         if e.artefact:
             # A5a: the empty frame is kept, not lost (law 7) — named in
             # DETAILS so a bug report can carry it
             path = self._blank_path(slot)
-            path.write_bytes(e.artefact)
+            await asyncio.to_thread(path.write_bytes, e.artefact)
             detail = f"{detail}\nthe empty frame is kept at {path}"
         if e.job_ref:
             # B4: the generation id the response carried — the receipt's
@@ -1209,7 +1277,8 @@ class Scheduler:
             # already knows what happened.
             with suppress(ValueError):
                 await self.db.set_job_ref(slot["id"], e.job_ref)
-        scope = None if take.cancel_requested else bench_scope_for(e.kind, take.lane, req.engine)
+        scope = None if take.cancel_requested else bench_scope_for(
+            e.kind, take.lane, req.engine, take.executor.name)
         if scope:
             # Install the shared cause before publishing a terminal failure.
             # Readers of the completed row must already see its queue gate.
@@ -1460,8 +1529,7 @@ class Scheduler:
         await execution_outputs.finish(self.db, slot, 'incomplete', {'failure_kind': e.kind, 'cause': str(e)})
         ids = await self.db._slot_ids(slot)
         if e.job_ref:
-            await self.db.conn.execute("UPDATE slots SET job_ref=? WHERE id=? AND attempt=? AND status='late'",
-                                       (e.job_ref, slot['id'], slot['attempt']))
+            await self.db.set_late_job_ref(slot['id'], slot['attempt'], e.job_ref)
         if e.charged_usd is not None:
             delta = await self.db._unrecorded_charge(slot, e.charged_usd)
             await self.db.record_charge(slot['id'], delta, attempt=slot['attempt'], note='Final charge after stop')
@@ -1473,7 +1541,9 @@ class Scheduler:
             payload={"kind": e.kind,
                      "attempt": slot['attempt'], "job_ref": e.job_ref, "charged_usd": e.charged_usd,
                      "cause": plain_cause(e.kind, lane=take.lane,
-                                          engine=take.request.engine),
+                                          engine=take.request.engine,
+                                          provider=take.executor.name,
+                                          verb=take.request.verb),
                      "detail": raw_detail(e),
                      "committed_usd": slot["committed_usd"],
                      "note": "Stopped before sending. No paid request was made." if unsent else
@@ -1555,8 +1625,10 @@ class Scheduler:
                 eng, tid = rest.split("@turn:", 1)
                 return engine == eng and turn_id == tid
             return engine == rest
+        if scope.startswith("provider:"):
+            return self._executor_for(engine).name == scope.split(":", 1)[1]
         if scope.startswith("lane:"):
-            return self._executor_for(engine).lane == scope.split(":", 1)[1]
+            return lane_covers(self._executor_for(engine), scope.split(":", 1)[1])
         return False
 
     # --- cancel (one breath) ---
@@ -1742,9 +1814,11 @@ class Scheduler:
                         req = self._collecting_request(req, slot) if req else None
                         rec = await ex.reconcile(slot, request=req)
                     except EngineFailure as e:
-                        # no truth available: bench the lane, leave the row
-                        # running — unbench retries recovery via requeue
-                        await self.bench(f"lane:{ex.lane}", kind=e.kind,
+                        # no truth available: bench the lane (an audio
+                        # provider only itself), leave the row running —
+                        # unbench retries recovery via requeue
+                        await self.bench(f"provider:{ex.name}" if ex.name in audio.PROVIDERS
+                                         else f"lane:{ex.lane}", kind=e.kind,
                                          cause=f"recovery: {e}")
                         counts["unreachable"] += 1
                         continue
@@ -1770,7 +1844,9 @@ class Scheduler:
                                     engine=slot["engine"],
                                     frame=parse_frame(slot["frame"]),
                                     held_before=(facts or {}).get(
-                                        "held_before")))
+                                        "held_before"),
+                                    provider=ex.name,
+                                    verb=req.verb if req else None))
                         counts["failed"] += 1
                         continue
                     if rec.kind == 'running' and rec.handle is not None and req is not None:
