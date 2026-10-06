@@ -326,18 +326,39 @@ async def cancel_attempt(db, slot_id: str, body, *, hidden: bool = False) -> dic
         return _view(slot, 'cancel', values, _cancel_words(slot, hidden=hidden))
 
 
+def limit_words(holding: list[tuple[str, str]]) -> str:
+    """Why limits hold an attempt, and the move that exists (laws 3 and 4): a
+    project's or a sequence's limit is raised where it is set; a run's own
+    limits are fixed once it is sent, so its attempt is cancelled and its
+    setup reused with a higher limit."""
+    scopes = {scope for scope, _ in holding}
+    lines = ' '.join(line for _, line in holding)
+    if 'run' in scopes:
+        return (f"{lines} A run's own limits are fixed once it is sent: cancel this attempt, then reuse its "
+                'setup with a higher limit.')
+    places = " and the ".join(f"{scope}'s" for scope in ('project', 'sequence') if scope in scopes)
+    where = ' in its settings' if scopes == {'project'} else ''
+    return f"{lines} Raise the {places} limit{'s' if len(scopes) > 1 else ''}{where} to send it, or cancel it."
+
+
 async def held_attempt(db, scheduler, slot_id: str, attempt: int):
     """The held attempt and the bench that holds it. A refusal says why it
-    waits instead, and the move that sends it."""
+    waits instead, and the move that sends it. An attempt held by limits that
+    permit it now goes back to the queue, as after a limit is raised."""
+    from .crexil_budget import holding_limits
     slot = await _attempt(db, slot_id, attempt)
     if slot['status'] != 'held':
         raise Conflict('This attempt is not held, so there is nothing to resume. Refresh it.')
     holds = [event for event in await db.slot_events(slot_id) if event['type'] == 'slot.held']
     hold = holds[-1]['payload'] if holds else {}
     if hold.get('pause'):
-        raise ValueError('This attempt waits for its run or project to resume. Resume that instead.')
+        raise ValueError('This attempt waits for its run, project or sequence to resume. Resume that instead.')
     if hold.get('limit'):
-        raise ValueError('This attempt waits for a spending limit. Raise the limit to send it, or cancel it.')
+        holding = await holding_limits(db, slot)
+        if holding:
+            raise ValueError(limit_words(holding))
+        await scheduler.resume_budget_holds((await db._slot_ids(slot))['workspace_id'])
+        raise Conflict('Its limits permit it now, so it went back to the queue. Refresh it.')
     bench = scheduler.standing(hold.get('bench'))
     if bench is None:
         raise Conflict("Nothing holds this attempt's engine any more. Refresh it; if it stays held, "

@@ -147,21 +147,29 @@ def violations(limits: dict, current: dict, *, attempts: int = 0, reserved: floa
     return errors
 
 
-async def guard_dispatch(db, slot: dict) -> None:
+async def holding_limits(db, slot: dict) -> list[tuple[str, str]]:
+    """The limits that would hold this attempt at dispatch now, each as its
+    scope ('project', 'run' or 'sequence') and its plain line."""
     turn = await db.get_turn(slot['turn_id'])
     row = await db._one('SELECT limits_json FROM project_details WHERE workspace_id=?', (turn['workspace_id'],))
     limits = json.loads(row['limits_json']) if row else {}
-    errors = []
+    found = []
     if limits:
-        errors += violations(limits, await accounting(db, turn['workspace_id']))
+        found += [('project', line) for line in violations(limits, await accounting(db, turn['workspace_id']))]
     setup = turn['dials'].get('crexil', {}).get('setup')
     if setup:
-        errors += violations(setup, await accounting(db, turn['workspace_id'], turn_id=turn['id']), label='Run')
+        found += [('run', line) for line in violations(
+            setup, await accounting(db, turn['workspace_id'], turn_id=turn['id']), label='Run')]
     sequence = await db._one('SELECT s.id,s.limits_json FROM sequences s JOIN sequence_runs r ON r.sequence_id=s.id WHERE r.turn_id=?',
                              (turn['id'],))
     if sequence:
         turns = await db._all('SELECT turn_id FROM sequence_runs WHERE sequence_id=? AND turn_id IS NOT NULL', (sequence['id'],))
-        errors += violations(json.loads(sequence['limits_json']),
-            await accounting(db, turn['workspace_id'], turn_ids=[row['turn_id'] for row in turns]), label='Sequence')
-    if errors:
-        raise BudgetExceeded(' '.join(errors))
+        found += [('sequence', line) for line in violations(json.loads(sequence['limits_json']),
+            await accounting(db, turn['workspace_id'], turn_ids=[row['turn_id'] for row in turns]), label='Sequence')]
+    return found
+
+
+async def guard_dispatch(db, slot: dict) -> None:
+    found = await holding_limits(db, slot)
+    if found:
+        raise BudgetExceeded(' '.join(line for _, line in found))

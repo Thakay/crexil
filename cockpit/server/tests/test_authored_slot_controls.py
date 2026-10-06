@@ -26,7 +26,7 @@ from test_blind_everywhere import HOSTED, LOCAL, names_an_engine, prepared, ran,
 from test_crexil import command, image_bytes, project
 from test_crexil_controls import control
 from test_crexil_execution import attest, draft, reviewed
-from test_crexil_hosted import discover, hosted
+from test_crexil_hosted import discover, hosted, limits
 from test_crexil_hosted import submit as submit_hosted
 from test_crexil_sequences import start as start_sequence
 from test_local_voice import served
@@ -357,7 +357,7 @@ async def test_moves_refuse_in_plain_words_with_the_next_move(tmp_path, monkeypa
 
         held_by_pause = await move(client, 'resume', paused)
         assert held_by_pause.status_code == 422 and held_by_pause.json()['detail'] == (
-            'This attempt waits for its run or project to resume. Resume that instead.')
+            'This attempt waits for its run, project or sequence to resume. Resume that instead.')
         stale = await move(client, 'cancel', paused, attempt=3)
         assert stale.status_code == 409 and stale.json()['detail'] == (
             'This attempt changed since it was read. Refresh it, then decide again.')
@@ -370,6 +370,69 @@ async def test_moves_refuse_in_plain_words_with_the_next_move(tmp_path, monkeypa
         settled = await move(client, 'resume', landed)
         assert settled.status_code == 409 and settled.json()['detail'] == (
             'This attempt is not held, so there is nothing to resume. Refresh it.')
+
+
+async def test_a_limit_hold_names_its_limit_and_the_move_that_exists(tmp_path, monkeypatch):
+    # The project's limit is lowered while the run's second attempt waits for the lane.
+    gate = asyncio.Event()
+    slow = FakeAudioExecutor('voice-runner', 'local', gate=gate)
+    async with booted_audio(tmp_path, monkeypatch, executors={'voice-runner': slow}) as (client, _):
+        p = await project(client)
+        turn_id = await accepted(client, await audio_draft(client, p['id'], f'audio:voice-design:{LOCAL}',
+                                                           'A gruff smith', controls={'preview_text': PREVIEW},
+                                                           count=2))
+        await statuses(turn_id, ['running', 'queued'])
+        current = (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project']
+        await limits(client, current, attempt_limit=1)
+        gate.set()
+        _, held = await statuses(turn_id, ['landed', 'held'])
+        answer = await move(client, 'resume', held)
+        assert answer.status_code == 422 and answer.json()['detail'] == (
+            'Project attempt limit is 1; used and reserved attempts total 2. '
+            "Raise the project's limit in its settings to send it, or cancel it.")
+        current = (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project']
+        await limits(client, current, attempt_limit=2)                   # raising it sends the attempt
+        await statuses(turn_id, ['landed', 'landed'])
+
+
+async def test_resuming_an_attempt_whose_limits_permit_it_now_sends_it(tmp_path, monkeypatch):
+    gate = asyncio.Event()
+    slow = FakeAudioExecutor('voice-runner', 'local', gate=gate)
+    async with booted_audio(tmp_path, monkeypatch, executors={'voice-runner': slow}) as (client, _):
+        p = await project(client)
+        turn_id = await accepted(client, await audio_draft(client, p['id'], f'audio:voice-design:{LOCAL}',
+                                                           'A gruff smith', controls={'preview_text': PREVIEW},
+                                                           count=2))
+        await statuses(turn_id, ['running', 'queued'])
+        await limits(client, (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project'],
+                     attempt_limit=1)
+        gate.set()
+        _, held = await statuses(turn_id, ['landed', 'held'])
+        # Room appears with nothing that reconsiders the hold, as when a reservation settles.
+        await store().conn.execute('UPDATE project_details SET limits_json=? WHERE workspace_id=?',
+                                   ('{"attempt_limit": 2}', p['id']))
+        await store().conn.commit()
+        answer = await move(client, 'resume', held)
+        assert answer.status_code == 409 and answer.json()['detail'] == (
+            'Its limits permit it now, so it went back to the queue. Refresh it.')
+        await statuses(turn_id, ['landed', 'landed'])
+
+
+async def test_a_runs_own_limit_hold_says_to_reuse_its_setup_with_a_higher_limit(tmp_path, monkeypatch):
+    # The first attempt is charged more than it reserved, so the run's own
+    # spending limit no longer fits its second attempt.
+    over = FakeAudioExecutor('elevenlabs', 'external', max_concurrency=1, cost=0.02)
+    async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': over}) as (client, _):
+        p = await project(client)
+        turn_id = await accepted(client, await prepare(client, p['id'], 'voice-design', 'A gruff smith',
+                                                       [(ELEVEN_DESIGN, 2, SPOKEN)], limit=0.02064))
+        _, held = await statuses(turn_id, ['landed', 'held'])
+        answer = await move(client, 'resume', held)
+        assert answer.status_code == 422 and answer.json()['detail'] == (
+            'Run spending limit is $0.02064; charged and reserved spending totals $0.03032. '
+            "A run's own limits are fixed once it is sent: cancel this attempt, then reuse its setup with a "
+            'higher limit.')
+        assert len(over.requests) == 1
 
 
 # --- blind runs ---
