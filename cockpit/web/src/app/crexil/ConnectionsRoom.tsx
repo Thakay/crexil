@@ -2,12 +2,13 @@
 // setup API. Opening this room never changes a connection or requests generation.
 import {useState} from 'react';
 import {$api,fetchClient} from '../../api/client';
+import {useHash} from '../routes';
 import {message,projectHref,result} from './api';
 import {useEscapeLayer} from './keys';
 import s from './Filmstrip.module.css';
 
 export function ConnectionsRoom() {
-  const project=new URLSearchParams(location.hash.split('?')[1]).get('project')??'';
+  const project=new URLSearchParams(useHash().split('?')[1]).get('project')??'';
   const query=$api.useQuery('get','/api/crexil/setup');
   const [key,setKey]=useState('');
   const [busy,setBusy]=useState(false);

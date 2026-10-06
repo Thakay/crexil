@@ -8,7 +8,7 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 import { useCallback, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { $api, fetchClient } from '../../api/client';
-import { useHashRoute } from '../routes';
+import { useHash, useHashRoute } from '../routes';
 import { DraftDrawer,hasPendingSubmission } from './DraftDrawer';
 import {hasLocalPreparation} from './usePreparationDraft';
 import {ConnectionsRoom} from './ConnectionsRoom';
@@ -51,15 +51,14 @@ function faceCost(node: Material): string {
 }
 
 export function Crexil() {
-  // Subscribe to hash updates with the established routing mechanism.
-  useHashRoute();
+  // The page comes from the one route parser; each page reads its own query state.
+  const route = useHashRoute();
   useEscapeKey();
-  const id = /^#\/projects\/([^/?]+)(?:\?.*)?$/.exec(location.hash)?.[1];
   const health = $api.useQuery('get', '/api/health', {}, {refetchInterval: 15000});
   const bundle = import.meta.env.VITE_BUILD_ID ?? 'dev';
   const healthBody = health.data ?? (health.error as unknown as {preview?: boolean; build?: {id: string}});
   return <div className={s.app}>
-    {location.hash.startsWith('#/connections')?<ConnectionsRoom/>:location.hash.startsWith('#/operations') ? <OperationLibrary/> : id ? <ProjectRoom key={id} id={id}/> : <Projects/>}
+    {route.view==='connections'?<ConnectionsRoom/>:route.view==='operations' ? <OperationLibrary/> : route.view==='project' ? <ProjectRoom key={route.id} id={route.id}/> : <Projects/>}
     <footer className={s.footer}><span>Crexil · {bundle}{healthBody?.build?.id && healthBody.build.id !== bundle ? ' · BUILD MISMATCH' : ''}</span>
       {healthBody?.preview && <span>Isolated preview · generation disconnected</span>}</footer>
   </div>;
@@ -119,8 +118,9 @@ function Projects() {
 type PickerState = Extract<Overlay, {kind: 'picker'}>;
 
 function ProjectRoom({id}: {id: string}) {
+  const hash = useHash();
   const [store] = useState(() => {
-    const query = new URLSearchParams(location.hash.split('?')[1]);
+    const query = new URLSearchParams(hash.split('?')[1]);
     const material = query.get('material');
     return createViewStore({drawer: query.get('draft'), overlays: [
       ...(hasProjectEdits(id) ? [{kind: 'projectEdit'} as const] : []),
