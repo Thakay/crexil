@@ -57,13 +57,16 @@ DEFECTS = (KeyError, IndexError, ValidationError, json.JSONDecodeError, UnicodeE
 def refused(exc: Exception) -> HTTPException:
     """The one translation of a refusal into a plain-language response.
     Raises a defect unchanged; maps unfinished features to 501, conflicts to
-    409, missing records to 404 and other refusals to 422."""
+    409, missing records to 404 and other refusals to 422. A conflict that names
+    its kind, such as spending that moved since review, also carries that kind
+    in the `X-Crexil-Conflict` header so a client or agent can act on it."""
     if isinstance(exc, DEFECTS):
         raise exc
     if isinstance(exc, (blind.NotBuilt, preferences.NotBuilt)):
         return HTTPException(501, str(exc))
     if isinstance(exc, Conflict):
-        return HTTPException(409, str(exc))
+        kind = getattr(exc, 'code', None)
+        return HTTPException(409, str(exc), headers={'X-Crexil-Conflict': kind} if kind else None)
     if isinstance(exc, LookupError):
         return HTTPException(404, str(exc))
     return HTTPException(422, str(exc))
