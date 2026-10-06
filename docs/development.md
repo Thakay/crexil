@@ -325,6 +325,11 @@ ElevenLabs account. A save refused because every slot is in use says so.
 - **No authentication.** The server trusts localhost: a Host allow-list, an Origin check, and a key
   setup route that refuses non-loopback clients unless `COCKPIT_LOOPBACK_PUBLISH=1` (set in
   `compose.yaml`, where clients arrive from a bridge address). Never expose the port.
+- **The voice director's column.** While it is open it sets `--director-inset` on the root element; every
+  Filmstrip surface keeps its right edge clear of `var(--director-inset, 0px)` (fixed layers through `right`,
+  in-flow ones through `margin-right`), and a new surface must too.
+- **One player for take audio.** All take audio plays through `audio/player.ts`, whose before-play listeners let
+  the voice director mute its microphone first; never play take audio through another media element.
 - **Store schema.** `db.py` upgrades an older store when it opens it (schema 13 today). Older code
   refuses a newer file, and a file older than schema 4 is refused, never migrated. Use a fresh
   `COCKPIT_DB` when you move back across a schema change. `docker compose down -v` deletes the
