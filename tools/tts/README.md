@@ -72,10 +72,14 @@ default), and set `enabled` on the `qwen3-tts` row of `configs/engines.json`.
   the same take on the same installation; other versions or cards are not promised the same.
 - **Requests are checked by name.** An unknown field, a voice take shorter than 3 seconds or a
   file that is not PCM WAV is refused in plain words.
+- **One job per client reference.** The cockpit names each attempt's job by its `client_ref`.
+  A second request with a reference the runner already holds answers that job and queues
+  nothing, so an answer lost on its way back never makes a take run twice.
 
-Routes: `GET /health`, `POST /jobs` (202 with `job_id`), `GET /jobs/<id>`,
-`GET /jobs/<id>/audio/<i>` (take `i` from 0, as 16-bit PCM WAV), `DELETE /jobs/<id>` (a queued job
-is cancelled at once; a running one finishes and is recorded as cancelled without its takes).
+Routes: `GET /health`, `POST /jobs` (202 with `job_id`), `GET /jobs?client_ref=<ref>` (the job
+with that client reference), `GET /jobs/<id>`, `GET /jobs/<id>/audio/<i>` (take `i` from 0, as
+16-bit PCM WAV), `DELETE /jobs/<id>` (a queued job is cancelled at once; a running one finishes and
+is recorded as cancelled without its takes).
 
 ## Measured
 

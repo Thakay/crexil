@@ -1121,7 +1121,7 @@ class Scheduler:
                         return blob
             return None
         return replace(req, on_output=collected, before_send=before_send,
-                       record=self._provider_record(slot, provider))
+                       record=self._provider_record(slot, provider), attempt=slot['attempt'])
 
     def _provider_record(self, slot: dict, provider: str) -> ProviderRecord:
         """The record one attempt's adapter reads and extends through the
