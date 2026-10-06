@@ -216,6 +216,12 @@ def _hidden_name(filename: str, label: str) -> str:
     return label + PurePosixPath(filename or '').suffix
 
 
+def take_name(filename: str) -> str:
+    """A hidden take's file name as every read shows it: `hidden-take` and the
+    extension its bytes need, never the name its engine gave it."""
+    return _hidden_name(filename, 'hidden-take')
+
+
 def output_name(member: dict) -> str:
     """A hidden run's execution file as its group lists and serves it:
     `output-<ordinal>` and the extension its bytes need, never the name the
@@ -272,7 +278,7 @@ def mask(kind: str, item: dict) -> dict:
     if kind == 'node':
         if out.get('material'):
             material = dict(out['material'])
-            material['filename'] = _hidden_name(material['filename'], 'hidden-take')
+            material['filename'] = take_name(material['filename'])
             material['origin'] = scrub(material.get('origin') or {})
             out['material'] = material
         if 'retained_files' in out:

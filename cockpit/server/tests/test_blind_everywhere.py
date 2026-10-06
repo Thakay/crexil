@@ -166,7 +166,7 @@ async def test_every_read_of_a_failing_blind_run_names_no_engine_and_no_time_of_
         # A failed attempt's group keeps its kind and a plain line, never the engine's words.
         (failed,) = [g for g in reads['execution groups'] if g['metadata'].get('failure_kind') == 'dead_key']
         assert failed['metadata']['cause'] == blind.plain_cause('dead_key')
-        # Every time a hidden take carries is its run's creation time (V1b S-4).
+        # Every time a hidden take carries is its run's creation time, so the clock never orders its takes.
         assert own_times(reads) == {await run_created(client, p['id'], turn['id'])}
         assert all(r['elapsed_ms'] is None for r in reads['queue'])
 
@@ -175,7 +175,7 @@ async def test_every_read_of_a_failing_blind_run_names_no_engine_and_no_time_of_
         assert any(leaks(after).values()) and len(own_times(after)) > 1    # the engines and real times return
 
 
-# --- continuing from a hidden take (V1b S-1) ---
+# --- continuing from a hidden take names no source engine ---
 
 async def test_a_hidden_take_cannot_be_continued_until_its_run_is_revealed(tmp_path, monkeypatch):
     async with casting(tmp_path, monkeypatch, **LONG) as (client, fakes):
@@ -230,7 +230,7 @@ async def test_a_hidden_image_take_cannot_be_continued_and_files_are_named_by_gr
         assert names and all('filename="output-' in name for name in names)
 
 
-# --- bench and hold events (V1b S-2) ---
+# --- bench and hold events name no hidden take ---
 
 async def test_a_mid_run_bench_names_no_hidden_take_and_its_events_return_at_the_reveal(tmp_path, monkeypatch):
     down = FakeAudioExecutor('voice-runner', 'local', failure=EngineFailure('unreachable', 'runner down'))
@@ -279,7 +279,7 @@ async def test_an_engine_benched_inside_a_blind_run_reads_masked_until_the_revea
         assert bench['payload']['scope'] == f"engine:{LOCAL}@turn:{turn['id']}" and len(bench['payload']['held']) == 1
 
 
-# --- a blind run compares at least two engines, sent whole (V1b S-3) ---
+# --- a blind run compares at least two engines, sent whole ---
 
 async def test_a_blind_run_needs_two_engines_ready_and_is_never_narrowed(tmp_path, monkeypatch):
     async with casting(tmp_path, monkeypatch) as (client, fakes):
@@ -305,7 +305,7 @@ async def test_a_blind_run_needs_two_engines_ready_and_is_never_narrowed(tmp_pat
         assert (await reviewed(client, pair))['ready']
 
 
-# --- failure records (V1b S-9) ---
+# --- a hidden take's failure record keeps only its kind and plain line ---
 
 async def test_a_hidden_takes_internal_failure_keeps_only_its_kind_and_plain_line(tmp_path, monkeypatch):
     crash = FakeAudioExecutor('elevenlabs', 'external',
@@ -328,7 +328,7 @@ async def test_a_hidden_takes_internal_failure_keeps_only_its_kind_and_plain_lin
         assert 'eleven_multilingual_ttv_v2' in record['payload']['traceback']      # kept, shown after the reveal
 
 
-# --- reuse (V1b S-10 and S-5) ---
+# --- reuse refuses a hidden take in its own words, and a reused take keeps its terms ---
 
 async def test_reuse_review_and_reuse_refuse_a_hidden_take_in_the_same_words(tmp_path, monkeypatch):
     async with casting(tmp_path, monkeypatch) as (client, _):
@@ -608,6 +608,37 @@ async def test_every_list_keeps_a_blind_runs_grid_order_whatever_order_its_takes
         assert await lists() == expected
         await reveal(client, turn_id)
         assert await lists() == expected                 # revealed or not
+
+
+async def test_a_delivery_review_refuses_a_hidden_take_without_naming_its_engines_file(tmp_path, monkeypatch):
+    # ComfyUI names a take by its save prefix and the hosted lane by its output
+    # index, so the original file names would tell the lanes apart.
+    from app import config
+    from test_crexil_hosted import discover
+    target = tmp_path / 'handoff'
+    target.mkdir()
+    monkeypatch.setattr(config, 'PROMOTE_DIR', target)
+    monkeypatch.setattr(config, 'PROMOTE_ROOTS', [target])
+    async with booted(tmp_path, monkeypatch) as (client, fakes):
+        attest()
+        discover()
+        fakes['comfy'].default = Step(data=image_bytes(), filename='s0_00001_.png')
+        fakes['openrouter'].default = Step(data=image_bytes(), filename='image-0.png')
+        p = await project(client)
+        ops = {o['id']: o for o in (await client.get('/api/crexil/operations')).json()}
+        made = await client.post(f"/api/crexil/projects/{p['id']}/directions", json=command(title='Lamps', setup={
+            'prompt': 'brass lamp', 'blind': True, 'spending_limit_usd': 1, 'spending_policy': 'published_tariff',
+            'operations': [{'operation_id': key, 'revision': ops[key]['revision'], 'count': 2}
+                           for key in ('testpreset', 'testvendor/testmodel')]}))
+        assert made.status_code == 201, made.text
+        _, takes = await ran(client, made.json())
+        review = await client.post(f"/api/crexil/projects/{p['id']}/deliveries/review",
+                                   json={'node_ids': [t['id'] for t in takes], 'destination': str(target)})
+        answer = review.json()
+    assert review.status_code == 200 and not answer['ready'] and len(answer['items']) == 4
+    assert {item['filename'] for item in answer['items']} == {'hidden-take.png'}
+    assert all('blind run' in error for error in answer['errors'])
+    assert not {'s0_00001_.png', 'image-0.png'} & set(json.dumps(answer).split('"'))
 
 
 async def test_a_hosted_engine_with_an_unknown_tariff_refuses_the_whole_run(tmp_path, monkeypatch):
