@@ -133,14 +133,20 @@ AUDIO_ACTS = {"speak": ("speaking", "your text"),
 RUNNER_HELP = {"voice-runner": "tools/tts/README.md says how to start it."}
 
 
+def audio_label(engine: str, provider: str) -> str:
+    """An audio engine's display name, as its row names it, else its provider's."""
+    return (audio.engines().get(engine) or {}).get("name") or AUDIO_LABELS.get(provider, provider)
+
+
 def audio_cause(kind: str, *, provider: str, lane: str, engine: str,
                 verb: str | None) -> str | None:
-    """The audio lane's own words: the provider by its display name, the
-    act by its verb, never a frame or an image (law 3). None where the
-    shared words already fit (moderation, rate_limit, model_down, timeout,
-    interrupted)."""
-    name = AUDIO_LABELS.get(provider, provider)
-    act, yours = AUDIO_ACTS.get(verb or "", ("working", "your text"))
+    """The audio lane's own words: the provider or the engine by its display
+    name, never an id, never a frame or an image (law 3), and what the
+    outcome means for its charge and its next move (laws 4 and 5). None
+    where the shared words fit (moderation, rate_limit, model_down,
+    interrupted), which then name the engine by its display name too."""
+    name, label = AUDIO_LABELS.get(provider, provider), audio_label(engine, provider)
+    yours = AUDIO_ACTS.get(verb or "", ("working", "your text"))[1]
     if kind == "dead_key":
         return f"{name} turned the key away: nothing runs on {name} until the key is fixed"
     if kind == "unreachable":
@@ -149,14 +155,23 @@ def audio_cause(kind: str, *, provider: str, lane: str, engine: str,
                                           RUNNER_HELP.get(provider))))
         return f"{name} can't be reached: the network, most likely"
     if kind == "oom":
-        return (f"{engine} ran out of video memory: free the card (close what else "
+        return (f"{label} ran out of video memory: free the card (close what else "
                 "is holding it) and try again")
     if kind == "error":
-        return f"{engine} failed while {act}: the engine failed, not {yours}"
+        return f"{label} failed: the engine, not {yours}"
     if kind == "blank":
-        return f"{engine} finished, but no audio came back: the engine failed, not {yours}"
+        return f"{label} finished, but no audio came back: the engine, not {yours}"
     if kind == "charged_blank":
-        return f"{engine} took the job and billed it, but no audio came back"
+        return f"{label} took the job and billed it, but no audio came back"
+    if kind == "timeout":
+        if lane == "local":
+            return f"{label} gave no result in time"
+        lost = f"The answer from {label} was lost before it arrived. Its charge is unverified"
+        if verb == "speak":                  # the provider keeps speech in its history
+            return f"{lost}; collecting looks for the take without generating it again"
+        return f"{lost}, and this take cannot be collected"
+    if kind == "uncertain":
+        return f"{label} may have made this take, but its outcome could not be confirmed, so it was not sent again"
     return None
 
 
@@ -202,6 +217,7 @@ def plain_cause(kind: str, *, lane: str, engine: str,
         words = audio_cause(kind, provider=provider, lane=lane, engine=engine, verb=verb)
         if words:
             return words
+        engine = audio_label(engine, provider)
     if kind == "dead_key":
         return ("OpenRouter turned the key away — nothing external runs "
                 "until the key is fixed")
@@ -247,6 +263,9 @@ def plain_cause(kind: str, *, lane: str, engine: str,
         # and the bill check are the buttons' and the ledger's
         return (f"{engine} took the job and billed it, but no image came "
                 "back")
+    if kind == "uncertain":
+        return (f"{engine} may have made this take, but its outcome could not "
+                "be confirmed, so it was not sent again")
     return f"{engine} failed"
 
 

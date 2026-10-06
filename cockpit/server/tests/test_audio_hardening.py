@@ -150,6 +150,9 @@ async def test_a_lost_second_attempt_through_the_server_leaves_the_first_attempt
         (slot,) = lost['slots']
         assert (slot['kind'], slot['charged_usd']) == ('timeout', None)
         assert 'no take for this line' in slot['detail']
+        # The face names the engine by its display name, and the move that may still find the take.
+        assert slot['cause'] == ('The answer from ElevenLabs v4 was lost before it arrived. Its charge is '
+                                 'unverified; collecting looks for the take without generating it again')
         assert fake.calls('GET', '/v1/history/hist-A/audio') == []                 # the first take stays the first's
         counts = await accounting(store(), p['id'])
         assert counts['charged_usd'] == pytest.approx((len(SPOKEN['preview_text']) + len(LINE)) * 80 / 1e6)

@@ -249,20 +249,39 @@ STATUS_CODE = re.compile(r"\b[1-5]\d\d\b")
      "ElevenLabs can't be reached: the network, most likely"),
     ("unreachable", "local", "qwen3-tts", "voice-runner", "speak",
      "The local voice runner can't be reached. Is it running? tools/tts/README.md says how to start it."),
+    # an audio engine by its display name, never its id
     ("oom", "local", "qwen3-tts", "voice-runner", "voice-design",
-     "qwen3-tts ran out of video memory: free the card (close what else is holding it) and try again"),
+     "Qwen3-TTS 1.7B ran out of video memory: free the card (close what else is holding it) and try again"),
     ("error", "external", "elevenlabs-v4", "elevenlabs", "speak",
-     "elevenlabs-v4 failed while speaking: the engine failed, not your text"),
+     "ElevenLabs v4 failed: the engine, not your text"),
     ("error", "external", "elevenlabs-voice-design", "elevenlabs", "voice-design",
-     "elevenlabs-voice-design failed while designing the voice: the engine failed, not your description"),
+     "ElevenLabs Voice Design failed: the engine, not your description"),
     ("error", "external", "elevenlabs-sfx", "elevenlabs", "sfx",
-     "elevenlabs-sfx failed while making the sound: the engine failed, not your description"),
+     "ElevenLabs Sound Effects failed: the engine, not your description"),
     ("error", "local", "qwen3-tts", "voice-runner", "speak",
-     "qwen3-tts failed while speaking: the engine failed, not your text"),
+     "Qwen3-TTS 1.7B failed: the engine, not your text"),
     ("blank", "local", "qwen3-tts", "voice-runner", "speak",
-     "qwen3-tts finished, but no audio came back: the engine failed, not your text"),
+     "Qwen3-TTS 1.7B finished, but no audio came back: the engine, not your text"),
     ("charged_blank", "external", "elevenlabs-sfx", "elevenlabs", "sfx",
-     "elevenlabs-sfx took the job and billed it, but no audio came back"),
+     "ElevenLabs Sound Effects took the job and billed it, but no audio came back"),
+    # a lost answer says what its charge and its next move are (laws 3, 4 and 5)
+    ("timeout", "external", "elevenlabs-v4", "elevenlabs", "speak",
+     "The answer from ElevenLabs v4 was lost before it arrived. Its charge is unverified; collecting looks for the take "
+     "without generating it again"),
+    ("timeout", "external", "elevenlabs-voice-design", "elevenlabs", "voice-design",
+     "The answer from ElevenLabs Voice Design was lost before it arrived. Its charge is unverified, and this take cannot "
+     "be collected"),
+    ("timeout", "external", "elevenlabs-sfx", "elevenlabs", "sfx",
+     "The answer from ElevenLabs Sound Effects was lost before it arrived. Its charge is unverified, and this take cannot "
+     "be collected"),
+    ("timeout", "local", "qwen3-tts", "voice-runner", "speak", "Qwen3-TTS 1.7B gave no result in time"),
+    ("uncertain", "external", "elevenlabs-voice-design", "elevenlabs", "voice-design",
+     "ElevenLabs Voice Design may have made this take, but its outcome could not be confirmed, so it was not sent "
+     "again"),
+    ("rate_limit", "external", "elevenlabs-sfx", "elevenlabs", "sfx",
+     "ElevenLabs Sound Effects is holding us at the door — still rate limited after 3 tries"),
+    ("uncertain", "local", "klein", "comfy", "run",
+     "klein may have made this take, but its outcome could not be confirmed, so it was not sent again"),
 ])
 def test_a_failure_names_the_provider_that_failed(kind, lane, engine, provider, verb, expected):
     line = plain_cause(kind, lane=lane, engine=engine, frame=(1024, 1024), tries=3,
@@ -271,13 +290,14 @@ def test_a_failure_names_the_provider_that_failed(kind, lane, engine, provider, 
     assert not STATUS_CODE.search(line)            # law 3
 
 
-def test_audio_words_never_mention_frames_images_or_another_provider():
-    for kind in ("dead_key", "unreachable", "oom", "error", "blank", "charged_blank"):
+def test_audio_words_never_mention_frames_images_another_provider_or_an_engine_id():
+    for kind in ("dead_key", "unreachable", "oom", "error", "blank", "charged_blank", "timeout", "uncertain",
+                 "moderation", "rate_limit", "model_down", "interrupted", "restart"):
         for provider, lane, engine in (("elevenlabs", "external", "elevenlabs-v4"),
                                        ("voice-runner", "local", "qwen3-tts")):
             line = plain_cause(kind, lane=lane, engine=engine, frame=(512, 512),
                                provider=provider, verb="speak")
-            assert not re.search(r"frame|image|ComfyUI|OpenRouter", line), (kind, provider, line)
+            assert not re.search(r"frame|image|ComfyUI|OpenRouter|elevenlabs-|qwen3-tts", line), (kind, provider, line)
 
 
 # --- a provider's fault benches that provider only (law 1) ---
