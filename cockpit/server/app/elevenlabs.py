@@ -96,8 +96,9 @@ HISTORY_PAGES = 3
 # still counts as made from it, which also absorbs a sub-second clock difference.
 HISTORY_GRACE_S = 1
 ACCOUNT_TTL_S = 60.0
-# The label a save gives a voice, by which the account names it again.
-LABEL_KEY = 'crexil_generated_voice_id'
+# The label a save gives a voice, by which the account names it again. ElevenLabs refuses a
+# label key longer than 20 characters (400 invalid_labels).
+LABEL_KEY = 'crexil_gen_voice_id'
 NOTHING_SENT = 'Nothing was sent.'
 NOT_CHARGED = 'Nothing was charged.'
 UNVERIFIED = 'Its charge is unverified.'

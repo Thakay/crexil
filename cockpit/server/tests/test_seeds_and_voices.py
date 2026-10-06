@@ -33,7 +33,7 @@ pytestmark = pytest.mark.anyio
 ELEVEN_TOP = 2 ** 32 - 1
 SAVE = '/v1/text-to-voice'
 LABELLED = {'voices': [{'voice_id': 'voice-1', 'name': 'Crexil gen-0',
-                        'labels': {'source': 'crexil', 'crexil_generated_voice_id': 'gen-0'}}]}
+                        'labels': {'source': 'crexil', 'crexil_gen_voice_id': 'gen-0'}}]}
 
 
 def seeded(value=None, mode='fixed'):

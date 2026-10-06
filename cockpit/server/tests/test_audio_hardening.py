@@ -178,7 +178,7 @@ async def test_collecting_after_a_restart_never_looks_for_a_take_without_its_voi
 async def test_collecting_after_a_restart_finds_the_voice_by_its_label_and_binds_only_that_voice():
     labelled = {'voices': [{'voice_id': 'voice-9', 'name': 'Someone else'},
                            {'voice_id': 'voice-1', 'name': 'Renamed by the artist',
-                            'labels': {'crexil_generated_voice_id': 'gen-0'}}]}
+                            'labels': {'crexil_gen_voice_id': 'gen-0'}}]}
     fake = (FakeElevenLabs().on('GET', '/v1/voices', httpx.Response(200, json=labelled))
             .on('GET', '/v1/history', listing(('hist-other', {'voice_id': 'voice-OTHER'}), 'hist-mine'))
             .on('GET', '/v1/history/hist-mine/audio', httpx.Response(200, content=pcm())))

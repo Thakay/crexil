@@ -228,6 +228,11 @@ def receipt_of(outputs):
     return receipt, json.loads(receipt.data)
 
 
+async def test_the_label_a_save_gives_a_voice_fits_elevenlabs_key_limit():
+    """ElevenLabs refuses a label key longer than 20 characters (400 invalid_labels)."""
+    assert len(elevenlabs.LABEL_KEY) <= 20
+
+
 # --- Voice Design ---
 
 async def test_voice_design_sends_its_frozen_request_and_lands_three_designed_takes(rows, prices):
@@ -304,7 +309,7 @@ async def test_speech_saves_a_designed_preview_once_and_reads_with_its_seed(rows
     (save,) = fake.calls('POST', '/v1/text-to-voice')
     assert json.loads(save.content) == {
         'voice_name': 'Crexil gen-0', 'voice_description': DESCRIPTION, 'generated_voice_id': 'gen-0',
-        'labels': {'source': 'crexil', 'crexil_generated_voice_id': 'gen-0'}}
+        'labels': {'source': 'crexil', 'crexil_gen_voice_id': 'gen-0'}}
     reads = fake.calls('POST', '/v1/text-to-speech/voice-1/with-timestamps')
     assert len(reads) == 2
     for read in reads:
