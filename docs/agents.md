@@ -98,6 +98,10 @@ scripts/crexil.py post directions/RUN/submit --json '{"revision": 0, "review_tok
 scripts/crexil.py decisions PROJECT                 # the decision record, one JSON line per decision
 ```
 
+`scripts/seed_demo_project.py` is a worked example of the same client: it carries one character brief
+through image, voice, sound and 3D runs, prints each run's reviewed price before it sends anything, and
+spends only with `--live` and the exact total it reviewed.
+
 Each change prints its delivery id. After a connection failure, retry with `--request-id` and
 the same body.
 
