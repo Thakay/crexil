@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Launch the 3D engine runner (foreground). Service alternative:
-#   systemctl --user start 3d-runner
+# Launch the 3D engine runner (foreground). Service alternative: the example unit
+#   scripts/3d-runner.service, installed under a unit name no other installation on this machine uses.
 # Mirrors scripts/comfyui.sh: the GPU work stays native, the cockpit
 # reaches it over HTTP. Flags live here, not hardcoded.
 set -euo pipefail

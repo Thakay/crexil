@@ -265,7 +265,7 @@
         }
       },
       "price": "free: local GPU time; cost reads in minutes, not seconds",
-      "note": "Serves DECIMATE by RE-EXTRACTION, not by simplifying: a take keeps its voxel field, and this re-runs the bake at another triangle count (a fresh remesh, unwrap and texture bake rather than a collapse of the finished GLB). It has no seam floor, so it is the only route below gltfpack's, and it re-bakes the texture at a size of your choosing. Only its OWN takes, and only those that kept a field set. Measured 2026-08-29 on a 931,981-triangle lantern: 30,000 asked landed 28,007 in 14 s, where gltfpack on the same mesh floored at 362,918. Keeping the field costs the take a sidecar of 21-92 MB (per prop, sized by occupied voxels); the tray states it and purge frees it.",
+      "note": "Serves DECIMATE by RE-EXTRACTION, not by simplifying: a take keeps its voxel field, and this re-runs the bake at another triangle count (a fresh remesh, unwrap and texture bake rather than a collapse of the finished GLB). It has no seam floor, so it is the only route below gltfpack's, and it re-bakes the texture at a size of your choosing. Only its OWN takes, and only those that kept a field set. Measured 2026-08-29 on a 931,981-triangle lantern: 30,000 asked landed 28,007 in 14 s, where gltfpack on the same mesh floored at 362,918. Keeping the field costs the take a sidecar of 21-182 MiB (per prop, sized by occupied voxels); the tray states it and purge frees it.",
       "capabilities": {
         "mask": {
           "value": false,

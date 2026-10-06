@@ -62,15 +62,18 @@ or a sequence's limits.
 |---|---|---|
 | Discover engines, read projects, runs and the record | yes | `GET operations`, `GET projects/{id}`, `GET directions/{id}/run`, `GET projects/{id}/record` |
 | Create a project, prepare and review a run | yes | |
-| Submit a run | yes | Within the run's own limit and the project's |
+| Submit a run | yes | Free work anywhere; work that reserves money only in a project with a spending limit the artist set (`403` otherwise), within the run's own limit and the project's |
+| Create a sequence | default limits only | `403` when its limits differ from the default (16 attempts, $0, hard cap) |
+| Pause, resume or cancel a project, run or sequence | pause and cancel; resume free work only | `POST execution/{scope}/{id}`. `403` when the resume would send held attempts that reserve money, let a paused sequence that may spend send its next runs, or send a hidden run's attempts |
 | Change a project's or a sequence's spending limits | no | `403`. A limit decides how much money may move. Other project edits stay open to agents |
 | Cancel one attempt | yes | `POST attempts/{slot}/cancel` with the attempt number it saw. Stopping never spends; a sent paid request keeps its cell and its charge facts |
-| Resume the engine that holds an attempt | free work only | `POST attempts/{slot}/resume`. `403` when the held attempts it would send reserve money: resuming paid work is the artist's act |
+| Resume the engine that holds an attempt | free work only | `POST attempts/{slot}/resume`. `403` when the held attempts it would send reserve money: resuming paid work is the artist's act. Any attempt of a hidden run, whatever its price, answers `403` in one neutral line |
 | Propose takes or comment on a run, with a reason | yes | `POST projects/{id}/assessments`. Never changes the pick |
 | Set the displayed selection | through HTTP only | The MCP door leaves picking to the artist |
 | Reveal a blind run | no | `403`. Revealing would end the artist's blind comparison |
 | Prepare or transfer a delivery | no | `403`. Delivery is the artist's act. Reviewing a delivery is open to agents |
 | Start a voice session | no | `403` |
+| End a voice session | no | `403`. The artist who started it ends it; its minutes are at least the server's own time since the start, at most the session maximum |
 
 Agent-facing reads carry facts, ids, labels and reasons. They never carry a take's bytes or an
 address to fetch them. `GET directions/{id}/run` is the compact read of one run, made for agents.
@@ -78,7 +81,9 @@ It names takes as the grid does: the run's number, the cell's letters, and a lat
 number from 2, such as `3B` or `3B.2`; cells past `Z` continue as `3AA`, `3AB` and on.
 It holds no file addresses or waveform data, and a blind run names no engine until the artist
 reveals it. ElevenLabs' terms forbid using its audio as input to any machine learning, and the
-model behind an agent is one, so no agent tool hands audio to a model.
+model behind an agent is one, so no agent tool hands audio to a model. While any attempt of a blind run is
+queued, running or late, every cell of that run reads `running` with no takes, and the summary counts its
+attempts done; a hidden take's loudness waits for the reveal.
 
 A blind run compares at least two engines and is sent whole or not at all. Until the artist
 reveals it, its takes show only the run's creation time, and continuing from or reusing one of
