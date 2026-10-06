@@ -8,7 +8,9 @@ once, and a source purge or changed byte cannot widen the reviewed copy.
 
 A copy keeps its source's provider terms and audio facts, so every later check
 (review's terms refusal, a runner's preflight) sees the same restrictions: a
-copy never gains rights its source lacked (laws 12, 21).
+copy never gains rights its source lacked (laws 12, 21). A take whose blind run
+is still hidden is refused by review and by reuse in the same words, so no copy
+names its engine before the reveal.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
-from . import audio, config
+from . import audio, blind, config
 from .crexil_delivery import _digest, _plans
 from .crexil_store import Conflict, CreativeStore
 from .db import new_id, now_iso
@@ -50,9 +52,11 @@ async def _plan(db, wid: str, body):
     if body.source_project_id == wid:
         raise ValueError('Choose another project. Continue from material already in this project through its existing source.')
     source = await CreativeStore(db).project(body.source_project_id)
+    node = await db.get_node(body.node_id)
+    if node and node['workspace_id'] == source['id'] and await blind.is_hidden(db, node['turn_id']):
+        raise ValueError("This take's run is blind. Reveal the run before reusing its takes.")
     _, items = await _plans(db, source['id'], SimpleNamespace(node_ids=[body.node_id], destination=str(config.STAGING_DIR.resolve())))
     item = items[0]
-    node = await db.get_node(body.node_id)
     info = await db._one('SELECT * FROM material_info WHERE node_id=?', (node['id'],))
     info = dict(info) if info else None
     files = [file for file in item['files'] if file['source']]

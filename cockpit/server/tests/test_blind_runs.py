@@ -186,7 +186,7 @@ async def test_reveal_names_its_author_and_refuses_runs_that_are_not_blind(tmp_p
         for tid in (plain['id'], 'missing'):
             answer = await client.post(f'/api/crexil/turns/{tid}/reveal', json=command())
             assert answer.status_code == 404 and answer.json()['detail'] == 'This run is not a blind run in this project.'
-        _, turn, _ = await cast(client, p['id'], engines=(LOCAL,))
+        _, turn, _ = await cast(client, p['id'])
         artist = {'kind': 'human', 'name': 'Ada'}
         view = (await client.post(f"/api/crexil/turns/{turn['id']}/reveal", json=command(actor=artist))).json()
         assert view['revealed_by'] == artist and view['turn_id'] == turn['id']

@@ -28,7 +28,7 @@ from . import agent_door, audio, blind, config, decisions, wiring
 from .crexil_schemas import (CollectExecution, ExecutionGroupView, CreateDirection, CreateProject, DirectionState,
     DirectionView, DisplaySelection, ImportMaterial, ImportResult, OperationView,
     ExecutionReview, SubmitDirection, SubmittedDirection,
-    ProjectSnapshot, ProjectView, UpdateDirection, UpdateProject,
+    ProjectLimits, ProjectSnapshot, ProjectView, UpdateDirection, UpdateProject,
     ImportOperation, InspectOperation, RegistrationView, UpdateOperation, OperationDefinition,
     MaskView, MaskSourceView, SaveMask, ControlExecution, ExecutionControlView,
     Command, CreateSequence, UpdateSequence, UpdateSequenceStep, StartSequence, DecideSequence, SequenceView, SequenceReview,
@@ -309,11 +309,18 @@ async def end_voice_session(sid: str, body: EndVoiceSession):
 
 @router.patch('/projects/{wid}', response_model=ProjectView)
 async def update_project(wid: str, body: UpdateProject):
+    # A project's spending limits are the artist's: an agent's edit that would
+    # change them is refused before anything is recorded (laws 22 and 23). An
+    # agent may still rename the project or edit its brief and instructions.
     async def apply():
         creative = store()
         project = await creative.project(wid)
         if project['revision'] != body.revision:
             raise Conflict('The project changed in another view. Reload before saving your changes.')
+        if (body.actor.kind != 'human' and body.limits is not None
+                and body.limits.model_dump() != {**ProjectLimits().model_dump(), **project['limits']}):
+            raise HTTPException(403, "Changing a project's spending limits is the artist's act: a limit decides how "
+                                     'much money may move. An agent may propose a new limit; the artist sets it.')
         await creative.db.rename_workspace(wid, body.name.strip())
         await creative.db.conn.execute(
             'INSERT INTO project_details(workspace_id,brief,instructions,revision,limits_json) VALUES(?,?,?,?,?) '
@@ -777,10 +784,12 @@ async def output_file(oid: str):
         raise HTTPException(404, 'This file is unavailable. Its execution record remains.')
     turn = await store().db._one('SELECT s.turn_id FROM execution_groups g JOIN slots s ON s.id=g.slot_id WHERE g.id=?',
                                  (member['group_id'],))
-    if turn and await blind.is_hidden(store().db, turn['turn_id']) and not blind.may_serve(dict(member)):
+    hidden = bool(turn) and await blind.is_hidden(store().db, turn['turn_id'])
+    if hidden and not blind.may_serve(dict(member)):
         raise HTTPException(404, 'This file is withheld while its run is blind. Reveal the run to read it.')
+    # A blind run's take downloads under the neutral name its group lists, never the engine's own.
     return FileResponse(member['output_path'], media_type=member['media_type'],
-                        filename=Path(member['filename']).name)
+                        filename=blind.output_name(dict(member)) if hidden else Path(member['filename']).name)
 
 
 @router.post('/attempts/{sid}/collect', response_model=ExecutionGroupView)

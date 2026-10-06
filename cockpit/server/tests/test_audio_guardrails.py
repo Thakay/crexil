@@ -163,9 +163,10 @@ async def test_spending_that_moved_since_review_refuses_an_audio_run_that_no_lon
         await settle_turn(other, until={'landed'})
 
 
-async def test_an_unknown_audio_price_is_never_sent_and_never_counted_as_zero(tmp_path, monkeypatch):
-    # One engine with no published price, beside a free local engine. The unknown
-    # price blocks its own operation before dispatch; it is never priced at zero.
+async def test_an_unknown_audio_price_refuses_the_whole_run_and_is_never_counted_as_zero(tmp_path, monkeypatch):
+    # One engine with no published price, beside a free local engine. An unknown
+    # price counts as over the cap, so the whole run is refused before any engine
+    # is called, the free one included (law 22); it is never priced at zero.
     from test_audio_contract import REPO
     matrix = json.loads((REPO / 'configs/engines.json').read_text())
     unpriced = dict(next(r for r in matrix['engines'] if r['id'] == 'elevenlabs-voice-design'),
@@ -173,21 +174,23 @@ async def test_an_unknown_audio_price_is_never_sent_and_never_counted_as_zero(tm
     del unpriced['tariffs']
     blocked = ('Unpriced design: This engine has no published price. '
                'An unknown price counts as over the spending limit.')
+    whole = ('An unknown price counts as over the spending limit, so nothing in this run is sent. '
+             'Remove Design voice · Unpriced design from the run, or choose an engine with a published price.')
     async with booted_audio(tmp_path, monkeypatch, rows=[unpriced]) as (client, fakes):
         p = await project(client)
         alone = [('audio:voice-design:test-unpriced-design', 1, SPOKEN)]
         check, refused = await submit(client, await prepare(client, p['id'], 'voice-design', DESCRIPTION, alone))
-        assert not check['ready'] and any(blocked in e for e in check['errors'])
+        assert not check['ready'] and any(blocked in e for e in check['errors']) and whole in check['errors']
         assert refused.status_code == 422 and blocked in refused.json()['detail']
 
         beside = alone + [(LOCAL_DESIGN, 1, SPOKEN)]
-        check = await reviewed(client, await prepare(client, p['id'], 'voice-design', DESCRIPTION, beside))
-        assert (check['ready_attempts'], check['blocked_attempts']) == (1, 1)
+        check, refused = await submit(client, await prepare(client, p['id'], 'voice-design', DESCRIPTION, beside))
+        assert not check['ready'] and (check['ready_attempts'], check['blocked_attempts']) == (0, 2)
         assert check['reserved_micro_usd'] == 0 and any(blocked in e for e in check['errors'])
-        turn, takes = await landed(client, await prepare(client, p['id'], 'voice-design', DESCRIPTION, beside))
-        # Only the priced work ran: the unknown price reached no engine.
-        assert {s['engine'] for s in turn['slots']} == {'qwen3-tts'} and len(takes) == 3
-        assert fakes['elevenlabs'].requests == [] and len(fakes['voice-runner'].requests) == 1
+        assert whole in check['errors'] and refused.status_code == 422 and whole in refused.json()['detail']
+        # No partial run: no engine was called, the free one included, and no run was recorded.
+        assert fakes['elevenlabs'].requests == fakes['voice-runner'].requests == []
+        assert await store().list_turns(p['id']) == []
 
 
 # --- 2. one dead provider stops only itself, with one cause (laws 1, 3, 4, 5) ---
@@ -407,9 +410,6 @@ async def test_a_blind_runs_failure_names_no_engine_on_any_read_and_keeps_its_ne
         assert leaks(reads) == {name: [] for name in reads}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "F10 (V1b S-2): a hidden take held by a provider bench keeps that bench's scope, 'provider:elevenlabs', in its "
-    "slot.held event, and the engine.benched event lists the hidden slot beside the provider's own cause."))
 async def test_a_blind_take_held_by_a_provider_bench_names_no_provider_on_any_read(tmp_path, monkeypatch):
     fake = FakeElevenLabs().on('POST', '/v1/text-to-voice/design', refusal(401, 'invalid_api_key'))
     async with boot(tmp_path, monkeypatch, fake, in_flight=1) as (client, _):
@@ -434,16 +434,25 @@ async def test_a_blind_runs_refusal_names_no_engine(tmp_path, monkeypatch):
 
 
 async def blind_take_held_by_a_lowered_limit(tmp_path, monkeypatch):
-    """A blind run whose second attempt a lowered project limit holds before it is
-    sent; returns the held slot as the snapshot reads it."""
+    """A blind run of two paid designs and a free local one, whose second paid
+    attempt a lowered project limit holds before it is sent; returns the held slot
+    as the snapshot reads it."""
     gate = asyncio.Event()
     provider = FakeAudioExecutor('elevenlabs', 'external', gate=gate, max_concurrency=1)
     async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': provider}) as (client, _):
-        p = await limits(client, await project(client), spending_limit_usd=.006, spending_policy='published_tariff')
-        turn_id = await accepted(client, await prepare(client, p['id'], 'sfx', 'Anvil', [(ELEVEN_SFX, 2, SOUND)],
+        p = await limits(client, await project(client), spending_limit_usd=2 * DESIGN_USD,
+                         spending_policy='published_tariff')
+        turn_id = await accepted(client, await prepare(client, p['id'], 'voice-design', DESCRIPTION,
+                                                       [(ELEVEN_DESIGN, 2, SPOKEN), (LOCAL_DESIGN, 1, SPOKEN)],
                                                        blind=True))
-        await until(lambda: asyncio.sleep(0, provider.requests))
-        await limits(client, p, spending_limit_usd=.003, spending_policy='published_tariff')
+
+        async def sent_and_local_landed():
+            turn = await store().get_turn(turn_id)
+            local = [s['status'] for s in turn['slots'] if s['engine'] == 'qwen3-tts']
+            return provider.requests and local == ['landed']
+
+        await until(sent_and_local_landed)
+        await limits(client, p, spending_limit_usd=DESIGN_USD, spending_policy='published_tariff')
         gate.set()
         await settle_turn(turn_id, until={'landed', 'held'})
         snapshot = (await client.get(f"/api/crexil/projects/{p['id']}")).json()
@@ -458,14 +467,10 @@ async def test_a_blind_take_held_by_a_limit_names_no_engine(tmp_path, monkeypatc
     assert held['identity_hidden'] is True and not names_an_engine(held)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "blind.mask replaces every cause of a hidden take with plain_cause(kind); a take held by a spending "
-    "limit has no failure kind, so it reads 'This take did not land. Reveal the run to read the engine's "
-    "own words.' That loses the limit reason, which names no engine, calls a held take one that did not "
-    "land, and asks for a reveal that blindness does not need (laws 3 and 4)."))
 async def test_a_blind_take_held_by_a_limit_still_says_which_limit_holds_it(tmp_path, monkeypatch):
+    # The limit's own words name no engine, so they stay; a held take asks for no reveal (laws 3, 4).
     held = await blind_take_held_by_a_lowered_limit(tmp_path, monkeypatch)
-    assert held['cause'] == 'Project spending limit is $0.003; charged and reserved spending totals $0.006.'
+    assert held['cause'] == 'Project spending limit is $0.01032; charged and reserved spending totals $0.02064.'
 
 
 # --- 6. a refusal reads the adapter's own plain words (laws 3, 4) ---

@@ -70,12 +70,16 @@ async def operation(client, op_id):
     return next(o for o in ops if o['id'] == op_id)
 
 
-async def draft(client, wid, op_id, prompt, *, controls=None, refs=(), count=1, policy='hard_cap', blind_run=False):
+async def draft(client, wid, op_id, prompt, *, controls=None, refs=(), count=1, policy='hard_cap', blind_run=False,
+                also=()):
+    """One draft run of `op_id`; `also` adds more engines, (operation id, controls), one attempt each."""
     op = await operation(client, op_id)
+    operations = [{'operation_id': op_id, 'revision': op['revision'], 'count': count, 'controls': controls or {}}]
+    for other, other_controls in also:
+        operations.append({'operation_id': other, 'revision': (await operation(client, other))['revision'],
+                           'count': 1, 'controls': other_controls})
     setup = {'action': op['actions'][0], 'prompt': prompt, 'references': [{'node_id': n} for n in refs],
-             'operations': [{'operation_id': op_id, 'revision': op['revision'], 'count': count,
-                             'controls': controls or {}}],
-             'spending_policy': policy, 'blind': blind_run}
+             'operations': operations, 'spending_policy': policy, 'blind': blind_run}
     response = await client.post(f'/api/crexil/projects/{wid}/directions', json=command(title=op['label'], setup=setup))
     assert response.status_code == 201, response.text
     return response.json()
@@ -268,6 +272,10 @@ async def test_speech_takes_a_voice_take_and_refuses_restricted_or_wrong_sources
 
 # --- blind runs ---
 
+# A blind run compares at least two engines: the local designer beside a free test copy of ElevenLabs'.
+BESIDE = (('audio:voice-design:test-elevenlabs-design', {'preview_text': PREVIEW}),)
+
+
 def masking(seen):
     def mask(kind, item):
         seen.append(kind)
@@ -287,14 +295,15 @@ async def test_blind_runs_are_recorded_arranged_and_every_read_passes_the_mask(t
     monkeypatch.setattr(blind, 'mask', masking(seen))
     monkeypatch.setattr(blind, 'arrange', lambda specs: list(reversed(specs)))
     monkeypatch.setattr(blind, 'selection_facts', lambda *_: asyncio.sleep(0, result={'blind': True}))
-    async with booted_audio(tmp_path, monkeypatch) as (client, _):
+    async with booted_audio(tmp_path, monkeypatch, rows=[free_design_row()]) as (client, _):
         p = await project(client)
         _, seen_takes = await designed(client, p['id'])
         direction = await draft(client, p['id'], 'audio:voice-design:qwen3-tts', 'A gruff dwarf blacksmith',
                                 controls={'preview_text': PREVIEW, 'seed': {'mode': 'fixed', 'value': 100}},
-                                count=2, blind_run=True)
+                                count=2, blind_run=True, also=BESIDE)
         turn, hidden = await submit(client, direction)
-        assert [s['seed'] for s in sorted(turn['slots'], key=lambda s: s['pos'])] == [101, 100]   # arranged once
+        local = [s['seed'] for s in sorted(turn['slots'], key=lambda s: s['pos']) if s['engine'] == 'qwen3-tts']
+        assert local == [101, 100]                                                  # arranged once
         snapshot = (await client.get(f"/api/crexil/projects/{p['id']}")).json()
         run = next(r for r in snapshot['blind_runs'] if r['turn_id'] == turn['id'])
         assert run['revealed'] is False and run['actor'] == {'kind': 'human', 'name': 'Artist'}
@@ -334,10 +343,10 @@ async def test_blind_queue_reads_pass_the_mask_while_takes_run(tmp_path, monkeyp
     monkeypatch.setattr(blind, 'mask', masking(seen))
     gate = asyncio.Event()
     held = {'voice-runner': FakeAudioExecutor('voice-runner', 'local', gate=gate)}
-    async with booted_audio(tmp_path, monkeypatch, executors=held) as (client, _):
+    async with booted_audio(tmp_path, monkeypatch, rows=[free_design_row()], executors=held) as (client, _):
         p = await project(client)
         direction = await draft(client, p['id'], 'audio:voice-design:qwen3-tts', 'A voice',
-                                controls={'preview_text': PREVIEW}, blind_run=True)
+                                controls={'preview_text': PREVIEW}, blind_run=True, also=BESIDE)
         check = await reviewed(client, direction)
         await client.post(f"/api/crexil/directions/{direction['id']}/submit",
                           json=command(revision=check['revision'], review_token=check['token']))
@@ -410,15 +419,15 @@ async def test_free_collection_asks_an_executor_that_offers_it(tmp_path, monkeyp
 
 async def test_backups_keep_audio_facts_and_blind_runs(tmp_path, monkeypatch):
     from test_crexil_restore import backup_upload, restored
-    async with booted_audio(tmp_path, monkeypatch) as (client, _):
+    async with booted_audio(tmp_path, monkeypatch, rows=[free_design_row()]) as (client, _):
         p = await project(client)
-        await designed(client, p['id'], blind_run=True)
+        await designed(client, p['id'], blind_run=True, also=BESIDE)
         upload, _ = await backup_upload(client, p['id'])
         copy = await restored(client, upload)
         assert copy['project']['id'] != p['id']
         facts = await store().audio_facts(copy['project']['id'])
         assert sorted(facts) == sorted(n['id'] for n in copy['nodes'])
-        assert [facts[n['id']]['container'] for n in copy['nodes']] == ['wav'] * 3
+        assert [facts[n['id']]['container'] for n in copy['nodes']] == ['wav'] * 6
         assert len(copy['blind_runs']) == 1 and copy['blind_runs'][0]['turn_id'] == copy['turns'][0]['id']
         assert copy['blind_runs'][0]['revealed'] is False          # a restored blind run stays blind
         assert all(n['identity_hidden'] and n['audio']['container'] is None for n in copy['nodes'])

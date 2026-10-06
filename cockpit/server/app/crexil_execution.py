@@ -10,6 +10,14 @@ Submission and its receipt commit with every prepared slot before scheduling.
 A delivered command can only adopt that same committed turn, including after
 restart. Estimates never count as enforceable spending bounds. Preset zero-cost
 attestations apply only to the exact reviewed workflow bytes.
+
+A run is sent whole or not at all when an engine's price is unknown: an unknown
+price counts as over every cap, so no attempt of the run is sent (law 22). A
+blind run compares at least two engines and is never narrowed to the ones that
+are ready. A source whose blind run is still hidden is refused before any of
+its facts is read, so no review line and no frozen request names its engine.
+Each take's runtime files are named by its frozen grid position, after a blind
+run is arranged.
 """
 
 from __future__ import annotations
@@ -115,6 +123,23 @@ def catalogue(stack, graphs: dict | None = None) -> list[dict]:
     return results + crexil_mesh.catalogue(stack) + crexil_audio.catalogue(stack)
 
 
+def names(labels: list[str]) -> str:
+    """Labels as one plain list: 'A', 'A and B', 'A, B and C'."""
+    return labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
+
+
+def name_files(specs: list[dict], token: str) -> None:
+    """Name each take's runtime files by its frozen grid position, so no file
+    name carries the order of a blind run's takes before it was arranged."""
+    for pos, spec in enumerate(specs):
+        graph = spec.get('submitted_graph') or {}
+        if 'region_plan' in graph:
+            for step in graph['region_plan']['passes']:
+                presets.set_save_prefix(step['graph'], f"cockpit/v4/{token}/s{pos}p{step['idx']}")
+        elif graph and 'mesh_job' not in graph:
+            presets.set_save_prefix(graph, f'crexil/{token}/s{pos}')
+
+
 def strict_value(spec: dict, value):
     key, typ = spec['key'], spec.get('type')
     if typ in ('int', 'float'):
@@ -186,10 +211,17 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
     source_nodes = []
     mesh_action = setup.action in crexil_mesh.ACTIONS
     audio_action = setup.action in crexil_audio.ACTIONS
+    hidden = await blind.hidden_turns(stack.db, direction['workspace_id'])
+    hidden_source = False
     for ref in setup.references:
         node = await stack.db.get_node(ref.node_id)
         if not node or node['workspace_id'] != direction['workspace_id'] or node['purged_at'] or not Path(node['output_path']).is_file():
             errors.append(f'Source {ref.node_id} is unavailable. Restore or replace it.')
+            continue
+        if node['turn_id'] in hidden:
+            # Its terms, voice and length would each tell its engine apart, so a
+            # hidden take is read only after its run's reveal.
+            hidden_source = True
             continue
         if not mesh_action and not audio_action and node['payload'] != 'image':
             errors.append('This action needs image sources. Use a mesh operation for 3D material.')
@@ -199,6 +231,8 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
             continue
         source_nodes.append(node)
         sources.append({'node_id': node['id'], 'sha256': digest})
+    if hidden_source:
+        errors.append("This take's run is blind. Reveal it to continue from its takes.")
     if len({r.node_id for r in setup.references}) != len(setup.references):
         errors.append('A source is listed more than once.')
     if setup.action == 'generate' and setup.references:
@@ -215,7 +249,7 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
         errors.append(f'This run asks for {count} attempts; its current limit is {limit}.')
     graphs = {}
     region_prepared = None
-    if setup.action == 'region':
+    if setup.action == 'region' and not hidden_source:
         from . import crexil_regions
         try:
             region_prepared = await crexil_regions.plan(stack.db, direction['workspace_id'], setup,
@@ -231,6 +265,7 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
     chosen, seen = [], set()
     maximum = Decimal('0')
     unknown = False
+    unpriced = []              # the engines whose price is unknown
     uses_tariff = False
     for choice in setup.operations:
         errors = []
@@ -253,7 +288,12 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
         hosted_model = stack.provider_catalog.selectable().get(choice.operation_id)
         if bound is None and not hosted_model and not op.get('audio_verb'):
             unknown = True
+            unpriced.append(op['label'])
             errors.append(f"{op['label']} has no enforceable cost bound. Its estimate cannot protect this spending limit.")
+        if hidden_source:
+            # Compiling reads the sources; a hidden one waits for its reveal.
+            chosen[-1].update(ready=False, errors=errors)
+            continue
         if op.get('mesh_kind'):
             try:
                 envelope = crexil_mesh.compile_request(op, setup, choice, source_nodes)
@@ -275,7 +315,9 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
                 if compiled is not None:
                     compiled[choice.operation_id] = envelope
             except (ValueError, OSError) as exc:
-                unknown = unknown or isinstance(exc, crexil_budget.UnknownPrice)
+                if isinstance(exc, crexil_budget.UnknownPrice):
+                    unknown = True
+                    unpriced.append(op['label'])
                 errors.append(f"{op['label']}: {exc}")
         elif choice.operation_id in stack.catalog:
             try:
@@ -351,6 +393,8 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
                 uses_tariff = uses_tariff or not errors
             except ValueError as exc:
                 unknown = True
+                if isinstance(exc, crexil_budget.UnknownPrice):
+                    unpriced.append(op['label'])
                 errors.append(f"{op['label']}: {exc}")
         elif choice.operation_id in registrations:
             item = registrations[choice.operation_id]
@@ -373,6 +417,22 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
         chosen[-1].update(ready=not errors, errors=errors)
         if not errors:
             maximum += Decimal(str(bound)) * choice.count
+    if unpriced:
+        # Law 22: an unknown price counts as over the cap, so the whole run is
+        # refused before any engine is called; no partial run is sent.
+        global_errors.append(f'An unknown price counts as over the spending limit, so nothing in this run is sent. '
+                             f'Remove {names(unpriced)} from the run, or choose an engine with a published price.')
+    if setup.blind:
+        compared = list(dict.fromkeys(c.operation_id for c in setup.operations))
+        waiting = [op.get('label') or op['id'] for op in chosen if op['errors']]
+        if len(compared) < 2:
+            global_errors.append('A blind run compares at least two engines. Add another engine, or turn blind off.')
+        elif waiting:
+            # Never narrowed to the engines that are ready: a blind run of one engine names it.
+            global_errors.append(f"A blind run sends all of its engines or none, and {names(waiting)} "
+                                 f"{'is' if len(waiting) == 1 else 'are'} not ready. Make "
+                                 f"{'it' if len(waiting) == 1 else 'them'} ready, or remove "
+                                 f"{'it' if len(waiting) == 1 else 'them'} from the run.")
     if maximum > Decimal(str(setup.spending_limit_usd)):
         global_errors.append(f'The reserved ${maximum} exceeds the ${setup.spending_limit_usd} spending limit.')
     # Everything above depends on the request alone; what follows also depends on
@@ -515,8 +575,6 @@ async def freeze(stack, did: str, body, *, staged_directories: list | None = Non
                 graph = stamp_take(base, seed, token, len(specs))
             else:
                 presets.patch_seed(graph, seed, seed_targets, capability)
-            if capability != 'region':
-                presets.set_save_prefix(graph, f'crexil/{token}/s{len(specs)}')
             specs.append({'engine': op['id'], 'seed': seed, 'submitted_graph': graph,
                           'committed_usd': op['maximum_usd_per_attempt'],
                           'dials': {**applied, 'parents': parents, 'capability': capability,
@@ -529,6 +587,7 @@ async def freeze(stack, did: str, body, *, staged_directories: list | None = Non
                                                'output_ports': op.get('output_ports', [])}}})
     if setup.blind:
         specs = blind.arrange(specs)
+    name_files(specs, token)
     frames = [[snapshot['region']['source']['width'], snapshot['region']['source']['height']] for s in specs] if capability == 'region' else [None if 'mesh_job' in (s.get('submitted_graph') or {}) else _frame_of(s['dials']) for s in specs]
     if setup.action in crexil_mesh.ACTIONS:
         from .api_v4_mesh import _refuse_if_disk_cannot_hold_meshes
