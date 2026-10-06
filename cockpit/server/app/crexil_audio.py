@@ -116,8 +116,7 @@ def limitations(row: dict, verb: str) -> list[str]:
     if row.get('lane') == 'local':
         notes.append('Local operations share one queue with image generation. No provider charge.')
     else:
-        notes.append(f"Text and audio go to {audio_executors.LABELS.get(row.get('provider'), row.get('provider'))} "
-                     f"at {destination(row.get('provider'))}. Charges follow its published tariff, which is not a hard cap.")
+        notes.append("Charges follow the provider's published tariff, which is not a hard cap.")
     if (found := audio.terms(row)) and found.get('reason'):
         notes.append(found['reason'])
     if takes(row, verb) > 1:

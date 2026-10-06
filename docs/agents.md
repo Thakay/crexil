@@ -141,7 +141,7 @@ Door errors give the server's plain line, then the next move, then a stable kind
 ## The voice director
 
 The voice director is the second agent door: an ElevenLabs Agents conversation in a column at the right of
-the project surface, configured in `tools/voice-director/`. Its tools call the same shared actions as
+the project surface, opened from `VOICE DIRECTOR ›` in the top bar and configured in `tools/voice-director/`. Its tools call the same shared actions as
 `agent:voice-director`; a paid run and a pick wait for the artist's click. During a session the microphone
 audio and what the director reads about the project (the brief, run prompts, take labels and reasons) go to
 ElevenLabs and the agent's language model, and ElevenLabs keeps each conversation for 7 days. Take audio never
