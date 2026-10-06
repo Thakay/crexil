@@ -9,7 +9,7 @@ import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createStore, useStore, type StoreApi } from 'zustand';
 import { player, usePlayer } from '../audio';
-import { HUMAN, message, money, type Actor } from '../crexil/api';
+import { artist as browserArtist, message, money, type Actor } from '../crexil/api';
 import { ViewContext } from '../crexil/view';
 import { door as httpDoor, type Door, type VoiceSession, type VoiceUsage } from './door';
 import { plain } from './guard';
@@ -19,7 +19,7 @@ import css from './VoiceDirector.module.css';
 
 export type DirectorProps = {
   projectId: string;
-  /** Who confirms runs and picks, and starts and ends sessions. */
+  /** Who confirms runs and picks, and starts and ends sessions: by default, the artist this browser names. */
   artist?: Actor;
   door?: Door;
   onClose(): void;
@@ -52,7 +52,7 @@ export default function Director(props: DirectorProps) {
   return <ConversationProvider><Session {...props}/></ConversationProvider>;
 }
 
-function Session({projectId, artist = HUMAN, door = httpDoor, onClose}: DirectorProps) {
+function Session({projectId, artist = browserArtist(), door = httpDoor, onClose}: DirectorProps) {
   const [usage, setUsage] = useState<VoiceUsage | null>(null);
   const [session, setSession] = useState<VoiceSession | null>(null);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);

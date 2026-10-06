@@ -21,6 +21,7 @@ import { attemptFace, blindFace, sharedCauses, type AttemptFaceVM, type QueueFac
 import { auditionTakes } from './audition';
 import { isWithheld, withheldRuns } from './blind';
 import { RoomLine, useFastPick, useRoomAudition } from './GridRoom';
+import { VoiceDirectorPanel } from '../voice-director';
 import { SequenceRoom } from './SequenceRoom';
 import { DeliveryRoom } from './DeliveryRoom';
 import { BackupRoom } from './BackupRoom';
@@ -390,6 +391,7 @@ function ProjectWorkspace({id}: {id: string}) {
     {group&&<OutputGroup group={group} close={()=>store.getState().closeGroup()} refresh={refresh} inspect={id=>{store.getState().closeGroup();inspectNode(id);}}/>}
     {data.execution_controls?.find(control=>control.scope==='project')&&<ExecutionControls
       control={data.execution_controls.find(control=>control.scope==='project')!} slots={turns.flatMap(turn=>turn.slots)} label="Project" refresh={refresh} pendingWork={data.sequences?.some(sequence=>sequence.state==='active'&&sequence.steps.some(step=>step.state!=='complete'))}/>}
+    <VoiceDirectorPanel projectId={id}/>
     <div className={s.queue}><span>{activeSlots.length} active or unresolved · Local engines take turns on one GPU</span><span>{busy ? 'Saving work…' : 'Changes stay in this project'}</span></div>
   </>;
 }

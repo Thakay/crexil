@@ -73,7 +73,11 @@ export default defineConfig({
       // Keys are blank whatever the shell or a checkout's .env holds: an
       // empty variable is set, so the server's .env loading never fills it.
       OPENROUTER_API_KEY: "",
-      ELEVENLABS_API_KEY: "",
+      // ElevenLabs gets a placeholder key at a closed port, so its operations
+      // are ready and a blind voice run has two engines; the scripted
+      // executors never call ElevenLabs, and a real key never reaches here.
+      ELEVENLABS_API_KEY: "harness-placeholder",
+      ELEVENLABS_URL: "http://127.0.0.1:9",
       // B4's bill re-asks come "over about a minute" in production (20 s
       // gaps); the trust-cases spec watches them through the 2 s polls, so
       // the gap is 4 s here — long enough to be seen, short enough to wait

@@ -475,6 +475,11 @@
       },
       "price": "Published tariff: the preview line's characters at the design model's speech rate, once per attempt ($0.08 per 1,000 characters list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
       "note": "Designs three voice previews from a description. A preview becomes a saved ElevenLabs voice the first time it speaks, which uses one of the account's voice slots.",
+      "notes": {
+        "voice-design": [
+          "ElevenLabs receives the voice description and the preview line. A preview you speak with becomes a saved voice in your ElevenLabs account and uses one of its voice slots."
+        ]
+      },
       "seed_range": [0, 4294967295],
       "capabilities": {
         "seed": {
@@ -564,6 +569,11 @@
       },
       "price": "Published tariff: $0.08 per 1,000 characters of the line (list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
       "note": "Reads lines in a voice designed or saved at ElevenLabs. v4 honours stability and similarity only.",
+      "notes": {
+        "speak": [
+          "ElevenLabs receives each line and keeps the speech in your ElevenLabs history, so a lost take can be collected without paying again."
+        ]
+      },
       "seed_range": [0, 4294967295],
       "capabilities": {
         "seed": {
@@ -654,6 +664,11 @@
       },
       "price": "Published tariff: $0.12 per minute of requested sound ($0.002 per second, list price, read 2026-10-05). A tariff reserves expected spend; it is not a hard cap.",
       "note": "One sound per call; variations are separate attempts. 48 kHz PCM output needs a plan that allows it.",
+      "notes": {
+        "sfx": [
+          "ElevenLabs receives the sound description."
+        ]
+      },
       "capabilities": {
         "seed": {
           "value": false,
@@ -761,6 +776,14 @@
       },
       "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
       "note": "Open weights (Apache-2.0) run by the local voice runner in its own environment. Designs a voice from a description, then speaks new lines cloned from a designed take of at least 3 seconds. It clones only takes made or imported in Crexil.",
+      "notes": {
+        "voice-design": [
+          "The description, the preview line and the takes stay with the local voice runner on this machine."
+        ],
+        "speak": [
+          "The line and the voice take stay with the local voice runner on this machine."
+        ]
+      },
       "capabilities": {
         "seed": {
           "value": true,

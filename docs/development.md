@@ -104,6 +104,13 @@ one mode only skips itself in the other, with its reason. `npm run e2e` runs the
 place, with state in `.staging/e2e`. Specs take store, promote and screenshot paths from
 `cockpit/web/e2e/paths.ts`.
 
+`crexil-audio.spec.ts` runs blind voice casting end to end on the scripted executors: it prepares a
+blind voice-design run, auditions it from the keyboard, picks a take with a reason, reveals the run
+and reads the record and its export. Every voice-design operation the harness offers takes part;
+scripted audio takes are four-second tones. The harness suite sets a placeholder
+`ELEVENLABS_API_KEY`, with `ELEVENLABS_URL` on a closed port, so the ElevenLabs operations are
+ready; the scripted executors never call ElevenLabs.
+
 ## 4. Running an isolated instance
 
 An instance is its store, its staging folder, its promote folder and its port. By default the store
