@@ -3,7 +3,7 @@
 import {useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
-import {ActionError,command,label,message,result} from './api';
+import {command,isDefiniteRefusal,label,message,result} from './api';
 import {MaterialThumbnail} from './MaterialThumbnail';
 import s from './Filmstrip.module.css';
 
@@ -39,7 +39,7 @@ export function ReuseRoom({wid,close,chooseFiles,refresh,inspect}:{wid:string;cl
       const copied=await result(fetchClient.POST('/api/crexil/projects/{wid}/reuse',{params:{path:{wid}},body}));
       setSaved(copied);clear();refresh();
     }catch(err){
-      if(err instanceof ActionError&&[404,409,422].includes(err.status??0)){clear();setReview(null);}
+      if(isDefiniteRefusal(err)){clear();setReview(null);}
       setError(message(err));
     }finally{setBusy(false);}
   };

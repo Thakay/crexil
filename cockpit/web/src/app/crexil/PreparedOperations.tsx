@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
-import {ActionError,blankPreparation,command,message,money,projectHref,result,type Operation,type Preparation} from './api';
+import {blankPreparation,command,isDefiniteRefusal,message,money,projectHref,result,type Operation,type Preparation} from './api';
 import s from './Filmstrip.module.css';
 
 type Pending={project:string;body:components['schemas']['CreateDirection']};
@@ -31,7 +31,7 @@ export function PreparedOperations({project,openRegistration}:{project:string;op
       if(retained()?.body.request_id===request.body.request_id)sessionStorage.removeItem(pendingKey);
       if(mounted.current){setPending(null);location.hash=`${projectHref(request.project)}?draft=${saved.id}`;}
     }catch(error){
-      if(error instanceof ActionError&&error.status&&error.status>=400&&error.status<500&&error.status!==408&&retained()?.body.request_id===request.body.request_id){sessionStorage.removeItem(pendingKey);if(mounted.current)setPending(null);}
+      if(isDefiniteRefusal(error)&&retained()?.body.request_id===request.body.request_id){sessionStorage.removeItem(pendingKey);if(mounted.current)setPending(null);}
       if(mounted.current)setError(message(error));
     }finally{if(mounted.current)setBusy(false);}
   };

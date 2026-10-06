@@ -1,12 +1,14 @@
 // Setup reads configured adapters; credentials use the existing guarded local
 // setup API. Opening this room never changes a connection or requests generation.
-import {useEffect,useState} from 'react';
+import {useState} from 'react';
 import {$api,fetchClient} from '../../api/client';
+import {useHash} from '../routes';
 import {message,projectHref,result} from './api';
+import {useEscapeLayer} from './keys';
 import s from './Filmstrip.module.css';
 
 export function ConnectionsRoom() {
-  const project=new URLSearchParams(location.hash.split('?')[1]).get('project')??'';
+  const project=new URLSearchParams(useHash().split('?')[1]).get('project')??'';
   const query=$api.useQuery('get','/api/crexil/setup');
   const [key,setKey]=useState('');
   const [busy,setBusy]=useState(false);
@@ -14,10 +16,8 @@ export function ConnectionsRoom() {
   const [note,setNote]=useState('');
   const connections=query.data;
   const loadError:unknown=query.error;
-  useEffect(()=>{
-    const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'&&!busy){event.preventDefault();location.hash=projectHref(project||undefined);}};
-    window.addEventListener('keydown',escape);return()=>window.removeEventListener('keydown',escape);
-  },[project,busy]);
+  // Escape returns to the project, except while a key is being checked.
+  useEscapeLayer(()=>{if(!busy)location.hash=projectHref(project||undefined);return true;});
   const save=async(remove=false)=>{
     setBusy(true);setError('');setNote('');
     try {

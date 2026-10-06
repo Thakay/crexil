@@ -3,6 +3,7 @@
 import {useLayoutEffect,useRef,useState,type ReactNode} from 'react';
 import {ancestors,routeLineage,type Anchor,type Binding,type RowBox} from './lineage';
 import type {Material} from './api';
+import {mediumOf} from './media';
 import s from './Filmstrip.module.css';
 
 export function LineageCanvas({bindings,nodes,acting,children,enabled}:{bindings:Binding[];nodes:Material[];acting:string[];children:ReactNode;enabled:boolean}){
@@ -39,7 +40,7 @@ export function LineageCanvas({bindings,nodes,acting,children,enabled}:{bindings
     return()=>{active=false;cancelAnimationFrame(frame);observer.disconnect();host.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);};
   },[bindings,nodes,acting,enabled]);
   const byId=new Map(bindings.map(b=>[b.id,b]));
-  const color=(id:string,lit:boolean)=>lit?'var(--accent)':byId.get(id)?.mesh?'#b48cf7':'var(--border-strong)';
+  const color=(id:string,lit:boolean)=>lit?'var(--accent)':mediumOf(byId.get(id)?.payload??'image').hue;
   return <div className={s.lineageContent} ref={root}>
     {enabled&&<svg className={s.lineageLines} width={drawing.width} height={drawing.height} role="img" aria-label="Source connections" data-connection-count={drawing.paths.filter(p=>p.arrival).length}>
       <title>Source cards connect to the preparations and recorded runs they feed.</title>

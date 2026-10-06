@@ -4,7 +4,7 @@
 import {useEffect,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
-import {ActionError,command,label,message,result,type Material} from './api';
+import {ActionError,command,isDefiniteRefusal,label,message,result,type Material} from './api';
 import {MaterialThumbnail} from './MaterialThumbnail';
 import s from './Filmstrip.module.css';
 
@@ -52,7 +52,7 @@ export function ReturnedWork({wid,nodes,initial,close,refresh,inspect}:{wid:stri
       }
       const receipt=await result(fetchClient.POST('/api/crexil/projects/{wid}/material',{params:{path:{wid}},body}));
       setSaved(receipt);clear();refresh();
-    }catch(err){if(err instanceof ActionError&&[404,409,422].includes(err.status??0))clear();setError(message(err));}
+    }catch(err){if(isDefiniteRefusal(err))clear();setError(message(err));}
     finally{setBusy(false);}
   };
   return <section className={s.sequenceRoom} aria-label="Returned work" onKeyDownCapture={event=>{if(busy&&event.key==='Escape'){event.preventDefault();event.stopPropagation();}}}>

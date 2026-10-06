@@ -2,11 +2,13 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // Filmstrip rows hold sections: a starter, its chosen faces and a door onward.
 // A picker owns a pending display choice; action targets are separate transient
 // state. Rows never widen merely because outputs arrived. Undrawn rooms use the
-// same tokens and return to their entry point, one Escape layer at a time.
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+// same tokens and return to their entry point, one Escape layer at a time. Which
+// rooms and layers are open lives in the project view store (view.ts); media
+// differences live in the registry (media.tsx).
+import { useCallback, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { $api, fetchClient } from '../../api/client';
-import { useHashRoute } from '../routes';
+import { useHash, useHashRoute } from '../routes';
 import { DraftDrawer,hasPendingSubmission } from './DraftDrawer';
 import {hasLocalPreparation} from './usePreparationDraft';
 import {ConnectionsRoom} from './ConnectionsRoom';
@@ -14,27 +16,24 @@ import {ProjectDetails,hasProjectEdits} from './ProjectDetails';
 import { OperationLibrary } from './OperationLibrary';
 import { ExecutionControls } from './ExecutionControls';
 import { SequenceRoom } from './SequenceRoom';
-import { MeshInspection } from './MeshInspection';
 import { DeliveryRoom } from './DeliveryRoom';
 import { BackupRoom } from './BackupRoom';
 import { ReturnedWork } from './ReturnedWork';
 import { ReuseRoom } from './ReuseRoom';
-import { RecordRoom, type RecordScope } from './RecordRoom';
+import { RecordRoom } from './RecordRoom';
 import { MaterialProvenance } from './MaterialProvenance';
 import { LineageCanvas } from './LineageCanvas';
 import { ancestors, sourceBindings } from './lineage';
 import { initialImagePreparation } from './ImagePreparationFields';
-import { blankPreparation, command, imageUrl, importFile, label, message, money, preparation,
+import { ACTIONS, type Action } from './actions';
+import { blankPreparation, command, engineIdentity, engineLabel, imageUrl, importFile, label, message, money, preparation,
   projectHref, result, type Direction, type Material, type Snapshot } from './api';
+import { gridCells } from './cells';
+import { useCommandKey, useEscapeBase, useEscapeKey } from './keys';
+import { IMPORT_ACCEPT, mediumOf } from './media';
+import { cardVerbs } from './verbCard';
+import { createViewStore, overlay, useView, useViewStore, ViewContext, type FocusReturn, type Overlay } from './view';
 import s from './Filmstrip.module.css';
-
-function useEscape(close: () => void) {
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => { if (event.key === 'Escape'&&!event.defaultPrevented) {event.preventDefault(); close();} };
-    window.addEventListener('keydown', listener);
-    return () => window.removeEventListener('keydown', listener);
-  }, [close]);
-}
 
 function keepFocus(event: ReactKeyboardEvent<HTMLElement>) {
   if(event.key!=='Tab')return;
@@ -44,15 +43,22 @@ function keepFocus(event: ReactKeyboardEvent<HTMLElement>) {
   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
 }
 
+/** A face's cost line: the charge, or why no charge is shown. */
+function faceCost(node: Material): string {
+  if (node.charged_usd != null) return money(node.charged_usd);
+  const identity = engineIdentity(node);
+  return identity.kind === 'named' ? 'Unverified' : identity.kind === 'hidden' ? 'Hidden' : identity.kind === 'prepared' ? 'Derived' : 'Source';
+}
+
 export function Crexil() {
-  // Subscribe to hash updates with the established routing mechanism.
-  useHashRoute();
-  const id = /^#\/projects\/([^/?]+)(?:\?.*)?$/.exec(location.hash)?.[1];
+  // The page comes from the one route parser; each page reads its own query state.
+  const route = useHashRoute();
+  useEscapeKey();
   const health = $api.useQuery('get', '/api/health', {}, {refetchInterval: 15000});
   const bundle = import.meta.env.VITE_BUILD_ID ?? 'dev';
   const healthBody = health.data ?? (health.error as unknown as {preview?: boolean; build?: {id: string}});
   return <div className={s.app}>
-    {location.hash.startsWith('#/connections')?<ConnectionsRoom/>:location.hash.startsWith('#/operations') ? <OperationLibrary/> : id ? <ProjectRoom key={id} id={id}/> : <Projects/>}
+    {route.view==='connections'?<ConnectionsRoom/>:route.view==='operations' ? <OperationLibrary/> : route.view==='project' ? <ProjectRoom key={route.id} id={route.id}/> : <Projects/>}
     <footer className={s.footer}><span>Crexil · {bundle}{healthBody?.build?.id && healthBody.build.id !== bundle ? ' · BUILD MISMATCH' : ''}</span>
       {healthBody?.preview && <span>Isolated preview · generation disconnected</span>}</footer>
   </div>;
@@ -109,89 +115,72 @@ function Projects() {
   </>;
 }
 
-type PickerState = {direction: Direction; left: number; top: number};
+type PickerState = Extract<Overlay, {kind: 'picker'}>;
 
 function ProjectRoom({id}: {id: string}) {
+  const hash = useHash();
+  const [store] = useState(() => {
+    const query = new URLSearchParams(hash.split('?')[1]);
+    const material = query.get('material');
+    return createViewStore({drawer: query.get('draft'), overlays: [
+      ...(hasProjectEdits(id) ? [{kind: 'projectEdit'} as const] : []),
+      ...(material ? [{kind: 'inspect', id: material} as const] : []),
+    ]});
+  });
+  return <ViewContext.Provider value={store}><ProjectWorkspace id={id}/></ViewContext.Provider>;
+}
+
+function ProjectWorkspace({id}: {id: string}) {
   const query = $api.useQuery('get', '/api/crexil/projects/{wid}', {params:{path:{wid:id}}}, {refetchInterval:3000});
   const operations = $api.useQuery('get', '/api/crexil/operations');
   const costs = $api.useQuery('get', '/api/costs', {params:{query:{tz:-new Date().getTimezoneOffset()}}}, {refetchInterval:10000});
   const cache = useQueryClient();
   const refresh = useCallback(() => {void cache.invalidateQueries({queryKey:$api.queryOptions('get', '/api/crexil/projects/{wid}', {params:{path:{wid:id}}}).queryKey});}, [cache,id]);
-  const [draft, setDraft] = useState<string | null>(new URLSearchParams(location.hash.split('?')[1]).get('draft'));
-  const [picker, setPicker] = useState<PickerState | null>(null);
-  const [acting, setActing] = useState<string[]>([]);
-  const [groupId, setGroupId] = useState<string | null>(null);
-  const [inspected, setInspected] = useState<string | null>(new URLSearchParams(location.hash.split('?')[1]).get('material'));
-  const [room, setRoom] = useState<number | 'tray' | null>(null);
-  const [editingProject, setEditingProject] = useState(()=>hasProjectEdits(id));
-  const [sequencesOpen, setSequencesOpen] = useState(false);
-  const [delivery, setDelivery] = useState<string[]|null>(null);
-  const [backup,setBackup]=useState(false);
-  const [reusing,setReusing]=useState(false);
-  const [recordScope,setRecordScope]=useState<RecordScope|null>(null);
-  const [recordDestination,setRecordDestination]=useState(false);
-  const [recordReturn,setRecordReturn]=useState<string|null>(null);
-  const recordFocus=useRef<HTMLElement|null>(null);
-  const [nestedRecordNode,setNestedRecordNode]=useState<string|null>(null);
-  const nestedRecordFocus=useRef<HTMLElement|null>(null);
-  const [returned, setReturned] = useState<string[]|null>(null);
-  const [sequenceReturn, setSequenceReturn] = useState<string|null>(null);
+  const store = useViewStore();
+  const view = useView(state => state);
+  const {room, panel, record, nestedRecord, recordDestination, acting, drawer, sequenceReturn} = view;
+  const picker = overlay(view, 'picker');
+  const inspected = overlay(view, 'inspect')?.id ?? null;
+  const groupId = overlay(view, 'group')?.id ?? null;
+  const editingProject = Boolean(overlay(view, 'projectEdit'));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const working = useRef(0);
   const file = useRef<HTMLInputElement>(null);
   const focusOrigin = useRef<HTMLElement | null>(null);
+  const recordFocus = useRef<HTMLElement | null>(null);
+  const nestedRecordFocus = useRef<HTMLElement | null>(null);
+  const recordOrigin = () => nestedRecord ? nestedRecordFocus : recordFocus;
   const data = query.data;
   const directions = data?.directions ?? [];
   const nodes = data?.nodes ?? [];
-  const activeDraft = directions.find(d => d.id === draft);
+  const activeDraft = directions.find(d => d.id === drawer);
   const actingNodes = nodes.filter(n => acting.includes(n.id));
-  const closeLayer = useCallback(() => {
-    if (groupId) setGroupId(null);
-    else if (inspected) {setInspected(null);if(recordScope){requestAnimationFrame(()=>(nestedRecordNode?nestedRecordFocus:recordFocus).current?.focus());return;}}
-    else if (picker) setPicker(null);
-    else if (editingProject) setEditingProject(false);
-    else if (reusing) setReusing(false);
-    else if (backup) setBackup(false);
-    else if (delivery) setDelivery(null);
-    else if (returned) setReturned(null);
-    else if (sequencesOpen) setSequencesOpen(false);
-    else if (recordDestination) {setRecordDestination(false);setRoom(null);requestAnimationFrame(()=>(nestedRecordNode?nestedRecordFocus:recordFocus).current?.focus());return;}
-    else if (nestedRecordNode) {setInspected(nestedRecordNode);setNestedRecordNode(null);return;}
-    else if (recordScope) {setRecordScope(null);if(recordReturn){setInspected(recordReturn);setRecordReturn(null);}}
-    else if (acting.length) setActing([]);
-    else if (room !== null) {setRoom(null);if(sequenceReturn)setSequencesOpen(true);}
-    requestAnimationFrame(() => focusOrigin.current?.focus());
-  }, [groupId,inspected,picker,editingProject,reusing,backup,delivery,returned,sequencesOpen,sequenceReturn,acting.length,room,recordScope,recordReturn,recordDestination,nestedRecordNode]);
-  useEscape(closeLayer);
-  const openRecord=(scope:RecordScope={},returnNode:string|null=null)=>{
-    if(returnNode&&recordScope){setNestedRecordNode(returnNode);setInspected(null);return;}
-    setNestedRecordNode(null);
-    setRecordScope(scope);setRecordReturn(returnNode);setRecordDestination(false);setInspected(null);
-    setRoom(null);setActing([]);setPicker(null);setReusing(false);setBackup(false);setDelivery(null);setReturned(null);setSequencesOpen(false);
-  };
-  useEffect(()=>{if(reusing||backup||delivery||returned||sequencesOpen){setRecordScope(null);setRecordDestination(false);setNestedRecordNode(null);}},[reusing,backup,delivery,returned,sequencesOpen]);
+  const restoreFocus = useCallback((focus: FocusReturn) => {
+    const target = focus === 'origin' ? focusOrigin : focus === 'record' ? recordFocus : focus === 'nestedRecord' ? nestedRecordFocus : null;
+    if (target) requestAnimationFrame(() => target.current?.focus());
+  }, []);
+  const closeLayer = useCallback(() => restoreFocus(store.getState().closeTop()), [store, restoreFocus]);
+  useEscapeBase(closeLayer);
+  const {inspect: inspectNode, openDrawer} = store.getState();
   const act = async (work: () => Promise<unknown>) => {
-    setBusy(true); setError('');
-    try {await work(); refresh();} catch(err) {setError(message(err));} finally {setBusy(false);}
+    setBusy(true); setError(''); working.current += 1;
+    try {await work(); refresh();} catch(err) {setError(message(err));} finally {setBusy(false); working.current -= 1;}
   };
-  const newDirection = async (row?: number, action: 'generate' | 'continue' | 'combine' | 'prepare' | 'region' | 'mesh' | 'decimate' | 'texture' = 'generate', parents: Material[] = []) => {
+  const newDirection = async (row?: number, action: Action = 'generate', parents: Material[] = []) => {
     await act(async () => {
       const made = await result(fetchClient.POST('/api/crexil/projects/{wid}/directions', {params:{path:{wid:id}}, body:{...command(),
-        title:action === 'generate' ? 'New direction' : action === 'combine' ? 'Combined sources' : action==='prepare'?'Prepared image':action==='region'?'Region study':action==='mesh'?'Generate 3D':action==='decimate'?'Reduce mesh':action==='texture'?'Texture mesh':'Continue from an image', row_idx:row,
+        title:ACTIONS[action]?.title ?? 'New direction', row_idx:row,
         setup:{...blankPreparation(), action, references:parents.map(n => ({node_id:n.id, contribution:''})), ...(action==='prepare'?{image_preparation:initialImagePreparation(parents)}:{})}}}));
-      setDraft(made.id); setActing([]); setPicker(null);
+      store.getState().prepared(made.id);
     });
   };
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest('input,textarea,select,[contenteditable]') || draft || picker || inspected || sequencesOpen || delivery || returned || backup || reusing || recordScope) return;
-      if (e.key.toLowerCase() === 'n') {e.preventDefault(); void newDirection();}
-      if (e.key.toLowerCase() === 'v' && acting.length === 1) {e.preventDefault(); setInspected(acting[0]);}
-      if (e.key.toLowerCase() === 'm' && actingNodes.length > 1) {e.preventDefault(); void newDirection(undefined,'combine',actingNodes);}
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown',handler);
-  });
+  // Plain keys reach the Filmstrip only when no drawer, picker, inspection, room or record covers it.
+  const covered = () => {const now = store.getState(); return Boolean(now.drawer || overlay(now, 'picker') || overlay(now, 'inspect') || now.panel || now.record);};
+  const actingNow = () => nodes.filter(n => store.getState().acting.includes(n.id));
+  useCommandKey('n', () => void newDirection(), () => !covered() && working.current === 0);
+  useCommandKey('v', () => inspectNode(store.getState().acting[0]), () => !covered() && store.getState().acting.length === 1);
+  useCommandKey('m', () => void newDirection(undefined,'combine',actingNow()), () => !covered() && working.current === 0 && actingNow().length > 1);
   if (!data) return <main className={s.projects}><a href={projectHref()}>‹ Projects</a>
     {query.error ? <p className={s.error} role="alert">{message(query.error)} <button onClick={() => void query.refetch()}>Try again</button></p> : <p role="status">Opening project…</p>}</main>;
   const visible = directions.filter(d => d.state !== 'discarded' && (room === 'tray' ? d.set_aside : room!==null||!d.set_aside));
@@ -199,65 +188,72 @@ function ProjectRoom({id}: {id: string}) {
   const asideCount = directions.filter(d => d.set_aside && d.state !== 'discarded').length;
   const stateAction = (direction: Direction, action: 'set_aside' | 'restore' | 'discard' | 'reuse') => act(async () => {
     const next = await result(fetchClient.POST('/api/crexil/directions/{did}/state', {params:{path:{did:direction.id}}, body:{...command(), revision:direction.revision, action}}));
-    if (action === 'reuse') setDraft(next.id);
+    if (action === 'reuse') openDrawer(next.id);
   });
   const inspect = nodes.find(n => n.id === inspected);
   const recordOpenDirection=(id:string)=>{
-    (nestedRecordNode?nestedRecordFocus:recordFocus).current=document.activeElement as HTMLElement;
+    recordOrigin().current=document.activeElement as HTMLElement;
     const direction=directions.find(d=>d.id===id);if(!direction)return;
-    if(direction.state==='draft'||hasLocalPreparation(id)||hasPendingSubmission(id))setDraft(id);
+    if(direction.state==='draft'||hasLocalPreparation(id)||hasPendingSubmission(id))openDrawer(id);
     else if(direction.state==='discarded')void stateAction(direction,'reuse');
-    else{setRecordDestination(true);setRoom(direction.set_aside?'tray':direction.row_idx);}
+    else store.getState().showFromRecord(direction.set_aside?'tray':direction.row_idx);
   };
   const recordOpenRun=(id:string)=>{
-    (nestedRecordNode?nestedRecordFocus:recordFocus).current=document.activeElement as HTMLElement;
-    const direction=directions.find(d=>d.turn_ids.includes(id));if(direction){setRecordDestination(true);setRoom(direction.row_idx);}
+    recordOrigin().current=document.activeElement as HTMLElement;
+    const direction=directions.find(d=>d.turn_ids.includes(id));if(direction)store.getState().showFromRecord(direction.row_idx);
   };
+  const fromHere = (open: () => void) => (event: {currentTarget: HTMLElement}) => {focusOrigin.current = event.currentTarget; open();};
   const turns = data.turns;
   const bindings = visible.flatMap(direction=>sourceBindings(direction,data));
   const ancestry = ancestors(nodes,acting);
   const displayed = new Set(visible.flatMap(direction=>direction.selection));
   const activeSlots = turns.flatMap(t => t.slots).filter(slot => ['queued','running','held','late'].includes(slot.status));
+  const group = groupId ? data.execution_groups.find(g=>g.id===groupId) : undefined;
   return <>
     <header className={s.topbar}>
       <a className={s.back} href={projectHref()} aria-label="Projects">‹</a>
-      <button className={s.projectTitle} onClick={() => setEditingProject(v => !v)} title="Project brief and name">{data.project.name}</button>
+      <button className={s.projectTitle} onClick={() => store.getState().toggleProjectEdit()} title="Project brief and name">{data.project.name}</button>
       <span className={s.micro}>{rows.length} turns</span>
       <a className={s.quiet} href={projectHref()}>+ New project</a>
-      <div className={s.spacer}/><a className={s.quiet} href={`#/connections?project=${id}`}>Connections</a><a className={s.quiet} href={`#/operations?project=${id}`}>Operations</a><button onClick={event=>{focusOrigin.current=event.currentTarget;setActing([]);setRoom(null);setSequencesOpen(false);setReturned(null);setDelivery(null);setBackup(false);setReusing(true);}}>Import material</button>
-      <button className={s.door} onClick={event=>{focusOrigin.current=event.currentTarget;openRecord();}}>Record ›</button>
-      <button onClick={event=>{focusOrigin.current=event.currentTarget;setReusing(false);setBackup(false);setActing([]);setRoom(null);setDelivery(null);setReturned(null);setSequencesOpen(true);}}>Sequences{data.sequences?.length?` · ${data.sequences.length}`:''}</button>
-      <button onClick={event=>{focusOrigin.current=event.currentTarget;setReusing(false);setBackup(false);setActing([]);setSequencesOpen(false);setReturned(null);setDelivery([]);}}>Deliveries</button>
-      <button onClick={event=>{focusOrigin.current=event.currentTarget;setActing([]);setRoom(null);setSequencesOpen(false);setReturned(null);setDelivery(null);setReusing(false);setBackup(true);}}>Back up</button>
-      <button className={s.door} onClick={() => {setRecordScope(null);setRecordDestination(false);setNestedRecordNode(null);setReusing(false);setBackup(false);setDelivery(null);setReturned(null);setSequencesOpen(false);setSequenceReturn(null);setRoom(room === 'tray' ? null : 'tray');}}>Tray{asideCount ? ` · ${asideCount}` : ''} ›</button>
+      <div className={s.spacer}/><a className={s.quiet} href={`#/connections?project=${id}`}>Connections</a><a className={s.quiet} href={`#/operations?project=${id}`}>Operations</a><button onClick={fromHere(store.getState().showImport)}>Import material</button>
+      <button className={s.door} onClick={fromHere(() => store.getState().openRecord())}>Record ›</button>
+      <button onClick={fromHere(store.getState().showSequences)}>Sequences{data.sequences?.length?` · ${data.sequences.length}`:''}</button>
+      <button onClick={fromHere(store.getState().showDeliveries)}>Deliveries</button>
+      <button onClick={fromHere(store.getState().showBackup)}>Back up</button>
+      <button className={s.door} onClick={() => store.getState().toggleTray()}>Tray{asideCount ? ` · ${asideCount}` : ''} ›</button>
       <span className={s.money}>Today {money(costs.data?.today_usd ?? 0)} · Total {money(data.charged_usd)}</span>
     </header>
-    <input hidden ref={file} type="file" multiple accept="image/png,image/jpeg,image/webp,image/tiff,.glb,model/gltf-binary"
-      onChange={e => {const files = Array.from(e.target.files ?? []); e.target.value=''; void act(async () => {for (const item of files) await importFile(id,item);setReusing(false);});}}/>
+    <input hidden ref={file} type="file" multiple accept={IMPORT_ACCEPT}
+      onChange={e => {const files = Array.from(e.target.files ?? []); e.target.value=''; void act(async () => {for (const item of files) await importFile(id,item);store.getState().closeImport();});}}/>
     {error && <div className={s.error} role="alert">{error}<button onClick={() => setError('')}>Dismiss</button></div>}
-    {!editingProject&&hasProjectEdits(id)&&<p className={s.localPreparation}>Project edits remain in this tab. <button onClick={()=>setEditingProject(true)}>Recover project edits</button></p>}
-    {editingProject && <ProjectDetails project={data.project} accounting={data.accounting??{}} onSaved={() => {refresh(); setEditingProject(false);}}/>}
+    {!editingProject&&hasProjectEdits(id)&&<p className={s.localPreparation}>Project edits remain in this tab. <button onClick={()=>store.getState().openProjectEdit()}>Recover project edits</button></p>}
+    {editingProject && <ProjectDetails project={data.project} accounting={data.accounting??{}} onSaved={() => {refresh(); store.getState().closeProjectEdit();}}/>}
     {!activeDraft&&directions.some(direction=>hasLocalPreparation(direction.id)||hasPendingSubmission(direction.id))&&<div className={s.localPreparation} role="region" aria-label="Local preparations"><span>Preparation needs attention in this tab</span>
-      {directions.filter(direction=>hasLocalPreparation(direction.id)||hasPendingSubmission(direction.id)).map(direction=><button key={direction.id} onClick={()=>setDraft(direction.id)}>Recover {direction.title}</button>)}
+      {directions.filter(direction=>hasLocalPreparation(direction.id)||hasPendingSubmission(direction.id)).map(direction=><button key={direction.id} onClick={()=>openDrawer(direction.id)}>Recover {direction.title}</button>)}
     </div>}
     {data.restoration&&<p className={s.hint} role="status">Restored project · Original execution and delivery records are kept as history. Reuse a preparation to review new work.</p>}
-    {recordScope&&<div className={s.workspacePane} hidden={recordDestination||Boolean(nestedRecordNode)}><RecordRoom key={JSON.stringify(recordScope)} data={data} scope={recordScope} close={closeLayer} returnLabel={recordReturn?'Inspect':'Project'}
-      inspect={id=>{recordFocus.current=document.activeElement as HTMLElement;setInspected(id);}}
+    {record&&<div className={s.workspacePane} hidden={recordDestination||Boolean(nestedRecord)}><RecordRoom key={JSON.stringify(record.scope)} data={data} scope={record.scope} close={closeLayer} returnLabel={record.returnNode?'Inspect':'Project'}
+      inspect={id=>{recordFocus.current=document.activeElement as HTMLElement;inspectNode(id);}}
       openDirection={recordOpenDirection} openRun={recordOpenRun}/></div>}
-    {nestedRecordNode&&<div className={s.workspacePane} hidden={recordDestination}><RecordRoom key={nestedRecordNode} secondary data={data} scope={{node_id:nestedRecordNode}} close={closeLayer} returnLabel="Inspect"
-      inspect={id=>{nestedRecordFocus.current=document.activeElement as HTMLElement;setInspected(id);}} openDirection={recordOpenDirection} openRun={recordOpenRun}/></div>}
-    <div className={s.workspacePane} hidden={Boolean(recordScope)&&!recordDestination}>
-    {room !== null && <div className={s.roomHead}><strong>{room === 'tray' ? 'Tray' : `Grid · Turn ${room}`}</strong><span className={s.hint}>{room === 'tray' ? 'Directions kept aside. Their sources and decisions remain.' : 'Every attempt keeps its place. Display choices are shared with the Filmstrip.'}</span><button onClick={()=>{setActing([]);if(recordDestination)closeLayer();else{setRoom(null);if(sequenceReturn)setSequencesOpen(true);}}}>Esc · {recordDestination?'Record':sequenceReturn?'Sequence':'Project'}</button></div>}
-    {reusing?<ReuseRoom wid={id} close={closeLayer} chooseFiles={()=>file.current?.click()} refresh={refresh} inspect={node=>{setReusing(false);setInspected(node);}}/>:backup?<BackupRoom project={data.project} close={closeLayer} restored={()=>{}}/>:delivery?<DeliveryRoom data={data} initial={delivery} close={closeLayer} refresh={refresh}/>:returned?<ReturnedWork wid={id} nodes={nodes} initial={returned} close={closeLayer} refresh={refresh} inspect={node=>{setReturned(null);setInspected(node);}}/>:sequencesOpen?<SequenceRoom data={data} inactive={Boolean(activeDraft)} initialId={sequenceReturn} refresh={refresh} close={closeLayer} edit={setDraft} inspect={setInspected} openRun={(id,sid)=>{const direction=directions.find(item=>item.turn_ids.includes(id));if(direction){setSequenceReturn(sid);setSequencesOpen(false);setRoom(direction.row_idx);}}}/>:<main className={s.canvas} onDragOver={e => e.preventDefault()} onDrop={e => {e.preventDefault(); const files=Array.from(e.dataTransfer.files); void act(async () => {for(const item of files) await importFile(id,item);});}}>
+    {nestedRecord&&<div className={s.workspacePane} hidden={recordDestination}><RecordRoom key={nestedRecord} secondary data={data} scope={{node_id:nestedRecord}} close={closeLayer} returnLabel="Inspect"
+      inspect={id=>{nestedRecordFocus.current=document.activeElement as HTMLElement;inspectNode(id);}} openDirection={recordOpenDirection} openRun={recordOpenRun}/></div>}
+    <div className={s.workspacePane} hidden={Boolean(record)&&!recordDestination}>
+    {room !== null && <div className={s.roomHead}><strong>{room === 'tray' ? 'Tray' : `Grid · Turn ${room}`}</strong><span className={s.hint}>{room === 'tray' ? 'Directions kept aside. Their sources and decisions remain.' : 'Every attempt keeps its place. Display choices are shared with the Filmstrip.'}</span><button onClick={()=>restoreFocus(store.getState().leaveRoom())}>Esc · {recordDestination?'Record':sequenceReturn?'Sequence':'Project'}</button></div>}
+    {panel?.kind==='reuse'?<ReuseRoom wid={id} close={closeLayer} chooseFiles={()=>file.current?.click()} refresh={refresh} inspect={node=>store.getState().inspectFromPanel(node)}/>
+      :panel?.kind==='backup'?<BackupRoom project={data.project} close={closeLayer} restored={()=>{}}/>
+      :panel?.kind==='delivery'?<DeliveryRoom data={data} initial={panel.ids} close={closeLayer} refresh={refresh}/>
+      :panel?.kind==='returned'?<ReturnedWork wid={id} nodes={nodes} initial={panel.ids} close={closeLayer} refresh={refresh} inspect={node=>store.getState().inspectFromPanel(node)}/>
+      :panel?.kind==='sequences'?<SequenceRoom data={data} inactive={Boolean(activeDraft)} initialId={sequenceReturn} refresh={refresh} close={closeLayer} edit={openDrawer} inspect={inspectNode} openRun={(id,sid)=>{const direction=directions.find(item=>item.turn_ids.includes(id));if(direction)store.getState().showRunFromSequence(direction.row_idx,sid);}}/>
+      :<main className={s.canvas} onDragOver={e => e.preventDefault()} onDrop={e => {e.preventDefault(); const files=Array.from(e.dataTransfer.files); void act(async () => {for(const item of files) await importFile(id,item);});}}>
       <LineageCanvas bindings={bindings} nodes={nodes} acting={acting} enabled={room===null}>
       {rows.length === 0 && <div className={s.emptyProject}><span className={s.eyebrow}>{room === 'tray' ? 'Nothing set aside' : 'A place for the next idea'}</span>
         <h1>{room === 'tray' ? 'Your directions are on the project.' : 'Start with words or material.'}</h1>
         <p>{room === 'tray' ? 'Setting a direction aside keeps its record and every result.' : data.project.brief || 'Drop an image or GLB here, import a reference, or prepare your first direction. You can leave and return before running anything.'}</p>
-        {room !== 'tray' && <div className={s.actions}><button className={s.primary} onClick={() => void newDirection()}>+ New direction · N</button><button onClick={event=>{focusOrigin.current=event.currentTarget;setActing([]);setRoom(null);setSequencesOpen(false);setReturned(null);setDelivery(null);setBackup(false);setReusing(true);}}>Import material</button></div>}
+        {room !== 'tray' && <div className={s.actions}><button className={s.primary} onClick={() => void newDirection()}>+ New direction · N</button><button onClick={fromHere(store.getState().showImport)}>Import material</button></div>}
       </div>}
       {rows.filter(row => room === null || room === 'tray' || room === row).map(row => <div className={s.row} id={`row-${row}`} key={row} data-lineage-row={row} style={{marginBottom:`var(--lineage-gap-${row},26px)`}}>
-        <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} onClick={() => {setSequenceReturn(null);setRoom(row);}}>Grid ›</button></div>
-          {visible.filter(d=>d.row_idx===row&&d.latest_decision).map(direction=><button key={direction.id} className={s.gutterDecision} onClick={event=>{focusOrigin.current=event.currentTarget;openRecord({direction_id:direction.id});}} title={`Latest decision for ${direction.title}`}>
+        <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} onClick={() => store.getState().openGrid(row)}>Grid ›</button></div>
+          {visible.filter(d=>d.row_idx===row&&d.latest_decision).map(direction=><button key={direction.id} className={s.gutterDecision} onClick={fromHere(()=>store.getState().openRecord({direction_id:direction.id}))} title={`Latest decision for ${direction.title}`}>
             <span>{direction.latest_decision?.reason||'No reason supplied'}</span><small>{direction.latest_decision?.actor?`${direction.latest_decision.actor.kind==='agent'?'Agent':'Artist'} · ${direction.latest_decision.actor.name}`:'Participant not recorded'} ›</small>
           </button>)}
           <span>{visible.filter(d => d.row_idx === row).reduce((sum,d) => sum+d.selection.length,0)} selected</span>
@@ -265,10 +261,7 @@ function ProjectRoom({id}: {id: string}) {
         </aside>
         <div className={s.sections} data-lineage-strip>{visible.filter(d => d.row_idx === row).map(direction => {
           const material = nodes.filter(n => direction.node_ids.includes(n.id));
-          const shown = room === row ? [
-            ...material.filter(n => n.slot_id === null),
-            ...turns.filter(t => direction.turn_ids.includes(t.id)).flatMap(t => t.slots.map(slot => material.find(n => n.slot_id === slot.id && n.take === slot.attempt && data.execution_groups.some(g=>g.slot_id===slot.id&&g.take===slot.attempt&&g.metadata.primary_output_id===g.outputs.find(o=>o.node_id===n.id)?.id)) ?? material.find(n=>n.slot_id===slot.id&&n.take===slot.attempt) ?? slot)),
-          ] : material.filter(n => direction.selection.includes(n.id));
+          const cells = gridCells(direction, data, room === row);
           const prep = preparation(direction);
           const sources = bindings.filter(binding=>binding.direction===direction.id);
           const firstSource = nodes.find(n => n.id === (sources[0]?.parents[0]??prep.references?.[0]?.node_id));
@@ -279,32 +272,31 @@ function ProjectRoom({id}: {id: string}) {
             })}
             <div className={s.sectionBody}>
               <div className={s.starterColumn} style={{marginLeft:Math.max(0,sources.length-1)*5}}>
-              <button data-lineage-start={sources[0]?.id} className={`${s.starter} ${sources[0]?.outputs.some(id=>ancestry.has(id))?s.ancestor:''}`} aria-label={`${direction.state === 'draft' ? 'Open preparation' : 'Reuse setup'}: ${direction.title}`} onClick={() => direction.state === 'draft' ? setDraft(direction.id) : void stateAction(direction,'reuse')} title={direction.state === 'draft' ? 'Open preparation' : 'Reuse this setup'}>
+              <button data-lineage-start={sources[0]?.id} className={`${s.starter} ${sources[0]?.outputs.some(id=>ancestry.has(id))?s.ancestor:''}`} aria-label={`${direction.state === 'draft' ? 'Open preparation' : 'Reuse setup'}: ${direction.title}`} onClick={() => direction.state === 'draft' ? openDrawer(direction.id) : void stateAction(direction,'reuse')} title={direction.state === 'draft' ? 'Open preparation' : 'Reuse this setup'}>
                 <div>{firstSource?.available ? <MaterialThumbnail key={firstSource.id} node={firstSource} decorative/> : <span>{prep.prompt || direction.title}</span>}</div>
                 <footer>{prep.action === 'generate' ? 'Words' : prep.action} <span aria-hidden="true">▤</span></footer>
               </button>
               {sources.map((binding,index)=><div key={binding.id} className={s.sourceBinding}>
                 {index>0&&<div className={`${s.recordedStarter} ${binding.outputs.some(id=>ancestry.has(id))?s.ancestor:''}`} data-lineage-start={binding.id}><span>{binding.title}</span><span>{binding.parents.map(id=>nodes.find(node=>node.id===id)).filter((node):node is Material=>Boolean(node)).map(label).join(' · ')}</span></div>}
                 {binding.parents.length>0&&<details><summary>{binding.parents.length} {binding.parents.length===1?'source':'sources'}{binding.parents.some(id=>!displayed.has(id))?' · not all displayed':''}{sources.length>1&&index===0?` · ${binding.title}`:''}</summary>
-                  {binding.parents.map(id=>{const node=nodes.find(node=>node.id===id);return node?<button key={id} onClick={()=>setInspected(id)}>Inspect {label(node)}{!node.available?' · unavailable':!displayed.has(id)?' · not displayed':''}</button>:<span key={id}>Source {id} · record unavailable</span>;})}
+                  {binding.parents.map(id=>{const node=nodes.find(node=>node.id===id);return node?<button key={id} onClick={()=>inspectNode(id)}>Inspect {label(node)}{!node.available?' · unavailable':!displayed.has(id)?' · not displayed':''}</button>:<span key={id}>Source {id} · record unavailable</span>;})}
                 </details>}
               </div>)}
               </div>
-              {shown.map(node => {
-                const slot = 'payload' in node ? turns.flatMap(t=>t.slots).find(slot=>slot.id===node.slot_id) : node;
-                const group = slot && data.execution_groups.find(g=>g.slot_id===slot.id&&g.take===slot.attempt);
-                return <div key={node.id} className={room===row?s.slotBox:undefined}>
-                  {!('payload' in node) ? <div className={s.attempt}><strong>{node.kind === 'uncertain' ? 'Outcome uncertain' : node.status}</strong><span>{node.engine}</span><p title={node.cause??undefined}>{node.cause}</p></div> : <button data-lineage-node={node.id} aria-label={`Act on ${label(node)}`} className={`${s.face} ${acting.includes(node.id) ? s.acting : ancestry.has(node.id)?s.ancestor:''}`} aria-pressed={acting.includes(node.id)} onDoubleClick={() => setInspected(node.id)}
-                    onClick={e => {focusOrigin.current=e.currentTarget; setActing(e.shiftKey ? acting.includes(node.id) ? acting.filter(n => n !== node.id) : [...acting,node.id] : [node.id]);}}>
+              {cells.map(cell => {
+                const node = cell.material, slot = cell.slot;
+                return <div key={cell.key} className={room===row?s.slotBox:undefined}>
+                  {!node ? <div className={s.attempt}><strong>{slot!.kind === 'uncertain' ? 'Outcome uncertain' : slot!.status}</strong><span>{slot!.engine}</span><p title={slot!.cause??undefined}>{slot!.cause}</p></div> : <button data-lineage-node={node.id} aria-label={`Act on ${label(node)}`} className={`${s.face} ${acting.includes(node.id) ? s.acting : ancestry.has(node.id)?s.ancestor:''}`} aria-pressed={acting.includes(node.id)} onDoubleClick={() => inspectNode(node.id)}
+                    onClick={e => {focusOrigin.current=e.currentTarget; store.getState().act(e.shiftKey ? acting.includes(node.id) ? acting.filter(n => n !== node.id) : [...acting,node.id] : [node.id]);}}>
                     <div className={s.plate}><MaterialThumbnail key={node.id} node={node}/>{acting.includes(node.id) && <span className={s.actingMark}>Acting on</span>}{node.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
-                    <footer><span>{label(node)} · {node.engine ?? (node.material?.origin.kind==='prepared_image'?'Prepared':'Imported')}</span><span>{node.charged_usd == null ? node.engine ? 'Unverified' : node.material?.origin.kind==='prepared_image'?'Derived':'Source' : money(node.charged_usd)}</span></footer>
+                    <footer><span>{label(node)} · {engineLabel(node,'face')}</span><span>{faceCost(node)}</span></footer>
                   </button>}
-                  {room===row&&slot&&<div className={s.slotFoot}><span>{'payload' in node?slot.status:''}</span>{group&&<button onClick={event=>{focusOrigin.current=event.currentTarget;setGroupId(group.id);}}>{group.outputs.length} {group.outputs.length===1?'file':'files'} ›</button>}</div>}
+                  {room===row&&slot&&<div className={s.slotFoot}><span>{node?slot.status:''}</span>{cell.group&&<button onClick={fromHere(()=>store.getState().openGroup(cell.group!.id))}>{cell.group.outputs.length} {cell.group.outputs.length===1?'file':'files'} ›</button>}</div>}
                 </div>;
               })}
             </div>
             <div className={s.sectionFoot}><span>{direction.selection.length} of {material.length} selected{direction.state === 'draft' ? ' · Preparation' : ''}</span>
-              <span className={s.actions}>{direction.sequence_id&&<button className={s.door} onClick={event=>{focusOrigin.current=event.currentTarget;setSequenceReturn(direction.sequence_id!);setSequencesOpen(true);setRoom(null);}}>Sequence ›</button>}<button className={s.door} onClick={e => {focusOrigin.current=e.currentTarget; const box=e.currentTarget.closest('section')!.getBoundingClientRect(); setPicker({direction,left:Math.min(box.left,window.innerWidth-530),top:Math.min(box.top,window.innerHeight-440)});}}>Strip ›</button></span></div>
+              <span className={s.actions}>{direction.sequence_id&&<button className={s.door} onClick={fromHere(()=>store.getState().showSequence(direction.sequence_id!))}>Sequence ›</button>}<button className={s.door} onClick={e => {focusOrigin.current=e.currentTarget; const box=e.currentTarget.closest('section')!.getBoundingClientRect(); store.getState().openPicker(direction,Math.min(box.left,window.innerWidth-530),Math.min(box.top,window.innerHeight-440));}}>Strip ›</button></span></div>
           </section>;
         })}<button className={s.addSection} disabled={busy} onClick={() => void newDirection(row)}>+ Section</button></div>
       </div>)}
@@ -313,23 +305,17 @@ function ProjectRoom({id}: {id: string}) {
     </main>}
     </div>
     {picker && <Picker key={picker.direction.id} state={picker} nodes={nodes} current={directions.find(d => d.id === picker.direction.id) ?? picker.direction}
-      close={closeLayer} saved={refresh} onInspect={setInspected} stateAction={stateAction}/>}
-    {actingNodes.length > 0 && !draft && !inspected && <section className={s.verbCard} aria-label="Actions on material">
-      <div className={s.drawerHead}><span className={s.mono}>Acting on · {actingNodes.length}</span><button onClick={() => setActing([])}>Esc</button></div>
-      <button onClick={() => setInspected(actingNodes[0].id)}>Inspect · V</button>
-      {actingNodes.every(n=>n.payload==='image')&&<button onClick={() => void newDirection(undefined,actingNodes.length > 1 ? 'combine' : 'continue',actingNodes)}>{actingNodes.length > 1 ? 'Combine sources · M' : 'Continue from image'}</button>}
-      {actingNodes.every(n=>n.payload==='image')&&<button onClick={()=>void newDirection(undefined,'prepare',actingNodes)}>Crop, resize or arrange</button>}
-      {actingNodes.length===1&&actingNodes[0].payload==='image'&&<button onClick={()=>void newDirection(undefined,'region',actingNodes)}>Edit regions</button>}
-      {actingNodes.length===1&&actingNodes[0].payload==='image'&&<button onClick={()=>void newDirection(undefined,'mesh',actingNodes)}>Generate 3D</button>}
-      {actingNodes.length===1&&actingNodes[0].payload==='3d'&&<><button onClick={()=>void newDirection(undefined,'decimate',actingNodes)}>Reduce mesh</button><button onClick={()=>void newDirection(undefined,'texture',actingNodes)}>Texture mesh</button></>}
-      {actingNodes.length===2&&actingNodes.some(n=>n.payload==='3d')&&actingNodes.some(n=>n.payload==='image')&&<button onClick={()=>void newDirection(undefined,'texture',[...actingNodes].sort((a)=>a.payload==='3d'?-1:1))}>Texture mesh from image</button>}
-      {actingNodes.length > 1 && actingNodes.every(n=>n.payload==='image') && <button onClick={() => void act(async () => {for (const node of actingNodes) await newDirection(undefined,'continue',[node]);})}>Continue each separately</button>}
-      <button onClick={event=>{focusOrigin.current=event.currentTarget;setDelivery([...acting]);setActing([]);}}>Deliver selected material</button>
-      <button onClick={event=>{focusOrigin.current=event.currentTarget;setReturned([...acting]);setActing([]);}}>Return edited material</button>
+      close={closeLayer} saved={refresh} onInspect={inspectNode} stateAction={stateAction}/>}
+    {actingNodes.length > 0 && !drawer && !inspected && <section className={s.verbCard} aria-label="Actions on material">
+      <div className={s.drawerHead}><span className={s.mono}>Acting on · {actingNodes.length}</span><button onClick={() => store.getState().clearActing()}>Esc</button></div>
+      <button onClick={() => inspectNode(actingNodes[0].id)}>Inspect · V</button>
+      {cardVerbs(actingNodes).map(verb => <button key={verb.label} onClick={() => void (verb.each ? act(async () => {for (const node of verb.parents) await newDirection(undefined,verb.action,[node]);}) : newDirection(undefined,verb.action,verb.parents))}>{verb.label}</button>)}
+      <button onClick={fromHere(store.getState().deliverActing)}>Deliver selected material</button>
+      <button onClick={fromHere(store.getState().returnActing)}>Return edited material</button>
     </section>}
-    {activeDraft && <DraftDrawer key={activeDraft.id} direction={activeDraft} nodes={nodes} operations={operations.data ?? []} onSaved={refresh} onCopied={id=>{refresh();setDraft(id);}} onClose={() => {setDraft(null);if(recordScope)requestAnimationFrame(()=>(nestedRecordNode?nestedRecordFocus:recordFocus).current?.focus());}}/>}
-    {inspect && <Inspection key={inspect.id} node={inspect} data={data} close={closeLayer} navigate={setInspected} openGroup={setGroupId} openRecord={()=>openRecord({node_id:inspect.id},inspect.id)} returnLabel={recordScope?'Record':'Project'}/>}
-    {groupId&&data.execution_groups.find(g=>g.id===groupId)&&<OutputGroup group={data.execution_groups.find(g=>g.id===groupId)!} close={()=>setGroupId(null)} refresh={refresh} inspect={id=>{setGroupId(null);setInspected(id);}}/>}
+    {activeDraft && <DraftDrawer key={activeDraft.id} direction={activeDraft} nodes={nodes} operations={operations.data ?? []} onSaved={refresh} onCopied={id=>{refresh();openDrawer(id);}} onClose={() => {store.getState().closeDrawer();if(record)requestAnimationFrame(()=>recordOrigin().current?.focus());}}/>}
+    {inspect && <Inspection key={inspect.id} node={inspect} data={data} close={closeLayer} navigate={inspectNode} openGroup={id=>store.getState().openGroup(id)} openRecord={()=>store.getState().openRecord({node_id:inspect.id},inspect.id)} returnLabel={record?'Record':'Project'}/>}
+    {group&&<OutputGroup group={group} close={()=>store.getState().closeGroup()} refresh={refresh} inspect={id=>{store.getState().closeGroup();inspectNode(id);}}/>}
     {data.execution_controls?.find(control=>control.scope==='project')&&<ExecutionControls
       control={data.execution_controls.find(control=>control.scope==='project')!} slots={turns.flatMap(turn=>turn.slots)} label="Project" refresh={refresh} pendingWork={data.sequences?.some(sequence=>sequence.state==='active'&&sequence.steps.some(step=>step.state!=='complete'))}/>}
     <div className={s.queue}><span>{activeSlots.length} active or unresolved · Local engines take turns on one GPU</span><span>{busy ? 'Saving work…' : 'Changes stay in this project'}</span></div>
@@ -346,7 +332,7 @@ function Picker({state,nodes,current,close,saved,onInspect,stateAction}: {
   const [busy,setBusy]=useState(false);
   const pending=useRef<ReturnType<typeof command> | null>(null);
   const material=nodes.filter(n=>current.node_ids.includes(n.id));
-  const groups=[...new Set(material.map(n=>n.engine??'Imported material'))];
+  const groups=[...new Set(material.map(n=>engineLabel(n,'source')))];
   const apply=async()=>{
     setBusy(true);setError('');pending.current??=command();
     try {await result(fetchClient.PUT('/api/crexil/directions/{did}/selection',{params:{path:{did:state.direction.id}},
@@ -354,7 +340,7 @@ function Picker({state,nodes,current,close,saved,onInspect,stateAction}: {
     catch(err){setError(message(err));}finally{setBusy(false);}
   };
   return <section className={s.picker} style={{left:Math.max(16,state.left),top:Math.max(56,state.top)}} aria-label="Choose displayed takes">
-    <div className={s.pickerBody}>{groups.map(engine=><div className={s.pickerRow} key={engine}><span className={s.micro}>{engine}</span><div className={s.thumbs}>{material.filter(n=>(n.engine??'Imported material')===engine).map(node=><button key={node.id} className={`${s.thumb} ${selected.includes(node.id)?s.selected:''}`} disabled={!node.available} aria-pressed={selected.includes(node.id)} aria-label={`Display ${label(node)}`} onDoubleClick={()=>onInspect(node.id)} onClick={()=>{pending.current=null;setSelected(previous=>previous.includes(node.id)?previous.filter(id=>id!==node.id):[...previous,node.id]);}}>
+    <div className={s.pickerBody}>{groups.map(engine=><div className={s.pickerRow} key={engine}><span className={s.micro}>{engine}</span><div className={s.thumbs}>{material.filter(n=>engineLabel(n,'source')===engine).map(node=><button key={node.id} className={`${s.thumb} ${selected.includes(node.id)?s.selected:''}`} disabled={!node.available} aria-pressed={selected.includes(node.id)} aria-label={`Display ${label(node)}`} onDoubleClick={()=>onInspect(node.id)} onClick={()=>{pending.current=null;setSelected(previous=>previous.includes(node.id)?previous.filter(id=>id!==node.id):[...previous,node.id]);}}>
       <MaterialThumbnail key={node.id} node={node} decorative/><span>{label(node)}</span></button>)}</div></div>)}
       {material.length===0&&<p>This direction has no outputs yet. Open its starter to continue preparation.</p>}
     </div>
@@ -369,12 +355,14 @@ function Picker({state,nodes,current,close,saved,onInspect,stateAction}: {
 
 function Inspection({node,data,close,navigate,openGroup,openRecord,returnLabel}: {node:Material;data:Snapshot;close:()=>void;navigate:(id:string)=>void;openGroup:(id:string)=>void;openRecord:()=>void;returnLabel:string}) {
   const origin=node.material?.origin;
+  const medium=mediumOf(node.payload);
+  const generated=!['imported','prepared'].includes(engineIdentity(node).kind);
   const group=data.execution_groups.find(g=>g.outputs.some(o=>o.node_id===node.id));
   return <section className={s.inspection} aria-label="Inspect material" onKeyDown={keepFocus}>
-    <header className={s.roomHead}><strong>Inspect · {label(node)}</strong><span className={s.hint}>{node.engine??'Imported material'}</span><button autoFocus onClick={close}>Esc · {returnLabel}</button></header>
-    <div className={s.inspectBody}><div className={node.payload==='3d'?s.fullMesh:s.fullImage}>{node.available ? node.payload==='image'?<img src={imageUrl(node.id,true)} alt={label(node)}/>:<MeshInspection key={node.id} node={node}/>:<p>This material is unavailable. Its record remains.</p>}</div>
+    <header className={s.roomHead}><strong>Inspect · {label(node)}</strong><span className={s.hint}>{engineLabel(node,'source')}</span><button autoFocus onClick={close}>Esc · {returnLabel}</button></header>
+    <div className={s.inspectBody}><div className={s[medium.inspectFrame]}>{node.available ? <medium.Inspect node={node}/>:<p>This material is unavailable. Its record remains.</p>}</div>
       <aside className={s.record}><h2>The record</h2>
-        {node.prompt&&<><h3>{node.payload==='3d'||!node.engine?'Recorded description':'Instructions used'}</h3><p className={s.recordPrompt}>{node.prompt}</p></>}
+        {node.prompt&&<><h3>{medium.recordedDescription||!generated?'Recorded description':'Instructions used'}</h3><p className={s.recordPrompt}>{node.prompt}</p></>}
         {origin&&<><h3>Source information</h3><p>{origin.kind==='execution'?'Collected from this execution. Its related files retain their own identities.':origin.kind==='prepared_image'?'Prepared from these sources by Crexil. Its pixel transform and source hashes were recorded.':origin.kind==='project_reuse'?'Imported from another project with an independent copy and its recorded origin.':origin.kind==='reported_external'?'Returned external work. Relationships were reported by a participant.':'Imported original. No generation was observed by Crexil.'}</p>{origin.tool&&<p>Tool · {String(origin.tool)}</p>}{origin.explanation&&<p>{String(origin.explanation)}</p>}{origin.kind==='prepared_image'&&<details><summary>Preparation recipe and source hashes</summary><pre>{JSON.stringify(origin.transform,null,2)}</pre></details>}</>}
         {origin?.kind==='project_reuse'&&<><h3>Original project</h3><a href={`${projectHref(String((origin.source as {project_id:string}).project_id))}?material=${encodeURIComponent(String((origin.source as {node_id:string}).node_id))}`}>{String((origin.source as {project_name:string}).project_name)} ›</a><p className={s.hash}>Source {String((origin.source as {node_id:string}).node_id)}</p><details><summary>Recorded source provenance</summary><pre>{JSON.stringify(origin.source_record,null,2)}</pre></details></>}
         {Boolean(node.retained_files?.length)&&<><h3>Retained related files</h3>{node.retained_files!.map(file=><div key={file.id}><strong>{file.filename}</strong><p>{file.role}{file.required?' · Required':''}</p>{file.available?<a href={`/api/crexil/material/${node.id}/files/${file.id}`} download>Download {file.filename}</a>:<p>{file.error??'File unavailable; its record remains.'}</p>}</div>)}</>}

@@ -74,9 +74,16 @@ const subscribe = (cb: () => void) => {
   return () => window.removeEventListener("hashchange", cb);
 };
 
+// The current hash, subscribed. A component that reads the hash while
+// rendering takes it from here, never from `location.hash` directly: a hash
+// set and reverted between two renders of its parent would otherwise leave
+// the component showing a route the address bar no longer holds.
+export function useHash(): string {
+  return useSyncExternalStore(subscribe, () => location.hash);
+}
+
 export function useHashRoute(): Route {
-  const hash = useSyncExternalStore(subscribe, () => location.hash);
-  return parseHash(hash);
+  return parseHash(useHash());
 }
 
 export const href = {

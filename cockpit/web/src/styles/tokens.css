@@ -33,6 +33,12 @@
   --tint-money: rgba(210, 162, 76, 0.05);
   --tint-danger: rgba(219, 106, 87, 0.05);
 
+  /* medium hues: a lineage line speaks its child's medium. An image keeps the
+     neutral line; a mesh is violet. A medium without a drawn hue reuses the
+     neutral line until the design gives it one. */
+  --medium-image: var(--border-strong);
+  --medium-mesh: #b48cf7;
+
   --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
