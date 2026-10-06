@@ -1,4 +1,4 @@
-"""Durable scope controls preserve requests, attribution and attempt identity."""
+"""Durable scope and attempt controls preserve requests, attribution and attempt identity."""
 
 import json
 import uuid
@@ -7,8 +7,9 @@ import pytest
 
 from app.crexil_schemas import ControlExecution
 from app.crexil_store import Conflict, CreativeStore
-from app.execution_controls import (ExecutionPaused, cancel_requested, cancellations,
-                                    guard_dispatch, record, state)
+from app.execution_controls import (ExecutionPaused, cancel_attempt, cancel_requested, cancellations,
+                                    guard_dispatch, record, resume_attempt, resumes, state)
+from app.scheduler import BenchEntry
 from tests.test_db import opened
 
 pytestmark = pytest.mark.anyio
@@ -208,3 +209,63 @@ async def test_restart_preserves_pause_cancel_actor_and_exact_receipt(tmp_path):
             await guard_dispatch(db, slot)
         row = await db._one('SELECT response_json FROM command_receipts ORDER BY rowid DESC LIMIT 1')
         assert json.loads(row['response_json']) == json.loads(receipt['response_json'])
+
+
+async def test_one_attempts_cancel_is_recorded_as_a_runs_cancel_records_each_of_its_own(tmp_path):
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace('project')
+        run = await turn(db, ws['id'], 2)
+        queued, running = run['slots']
+        running = await db.dispatch_slot(running['id'])
+        store = CreativeStore(db)
+        agent = {'kind': 'agent', 'name': 'Scout'}
+
+        async def stop(slot, attempt, request_id):
+            body = {'attempt': attempt, 'actor': agent, 'reason': 'Enough takes'}
+            return await store.command(request_id, f"attempts.cancel:{slot['id']}", body,
+                                       lambda: cancel_attempt(db, slot['id'], body))
+
+        skipped = await stop(queued, 0, 'cancel-queued')
+        assert skipped['words'] == 'Skipped: nothing more is sent for this attempt, and skipping it costs nothing.'
+        assert (await db.get_slot(queued['id']))['status'] == 'skipped'
+        assert (await db.slot_events(queued['id']))[-1]['payload'] == {
+            'from': 'queued', 'cancel': True, 'reason': 'Enough takes', 'attempt': 0}
+        stopping = await stop(running, 1, 'cancel-running')
+        assert stopping['action'] == 'cancel' and stopping['actor'] == agent
+        # The running attempt keeps a durable stop that the scheduler applies, as for a run's cancel.
+        assert (await db.get_slot(running['id']))['status'] == 'running'
+        assert await cancel_requested(db, running)
+        assert await cancellations(db) == [{'slot_id': running['id'], 'attempt': 1}]
+        run_state = await state(db, 'run', run['id'])
+        assert run_state['cancel_requested'] == 1 and run_state['last_action'] is None and run_state['revision'] == 0
+        with pytest.raises(Conflict, match='already stopping'):
+            await stop(running, 1, 'cancel-again')
+        with pytest.raises(Conflict, match='changed since it was read'):
+            await stop(running, 0, 'cancel-stale')
+        with pytest.raises(LookupError):
+            await cancel_attempt(db, 'no-such-slot', {'attempt': 0, 'actor': agent})
+
+
+async def test_a_recorded_resume_names_one_bench_by_the_event_that_installed_it(tmp_path):
+    async with opened(tmp_path) as db:
+        ws = await db.create_workspace('project')
+        slot = (await turn(db, ws['id']))['slots'][0]
+        installed = await db.append_event('engine.benched', payload={
+            'scope': 'engine:local', 'kind': 'model_down', 'cause': 'down', 'held': [slot['id']]})
+        await db.transition_slot(slot['id'], 'held', payload={'bench': 'engine:local'})
+        body = {'attempt': 0, 'actor': {'kind': 'human', 'name': 'Ada'}, 'reason': 'Back up'}
+        bench = BenchEntry('engine:local', 'model_down', 'down', installed['seq'])
+        answer = await CreativeStore(db).command('resume-1', 'attempts.resume', body,
+                                                 lambda: resume_attempt(db, slot, body, bench, 1))
+        assert answer['words'].startswith('Its hold was lifted: 1 held attempt went back to the queue')
+        (intent,) = await resumes(db, {'engine:local': installed['seq']})
+        assert (intent['bench'], intent['bench_seq'], intent['actor']) == ('engine:local', installed['seq'], body['actor'])
+        assert await resumes(db, {'engine:other': installed['seq']}) == []
+        assert await resumes(db, {}) == []
+        # The bench was lifted and installed again since, beside an older bench that still
+        # stands: the resume names the first installation only, so it lifts nothing now.
+        again = await db.append_event('engine.benched', payload={'scope': 'engine:local', 'kind': 'model_down'})
+        assert await resumes(db, {'lane:local': 1, 'engine:local': again['seq']}) == []
+        # A slot's control never changes its run's or project's own control.
+        assert (await state(db, 'run', slot['turn_id']))['revision'] == 0
+        assert (await state(db, 'project', ws['id']))['revision'] == 0
