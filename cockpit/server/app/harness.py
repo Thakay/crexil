@@ -31,6 +31,7 @@ from fastapi import APIRouter
 from PIL import Image
 from pydantic import BaseModel
 
+from . import audio
 from .executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult,
                         GpuReading, Handle, Lane, Reconciliation, blank_frame)
 
@@ -190,6 +191,43 @@ def turntable_webp(job_ref: str) -> bytes:
     return buf.getvalue()
 
 
+def _wav(key: str, seconds: float = 0.6, rate: int = 24000) -> bytes:
+    """A real PCM WAV so a scripted audio take is measured like a real one:
+    a short tone whose pitch derives from the key, faded at both ends."""
+    pitch = 180 + hash(key) % 240
+    count = int(seconds * rate)
+    frames = bytearray()
+    for i in range(count):
+        envelope = min(1.0, i / 600, (count - i) / 600)
+        frames += struct.pack('<h', int(9000 * envelope * math.sin(2 * math.pi * pitch * i / rate)))
+    return audio.wrap_pcm(bytes(frames), sample_rate=rate)
+
+
+async def _audio_takes(h: "HarnessHandle", engine_name: str) -> ExecutionResult:
+    """Every take one scripted audio attempt returns, through the real collector."""
+    request = h.request.external or {}
+    verb, count = request.get('verb'), int(request.get('takes') or 1)
+    primary = None
+    for index in range(count):
+        identity = f'take:{index}'
+        voice = ({'provider': engine_name, 'kind': 'designed', 'generated_voice_id': f'harness-{h.slot_id}-{index}'}
+                 if verb == 'voice-design' else
+                 {'provider': engine_name, 'kind': 'saved',
+                  'voice_id': f"harness-voice-{(request.get('voice') or {}).get('source_node_id', 'library')}"}
+                 if verb == 'speak' else None)
+        spoken = (request.get('controls') or {}).get('preview_text') if verb == 'voice-design' else \
+            request.get('text') if verb == 'speak' else None
+        output = CollectedOutput(identity=identity, filename=f'take-{index + 1}.wav', data=_wav(h.slot_id + identity),
+                                 payload=audio.PAYLOAD, descriptor={'harness': True,
+                                 'audio': {'text': spoken, 'voice': voice, 'alignment': None}})
+        if h.request.on_output:
+            await h.request.on_output(output)
+        if primary is None:
+            primary = ExecutionResult(data=output.data, payload=audio.PAYLOAD, filename=output.filename,
+                                      primary_identity=identity, descriptor=output.descriptor)
+    return primary
+
+
 # The as-run record a scripted mesh lands with. Zeroed geometry is the
 # HONEST reading of `_glb`'s empty scene — the harness never claims a
 # triangle it didn't make — and `watertight: []` is what makes the
@@ -240,7 +278,7 @@ class HarnessExecutor:
     def __init__(self, name: str, lane: Lane, payload: str = "image") -> None:
         self.name = name
         self.lane: Lane = lane
-        self.payload = payload           # "3d" for the mesh stand-in
+        self.payload = payload           # "3d" for the mesh stand-in, "audio" for voices
 
     async def open(self) -> None:
         pass
@@ -276,6 +314,10 @@ class HarnessExecutor:
         if primary:
             primary.charged_usd = d.charged_usd
             return primary
+        if self.payload == audio.PAYLOAD:
+            result = await _audio_takes(h, self.name)
+            result.charged_usd = d.charged_usd
+            return result
         if self.payload == "3d":
             return ExecutionResult(data=_glb(h.slot_id), payload="3d",
                                    filename=f"{h.slot_id}.glb",
@@ -336,7 +378,9 @@ def build_executors() -> list[HarnessExecutor]:
     return [HarnessExecutor("comfy", "local"),
             HarnessExecutor("openrouter", "external"),
             HarnessExecutor("region", "local"),
-            HarnessExecutor("mesh", "local", payload="3d")]
+            HarnessExecutor("mesh", "local", payload="3d"),
+            HarnessExecutor("elevenlabs", "external", payload=audio.PAYLOAD),
+            HarnessExecutor("voice-runner", "local", payload=audio.PAYLOAD)]
 
 
 async def gpu_probe() -> GpuReading | None:

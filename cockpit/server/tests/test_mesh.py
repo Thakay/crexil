@@ -207,6 +207,8 @@ def test_the_published_verbs_agree_with_the_route_and_the_runner():
     matrix = json.loads((root / "configs/engines.json").read_text())
     published: dict[str, set[str]] = {}
     for e in matrix["engines"]:
+        if e["payload"] == "audio":
+            continue                     # audio verbs: test_audio_contract
         for verb in e.get("verbs") or []:
             published.setdefault(verb, set()).add(e["id"])
         if e["payload"] != "3d":
@@ -270,6 +272,8 @@ def test_the_published_params_are_handles_the_runner_actually_takes():
 
     for e in matrix["engines"]:
         params = e.get("params") or {}
+        if e["payload"] == "audio":
+            continue                     # audio params: test_audio_contract
         if e["payload"] != "3d":
             assert not params, (
                 f"{e['id']} is an image engine — its handles are the preset's "

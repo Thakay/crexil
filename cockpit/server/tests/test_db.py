@@ -86,7 +86,7 @@ async def test_fresh_create_stamps_the_current_rung(tmp_path):
     async with opened(tmp_path) as db:
         cur = await db.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'")
-        assert (await cur.fetchone())["value"] == SCHEMA_VERSION == "12"
+        assert (await cur.fetchone())["value"] == SCHEMA_VERSION == "13"
 
 
 async def test_a_v4_file_climbs_the_whole_ladder_on_open(tmp_path):
@@ -1291,7 +1291,7 @@ async def test_v11_copy_adds_sequence_storage_without_changing_retained_work(tmp
     shutil.copy2(source, target)
     for _ in range(2):
         async with opened(tmp_path, target.name) as db:
-            assert (await db._one("SELECT value FROM meta WHERE key='schema_version'"))['value'] == '12'
+            assert (await db._one("SELECT value FROM meta WHERE key='schema_version'"))['value'] == '13'
             for table, rows in before.items():
                 assert sorted([tuple(row) for row in await db._all(f'SELECT * FROM "{table}"')], key=repr) == rows
             for table in ('sequences', 'sequence_steps', 'sequence_runs'):

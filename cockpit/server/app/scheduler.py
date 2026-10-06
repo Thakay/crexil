@@ -20,7 +20,7 @@ import json
 import logging
 import time
 from collections import deque
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -41,6 +41,11 @@ RESTING = {"landed", "failed", "skipped", "set_aside", "late"}
 
 ORPHAN_COPY = ("The cockpit restarted during the external call. Its outcome and charge "
                "are unverified. Check the provider record before deciding to run again.")
+# The file name a primary output takes when its executor names none.
+DEFAULT_FILENAMES = {'3d': 'output.glb', 'audio': 'output.wav'}
+COLLECTABLE_COPY = ("The cockpit restarted during the external call. Its outcome and charge "
+                    "are unverified. Collect existing files to look for its result; nothing "
+                    "is generated again.")
 UNCERTAIN_COPY = ("The runtime may have accepted this request, but its outcome could not "
                   "be confirmed. It was not submitted again. Reconcile the runtime record first.")
 
@@ -288,6 +293,10 @@ class Scheduler:
         self.capture = capture if capture is not None else Capture(db)
         self._capturing_emit = False
         self._executors = {e.name: e for e in executors}
+        # an executor's own cap on takes in flight, below the shared external
+        # permit; a take waiting for it stays queued (law 17)
+        self._permits = {e.name: asyncio.Semaphore(e.max_concurrency) for e in executors
+                         if getattr(e, "max_concurrency", None)}
         self._route = route
         self._on_event = on_event
         self._ext_sem = asyncio.Semaphore(
@@ -435,6 +444,10 @@ class Scheduler:
         if ex is None:
             raise ValueError(f"no executor named {name!r} for engine {engine!r}")
         return ex
+
+    def executor(self, name: str) -> Executor | None:
+        """The registered executor by name, for availability questions."""
+        return self._executors.get(name)
 
     def bench_for(self, engine: str, turn_id: str | None = None
                   ) -> BenchEntry | None:
@@ -661,7 +674,11 @@ class Scheduler:
         the lane's other providers with it."""
         try:
             while True:
-                async with self._ext_sem:
+                take = self._takes.get(slot_id)
+                if take is None or take.cancel_requested:
+                    return
+                permit = self._permits.get(take.executor.name)
+                async with permit or nullcontext(), self._ext_sem:
                     take = self._takes.get(slot_id)
                     if take is None or take.cancel_requested:
                         return
@@ -939,6 +956,8 @@ class Scheduler:
                     except OSError:
                         await execution_outputs.collect(self.db, self._staging, slot, req,
                             replace(companion, data=None, error='The companion file could not be stored.'))
+        elif ex.name != 'mesh' and callable(getattr(ex, 'collect_existing', None)):
+            rec = await ex.collect_existing(slot, request=req)
         else:
             raise ValueError('This runtime has no supported retrieval reference for the attempt. No work was repeated.')
         if rec.kind == 'landed':
@@ -1047,13 +1066,19 @@ class Scheduler:
                              result: ExecutionResult) -> None:
         req = take.request
         output = CollectedOutput(identity=result.primary_identity or 'primary',
-            filename=result.filename or ('output.glb' if req.payload == '3d' else 'output.png'),
+            filename=result.filename or DEFAULT_FILENAMES.get(req.payload, 'output.png'),
             data=result.data, payload=None if req.payload == 'file' else req.payload, role='unclassified',
-            submitted_graph=result.submitted_graph, external=result.external)
+            descriptor=result.descriptor or {}, submitted_graph=result.submitted_graph, external=result.external)
         await execution_outputs.collect(self.db, self._staging, slot, req, replace(output, data=None),
             path=self._staging_path(slot, result) if not result.primary_identity else None)
         member = await execution_outputs.collect(self.db, self._staging, slot, req, output,
             path=self._staging_path(slot, result) if not result.primary_identity else None)
+        if member['error'] and req.payload != 'file' and member['node_id'] is None:
+            # the primary file arrived but cannot land as its declared payload
+            await execution_outputs.finish(self.db, slot, 'incomplete', {'collection_errors': [member['error']]})
+            await self._finalize_failure(take, slot, EngineFailure('collection', member['error'],
+                                                                   charged_usd=result.charged_usd))
+            return
         path = Path(member['output_path'])
         missing = []
         for suffix, blob in (result.sidecars or {}).items():
@@ -1692,7 +1717,8 @@ class Scheduler:
                     retained = await self.db._one("SELECT 1 FROM execution_outputs o JOIN execution_groups g ON g.id=o.group_id "
                         "WHERE g.slot_id=? AND g.take=? AND o.role='provider receipt' AND o.sha256 IS NOT NULL", (slot['id'], slot['attempt']))
                     cause = ('Provider response retained. Collect existing files to recover available results.'
-                             if retained else ORPHAN_COPY)
+                             if retained else COLLECTABLE_COPY if callable(getattr(ex, 'collect_existing', None))
+                             else ORPHAN_COPY)
                     await execution_outputs.finish(self.db, slot, 'uncertain', {'cause': cause})
                     # never auto-resubmit money, and say so
                     with suppress(ValueError):

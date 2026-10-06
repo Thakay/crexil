@@ -99,7 +99,9 @@ def test_build_executors_wears_the_real_names():
     by_name = {e.name: e.lane for e in build_executors()}
     assert by_name == {"comfy": "local", "openrouter": "external",
                        "region": "local",   # region takes, one directive
-                       "mesh": "local"}     # the 3D lane's stand-in
+                       "mesh": "local",     # the 3D lane's stand-in
+                       "elevenlabs": "external",   # hosted audio
+                       "voice-runner": "local"}    # the local voice runner
 
 
 # --- the trust-critical cases' fault injection -----------------------------

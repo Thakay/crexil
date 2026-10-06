@@ -494,6 +494,7 @@ class Slot(BaseModel):
     started_at: str | None
     finished_at: str | None
     created_at: str
+    identity_hidden: bool | None = None        # a blind run's cell before its reveal
 
 
 class Turn(BaseModel):
@@ -587,9 +588,15 @@ class EngineParam(BaseModel):
     control, which is why everything but `label` is optional here."""
     label: str
     effect: str | None = None
-    type: Literal["enum"] | None = None
+    type: Literal["enum", "text", "int", "float", "bool", "seed"] | None = None
     choices: list[Any] = []
     default: Any = None
+    required: bool | None = None
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    min_length: int | None = None
+    max_length: int | None = None
     state: Literal["verified", "unverified"] | None = None
     # what was run to earn `verified` — the same shape a capability's carries,
     # so a badge can always be traced to the bench that made it
@@ -617,7 +624,9 @@ class Engine(BaseModel):
     id: str
     name: str
     lane: Literal["local", "external"]
-    payload: Literal["image", "3d"]
+    payload: Literal["image", "3d", "audio"]
+    # the adapter the engine is reached through (PRD §2); audio rows name it
+    provider: str | None = None
     verbs: list[str] = []
     params: dict[str, dict[str, EngineParam]] = {}
     price: str
@@ -702,7 +711,7 @@ class Node(BaseModel):
     turn_id: str | None                  # imported nodes have neither
     slot_id: str | None
     take: int | None
-    payload: Literal["image", "3d"]      # grows only when a payload lands
+    payload: Literal["image", "3d", "audio"]   # grows only when a payload lands
     verb: str
     prompt: str | None
     engine: str | None
@@ -727,6 +736,9 @@ class Node(BaseModel):
     # `promoted_at` rather than stored — the mesh record already lives on
     # the node, this is the slice of it a face may see.
     mesh: NodeMesh | None = None
+    # True while a blind run withholds this take's engine, model, seed and
+    # cost; `engine` then reads "hidden", never null (null means imported)
+    identity_hidden: bool | None = None
 
 
 class TrayNode(Node):
@@ -817,6 +829,7 @@ class SlotView(BaseModel):
     bench: str | None                    # held: the covering bench scope
     passes: Passes | None = None       # region takes only
     created_at: str
+    identity_hidden: bool | None = None        # a blind run's cell before its reveal
 
 
 class LocalLane(BaseModel):

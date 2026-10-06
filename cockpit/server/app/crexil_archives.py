@@ -40,7 +40,7 @@ PROJECT_TABLES = (
     'material_info', 'mask_assets', 'execution_groups', 'execution_outputs',
     'sequences', 'sequence_steps', 'sequence_runs', 'events',
     'operation_registrations', 'operation_revisions', 'operation_inspections',
-    'command_receipts',
+    'command_receipts', 'audio_info', 'blind_runs',
 )
 
 
@@ -344,6 +344,8 @@ async def snapshot(db, wid: str) -> dict[str, list[dict]]:
     await related('node_parents', 'node_id', ids('nodes'))
     await related('regions', 'node_id', ids('nodes'))
     await related('material_info', 'node_id', ids('nodes'))
+    await related('audio_info', 'node_id', ids('nodes'))
+    await select('blind_runs', 'workspace_id=?', (wid,))
     await related('direction_turns', 'direction_id', ids('directions'))
     await related('direction_material', 'direction_id', ids('directions'))
     await related('execution_groups', 'slot_id', ids('slots'))

@@ -81,6 +81,13 @@ OPENROUTER_URL = os.environ.get(
     "OPENROUTER_URL", "https://openrouter.ai/api/v1").rstrip("/")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
+# Audio providers. The ElevenLabs key lives in the environment only (law 18);
+# the local voice runner is a separate process reached over HTTP, like the 3D
+# runner, so its own environment never touches ComfyUI's.
+ELEVENLABS_URL = os.environ.get("ELEVENLABS_URL", "https://api.elevenlabs.io").rstrip("/")
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+VOICE_RUNNER_URL = os.environ.get("VOICE_RUNNER_URL", "http://127.0.0.1:8190").rstrip("/")
+
 # Build stamp: baked at image build (scripts/deploy.sh passes git rev +
 # UTC time as build args). "dev" = uncontainerized run; "unknown" = image
 # built without args (plain `docker compose up -d --build`) — both visible

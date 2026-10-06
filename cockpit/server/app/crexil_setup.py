@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from . import config, operation_registry
+from . import audio, audio_executors, config, operation_registry
 from .crexil_schemas import OperationDefinition, SourcePort
 from .crexil_store import Conflict
 from .db import now_iso
@@ -27,8 +27,19 @@ async def overview(stack) -> dict:
             local = {'ok': True, 'version': stats.get('system', {}).get('comfyui_version')}
         except Exception as exc:
             local = {'ok': False, 'error': str(exc)[:200]}
+    hosted = {**_setup_status(), 'probe': await _openrouter_check()}
+    probe = hosted.get('probe') or {}
+    connections = [
+        {'provider': 'comfyui', 'label': 'ComfyUI', 'ok': bool(local.get('ok')), 'key_source': None,
+         'detail': (f"Answering at {config.COMFYUI_URL}." if local.get('ok')
+                    else local.get('error') or f'Not answering at {config.COMFYUI_URL}.')},
+        {'provider': 'openrouter', 'label': 'OpenRouter', 'ok': probe.get('ok') if hosted.get('configured') else False,
+         'key_source': hosted.get('source'),
+         'detail': ('The key works.' if probe.get('ok') else probe.get('error') or 'A key is set. It has not been checked.')
+                   if hosted.get('configured') else 'No key. Save one in Connections.'},
+        *[await audio_executors.connection(provider, stack) for provider in audio.PROVIDERS]]
     return {'preview': config.CREXIL_PREVIEW, 'comfyui_url': config.COMFYUI_URL,
-            'comfyui': local, 'openrouter': {**_setup_status(), 'probe': await _openrouter_check()}}
+            'comfyui': local, 'openrouter': hosted, 'connections': connections}
 
 
 async def requirements(stack, operation_id: str, revision: str) -> dict:

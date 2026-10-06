@@ -16,6 +16,26 @@ class BudgetExceeded(ValueError):
     pass
 
 
+class UnknownPrice(ValueError):
+    """A price that cannot be stated exactly. It counts as over every cap (law 22)."""
+
+
+MICRO_USD = Decimal(1_000_000)
+
+
+def audio_reservation(tariff: dict | None, measures: dict) -> int:  # noqa: ARG001
+    """The published-tariff reservation for one audio attempt, in integer
+    micro-dollars, from the engine's tariff and the attempt's measures:
+    `characters` (for `1k_characters`), `seconds` (for `second`), and one
+    `generation` or `attempt`. A reservation never guesses: an unpriceable
+    tariff refuses. An unmetered engine (0 micro-dollars) reserves nothing."""
+    if not isinstance(tariff, dict) or type(tariff.get('micro_usd')) is not int or tariff['micro_usd'] < 0:
+        raise UnknownPrice('This engine has no published price. An unknown price counts as over the spending limit.')
+    if tariff['micro_usd'] == 0:
+        return 0
+    raise UnknownPrice('Audio prices are not computed yet. An unknown price counts as over the spending limit.')
+
+
 async def accounting(db, wid: str, *, turn_id: str | None = None,
                      turn_ids: list[str] | None = None) -> dict:
     """Account for a project, one run or an exact set of runs within that project."""

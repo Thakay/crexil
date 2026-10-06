@@ -39,6 +39,8 @@ export const EDGE_KIND: Record<
 > = {
   image: { label: "IMAGE", cssVar: "var(--accent)" },
   "3d": { label: "MESH", cssVar: "var(--good)" },
+  // the legacy canvas never draws audio; the project surface owns its hue
+  audio: { label: "AUDIO", cssVar: "var(--secondary)" },
 };
 
 function slotLetter(pos: number | null): string {

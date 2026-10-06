@@ -443,6 +443,7 @@ async def catalogue(stack, definitions: dict | None = None) -> list[dict]:
             'source_limit': len(definition.sources), 'evidence': 'declared',
             'availability': 'unavailable' if unavailable else 'incomplete' if reasons else 'unverified',
             'reasons': reasons, 'execution_location': 'Configured ComfyUI runtime', 'data_destination': config.COMFYUI_URL,
+            'sources': [{'role': 'source', 'accepts': ['image']}] if definition.sources else [], 'price_unit': 'attempt',
             'price_usd': 0 if not binding_gaps(item['binding']) else None,
             'maximum_usd_per_attempt': 0 if not binding_gaps(item['binding']) else None,
             'cost_basis': 'Installation owner declaration for this graph and exposed controls' if not binding_gaps(item['binding']) else 'Unresolved processing cost'})
