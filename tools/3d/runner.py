@@ -594,7 +594,6 @@ class Resident:
         self.identity: str | None = None
         self.proc: subprocess.Popen | None = None
         self.socket_path: Path | None = None
-        self.log_f = None
         self.load_s: float | None = None
         self.last_used = 0.0
         self.in_use = False
@@ -626,23 +625,22 @@ class Resident:
             with suppress(OSError):
                 sock.unlink()
             log_path = SERVE / f"{engine}-{kind}.log"
-            self.log_f = open(log_path, "ab", 0)
-            cmd = [str(spec["python"]), str(spec["script"]),
-                   "--serve", "--socket", str(sock)]
-            log.info("resident %s/%s: loading — %s (loads run 26–73 s with "
-                     "pagecache)", kind, engine, " ".join(cmd))
-            try:
-                proc = subprocess.Popen(cmd, cwd=str(HERE),
-                                        start_new_session=True,
-                                        stdout=self.log_f,
-                                        stderr=subprocess.STDOUT)
-            except OSError as e:
-                log.info("resident %s/%s could not start (%s) — running "
-                         "this take cold", kind, engine, e)
-                with suppress(OSError):
-                    self.log_f.close()
-                self.log_f = None
-                return None
+            # The child writes the log through its own copy of the
+            # descriptor, so the runner's copy closes once the child exists.
+            with open(log_path, "ab", 0) as log_f:
+                cmd = [str(spec["python"]), str(spec["script"]),
+                       "--serve", "--socket", str(sock)]
+                log.info("resident %s/%s: loading — %s (loads run 26–73 s "
+                         "with pagecache)", kind, engine, " ".join(cmd))
+                try:
+                    proc = subprocess.Popen(cmd, cwd=str(HERE),
+                                            start_new_session=True,
+                                            stdout=log_f,
+                                            stderr=subprocess.STDOUT)
+                except OSError as e:
+                    log.info("resident %s/%s could not start (%s) — running "
+                             "this take cold", kind, engine, e)
+                    return None
             self.key, self.identity = key, spec["identity"]
             self.proc, self.socket_path = proc, sock
             self.in_use, self.load_s = True, None
@@ -725,16 +723,13 @@ class Resident:
         elif proc is not None:
             log.info("resident %s died on its own (exit %s) — cleared",
                      key, proc.returncode)
-        if self.log_f is not None:
-            with suppress(OSError):
-                self.log_f.close()
         if self.socket_path is not None:
             with suppress(OSError):
                 self.socket_path.unlink()
         with suppress(OSError):
             self.PIDFILE.unlink()
         self.key = self.identity = self.proc = self.socket_path = None
-        self.log_f, self.load_s, self.in_use = None, None, False
+        self.load_s, self.in_use = None, False
 
     def _connectable(self, sock: Path) -> bool:
         import socket as socketlib
@@ -955,10 +950,8 @@ class Worker:
             return
 
         funnel_rec = None
-        try:
+        with suppress(OSError, ValueError):
             funnel_rec = json.loads(record_json.read_text())
-        except (OSError, ValueError):
-            pass
         engine_rec = ((funnel_rec or {}).get("engines") or {}).get(rec["engine"]) or {}
         glb = engine_rec.get("glb")
         if proc.returncode == 0 and glb and Path(glb).is_file():
@@ -1152,7 +1145,7 @@ class Handler(BaseHTTPRequestHandler):
     def _file(self, path: Path | None, ctype: str, missing: str) -> None:
         if path is None or not path.is_file():
             return self._json(404, {"detail": missing})
-        self._bytes(200, path.read_bytes(), ctype)
+        return self._bytes(200, path.read_bytes(), ctype)
 
     def _read_body(self) -> dict:
         n = int(self.headers.get("Content-Length") or 0)

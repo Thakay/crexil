@@ -143,7 +143,7 @@ test("TO 3D opens the plinth, states the lane, and Esc queues nothing", async ({
   const before = await readout.textContent();
   await page.keyboard.press("Escape");
   await expect(plinth(page)).toHaveCount(0);
-  await expect(readout).toHaveText(before);
+  await expect(readout).toHaveText(before!);
 });
 
 test("the summon palette's 3D entry reaches the same plinth", async ({
