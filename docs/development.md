@@ -204,6 +204,10 @@ The local voice engine (Qwen3-TTS) runs in its own environment behind `tools/tts
 `tools/tts/README.md` covers install and start. Set `VOICE_RUNNER_URL` if it serves elsewhere than
 `http://127.0.0.1:8190`, and enable the `qwen3-tts` row.
 
+ElevenLabs is reached directly over HTTP, never through its SDK, because the SDK retries on its own and
+could charge twice for one take. `LIVE_ELEVENLABS=1` with `ELEVENLABS_API_KEY` set runs one opt-in live
+sound-effect test that costs about $0.001; `scripts/check.sh` never runs it.
+
 ### Local ComfyUI lane
 
 - ComfyUI is a separate checkout with its own virtual environment, reached at `COMFYUI_URL`.

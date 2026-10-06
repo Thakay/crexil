@@ -35,7 +35,7 @@ documentation may say *project* for workspace, *run* for turn, *item* for node a
 for `node.promoted`.
 
 - **Node**: one generation. Immutable once landed; a re-run makes a new node. Fields: id,
-  payload (`image | 3d`; the enum extends only when a payload actually lands),
+  payload (`image | 3d | audio`; the enum extends only when a payload actually lands),
   **parents[] (0..n)**, prompt, engine, seed (nullable), dial values, the verb that produced
   it, turn, status, cost, `setAside`.
 - **Turn**: a batch. One Run creates one turn of N slots and states its cap (law 22).
