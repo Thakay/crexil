@@ -177,6 +177,7 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
     direction = await creative.direction(did)
     project = await creative.project(direction['workspace_id'])
     setup = Preparation.model_validate(direction['setup'])
+    await stack.provider_catalog.ensure_fresh(c.operation_id for c in setup.operations)
     errors: list[str] = []
     if direction['state'] != 'draft':
         errors.append('This direction was already submitted. Reuse its setup to prepare new work.')
