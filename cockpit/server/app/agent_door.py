@@ -7,10 +7,14 @@ order (law 8), never the project snapshot. It carries facts, ids, labels and
 reasons only: no take's bytes and no address to fetch them, because ElevenLabs'
 terms forbid its audio as input to any machine learning and an agent's language
 model is one. A blind run passes through
-`blind.mask`, so engine, model, seed, per-take cost and timing stay withheld
-until its authored reveal; run totals and the cap stay visible (law 22). Takes are
-named the way the grid names them: run index, cell letters, and `.n` for a later
-output of the same cell.
+`blind.mask`, so engine, model, seed, per-take cost, timing and loudness stay
+withheld until its authored reveal; run totals and the cap stay visible (law 22).
+While any attempt of a hidden run is queued, running or late, every cell of that
+run reads as one neutral face, as the grid shows it: `running`, with no takes,
+retry, kind, cause or free collection, and the summary counts its attempts done,
+because which takes land first tells its engines apart. Takes are named the way
+the grid names them: run index, cell letters, and `.n` for a later output of the
+same cell.
 
 A voice session is started by the artist: it opens the microphone and spends
 minutes. The server asks ElevenLabs for a short-lived conversation token, or a
@@ -87,21 +91,37 @@ def _elapsed_ms(slot: dict, now: datetime) -> int | None:
     return max(0, int((end - started).total_seconds() * 1000))
 
 
-def summary(cells: list[dict]) -> str:
-    """One plain line for a run: counts by state, then each cause once (law 1)."""
-    if not cells:
+def summary(cells: list[dict], progress: list[str] = ()) -> str:
+    """One plain line for a run: counts by state, then each cause once (law 1).
+    `progress` holds one line for each hidden run still in flight, whose cells
+    are left out of `cells`."""
+    if not cells and not progress:
         return 'Not submitted yet.'
     counts = Counter(cell['state'] for cell in cells)
     words = [f'{counts[state]} {word}' for state, word in STATE_WORDS.items() if counts[state]]
     words += [f'{n} {state}' for state, n in counts.items() if state not in STATE_WORDS]
-    line = ', '.join(words) + '.'
+    line = ', '.join(words) + '.' if words else ''
     causes = Counter(cell['cause'] for cell in cells if cell['state'] in ('failed', 'held') and cell['cause'])
     for cause, n in causes.items():
         line += ' ' + (cause if n == 1 else f'{cause.rstrip(".")} ({n} cells).')
-    return line
+    return ' '.join(part for part in (line, *progress) if part)
 
 
 AGENT_AUDIO = ('duration_s', 'loudness_lufs', 'text', 'voice')
+# A hidden run with an attempt in one of these states is still in flight; a held
+# attempt counts as settled, as on the grid.
+IN_FLIGHT = ('queued', 'running', 'late')
+# The face every cell of a hidden run in flight wears.
+VEILED = {'state': 'running', 'retrying': False, 'kind': None, 'cause': None, 'collectable': False}
+
+
+def _hidden_take(take: dict) -> dict:
+    """A hidden take as an agent reads it: masked, and without its loudness,
+    which groups takes by engine."""
+    masked = blind.mask('node', take)
+    if masked.get('audio'):
+        masked['audio'] = {**masked['audio'], 'loudness_lufs': None}
+    return masked
 
 
 def _take(node: dict, turn_idx: int, pos: int, selection: set[str], sounds: dict) -> dict:
@@ -149,8 +169,9 @@ async def run_view(db, did: str) -> dict:
     for node in sorted(nodes, key=lambda n: (n['output_index'] or 0, n['id'])):
         outputs[node['slot_id']].append(node)
     now = datetime.now(timezone.utc)
-    cells = []
+    cells, shown, progress = [], [], []
     for turn in turns:
+        veiled = turn['id'] in hidden and any(slot['status'] in IN_FLIGHT for slot in turn['slots'])
         for slot in turn['slots']:
             takes = [_take(node, turn['idx'], slot['pos'], selection, sounds) for node in outputs[slot['id']]]
             cell = {'slot_id': slot['id'], 'turn_id': turn['id'], 'label': label(turn['idx'], slot['pos']),
@@ -164,8 +185,16 @@ async def run_view(db, did: str) -> dict:
                     'collectable': (slot['id'], slot['attempt']) in collectable, 'takes': takes}
             if turn['id'] in hidden:
                 cell = {**blind.mask('slot', cell), 'elapsed_ms': None,
-                        'takes': [blind.mask('node', take) for take in takes]}
+                        'takes': [_hidden_take(take) for take in takes]}
+            if veiled:
+                cell.update(VEILED, takes=[])
+            else:
+                shown.append(cell)
             cells.append(cell)
+        if veiled:
+            done = sum(slot['status'] not in IN_FLIGHT for slot in turn['slots'])
+            progress.append(f"Run {turn['idx']} is in progress: {done} of {len(turn['slots'])} attempts done. "
+                            'Its takes show when it settles.')
     return {'run_id': did, 'project_id': wid, 'title': direction['title'], 'state': direction['state'],
             'revision': direction['revision'], 'action': setup.get('action') or 'generate',
             'prompt': setup.get('prompt') or '',
@@ -177,7 +206,7 @@ async def run_view(db, did: str) -> dict:
                              'revealed': bool(blind_runs.get(t['id'], {}).get('revealed')),
                              'control': controls[t['id']]} for t in turns],
             'cells': cells, 'selection': list(direction['selection'] or []), 'decisions': history,
-            'summary': summary(cells), 'event_seq': seq}
+            'summary': summary(shown, progress), 'event_seq': seq}
 
 
 # --- voice sessions ---

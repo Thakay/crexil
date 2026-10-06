@@ -3,6 +3,7 @@ key stays on the server and whose minutes are capped before ElevenLabs is asked;
 delivery kept a human act; and the host and origin guard on every route that
 changes state or spends."""
 
+import asyncio
 import json
 
 import httpx
@@ -11,9 +12,12 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app import agent_door, config, main
 from app.executors import EngineFailure
-from fakes import FakeAudioExecutor
-from test_api_v4 import booted, store
+from fakes import FakeAudioExecutor, tone_wav
+from test_api_v4 import booted, settle_turn, store
 from test_audio_contract import PREVIEW, booted_audio, draft, submit
+from test_blind_everywhere import prepared as blind_cast
+from test_blind_everywhere import submitted as blind_submit
+from test_blind_everywhere import until
 from test_blind_runs import LOCAL, HOSTED, cast, casting, identity_terms, leaks, revision_of
 from test_crexil import command, project
 
@@ -54,6 +58,9 @@ async def test_a_blind_run_view_names_no_engine_until_its_reveal_and_keeps_its_t
         assert view['cap_usd'] == 0 and view['charged_usd'] == 0 and view['reserved_usd'] == 0   # totals stay (law 22)
         assert view['summary'] == '2 landed.'
 
+        # A hidden take's loudness would group takes by engine, so it waits for the reveal too.
+        assert all(t['audio']['loudness_lufs'] is None for c in view['cells'] for t in c['takes'])
+
         revealed = await client.post(f"/api/crexil/turns/{turn['id']}/reveal", json=command(reason='Decided'))
         assert revealed.status_code == 200, revealed.text
         seen = await run_of(client, direction['id'])
@@ -61,6 +68,40 @@ async def test_a_blind_run_view_names_no_engine_until_its_reveal_and_keeps_its_t
         assert {c['engine'] for c in seen['cells']} == {LOCAL, HOSTED}
         assert all(c['identity_hidden'] is None for c in seen['cells'])
         assert all(t['audio']['voice'] for c in seen['cells'] for t in c['takes'])
+        assert all(t['audio']['loudness_lufs'] is not None for c in seen['cells'] for t in c['takes'])
+
+
+async def test_a_hidden_run_in_flight_reads_as_one_neutral_face_until_it_settles(tmp_path, monkeypatch):
+    # Two local attempts land while two hosted ones are held at a gate: which
+    # cells land first, and their takes, would tell the lanes apart.
+    gate = asyncio.Event()
+    executors = {'elevenlabs': FakeAudioExecutor('elevenlabs', 'external', data=tone_wav(seconds=3.5), gate=gate),
+                 'voice-runner': FakeAudioExecutor('voice-runner', 'local', data=tone_wav(seconds=3.5))}
+    async with casting(tmp_path, monkeypatch, executors=executors) as (client, _):
+        p = await project(client)
+        direction = await blind_cast(client, p['id'], (LOCAL, 2), (HOSTED, 2))
+        check, answer = await blind_submit(client, direction)
+        assert check['ready'] and answer.status_code == 201, (check['errors'], answer.text)
+        turn_id = answer.json()['turn_id']
+
+        async def locals_landed():
+            slots = (await store().get_turn(turn_id))['slots']
+            return [s['status'] for s in slots].count('landed') == 2 and slots
+
+        await until(locals_landed)
+        view = await run_of(client, direction['id'])
+        idx = view['submissions'][0]['idx']
+        for cell in view['cells']:
+            assert (cell['state'], cell['takes'], cell['retrying'], cell['kind'], cell['cause'],
+                    cell['collectable'], cell['engine']) == ('running', [], False, None, None, False, 'hidden')
+        assert view['summary'] == f'Run {idx} is in progress: 2 of 4 attempts done. Its takes show when it settles.'
+        assert not leaks(view, await identity_terms(await store().get_turn(turn_id)))
+
+        gate.set()
+        await settle_turn(turn_id, until={'landed'})
+        settled = await run_of(client, direction['id'])
+        assert [c['state'] for c in settled['cells']] == ['landed'] * 4 and settled['summary'] == '4 landed.'
+        assert sum(len(c['takes']) for c in settled['cells']) == 12
 
 
 async def test_the_run_view_holds_only_its_own_run_and_shows_picks_and_decisions(tmp_path, monkeypatch):
