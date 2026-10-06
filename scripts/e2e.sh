@@ -5,7 +5,7 @@
 #
 #   normal   the harness suite: scripted executors, the normal build
 #   preview  the crexil journeys against the isolated preview build
-#   all      both, normal first (the default)
+#   all      both, normal first (the default); both run even if one fails
 #
 # CREXIL_E2E_PORT picks the server port (default 8123). Every run gets a new
 # folder from mktemp (CREXIL_E2E_DIR), removed after a passing run unless
@@ -54,10 +54,10 @@ echo "e2e: $mode on port $CREXIL_E2E_PORT, state in $CREXIL_E2E_DIR"
 status=0
 if [[ $mode == normal || $mode == all ]]; then
     (cd cockpit/web && npm run build)
-    run_suite playwright.config.ts "$@" || status=$?
+    run_suite playwright.config.ts "$@" || status=1
 fi
-if [[ $status == 0 && ( $mode == preview || $mode == all ) ]]; then
-    run_suite playwright.preview.config.ts "$@" || status=$?
+if [[ $mode == preview || $mode == all ]]; then
+    run_suite playwright.preview.config.ts "$@" || status=1
 fi
 
 if [[ $status == 0 && "${CREXIL_E2E_KEEP:-}" != 1 ]]; then
