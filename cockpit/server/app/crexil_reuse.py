@@ -5,6 +5,10 @@ new node owns every copied file and records its source project, node and frozen
 provenance; it does not acquire the source's execution or foreign parent links.
 Missing history remains explicit. Acceptance and its command receipt commit
 once, and a source purge or changed byte cannot widen the reviewed copy.
+
+A copy keeps its source's provider terms and audio facts, so every later check
+(review's terms refusal, a runner's preflight) sees the same restrictions: a
+copy never gains rights its source lacked (laws 12, 21).
 """
 
 from __future__ import annotations
@@ -18,11 +22,27 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
-from . import config
+from . import audio, config
 from .crexil_delivery import _digest, _plans
 from .crexil_store import Conflict, CreativeStore
 from .db import new_id, now_iso
 from .mesh import fields_sidecar
+
+
+def _terms(origin: dict, source: dict) -> dict | None:
+    """The provider terms a copy keeps: those recorded on its source, or, for a take
+    recorded before terms were kept, those of the engine that made it."""
+    return origin.get('terms') or audio.terms(audio.engines().get(source.get('engine') or '', {}))
+
+
+def _portable_facts(facts: dict) -> dict:
+    """The source take's audio facts for its copy. The bytes are identical, so the
+    measured facts hold; the voice keeps its provider identity, which voice and
+    terms checks read, and drops links into the source project."""
+    voice = facts.get('voice')
+    if isinstance(voice, dict):
+        voice = {key: value for key, value in voice.items() if not key.endswith('node_id')}
+    return {**facts, 'voice': voice}
 
 
 async def _plan(db, wid: str, body):
@@ -136,7 +156,12 @@ async def create(db, wid: str, body, staged: list[Path]):
                    'node_id': source['id'], 'filename': public['filename'], 'sha256': primary_file['sha256']},
         'source_record': {'kind': 'reuse_review', 'captured_at': now_iso(), 'manifest': manifest},
         'retained_files': retained, 'unavailable_history': public['missing']}
-    return await CreativeStore(db).receive_material(wid, path=primary, sha256=primary_file['sha256'],
+    if terms := _terms(old_origin, source):
+        origin['terms'] = terms
+    received = await CreativeStore(db).receive_material(wid, path=primary, sha256=primary_file['sha256'],
         filename=public['filename'], media_type=info['media_type'] if info else mimetypes.guess_type(primary.name)[0] or 'application/octet-stream',
         payload=source['payload'], width=info['width'] if info else None, height=info['height'] if info else None,
         origin=origin, parents=[])
+    if facts := await db.audio_fact(source['id']):
+        await db.record_audio_facts(received['node']['id'], _portable_facts(facts))
+    return received
