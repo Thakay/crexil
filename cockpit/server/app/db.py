@@ -1114,6 +1114,13 @@ class Database:
         "  WHERE type='node.promoted' AND node_id IS NOT NULL"
         "  GROUP BY node_id) pr ON pr.node_id = n.id")
 
+    # A blind run's takes keep its frozen, shuffled grid order on every list,
+    # revealed or not, never the order they landed in, which tells its engines
+    # apart: they sort at the run's creation time, by cell, then output. Lists
+    # that use it join `slots s` and `blind_runs b`.
+    _BLIND_JOIN = " LEFT JOIN blind_runs b ON b.turn_id = n.turn_id"
+    _IN_RUN_ORDER = "CASE WHEN b.turn_id IS NULL THEN NULL ELSE s.pos END, n.output_index"
+
     async def get_node(self, nid: str) -> dict | None:
         """Purged nodes are returned too — lineage outlives purge (law 7)."""
         row = await self._one(
@@ -1129,16 +1136,17 @@ class Database:
         """The canvas feed: node rows plus the two label keys the card
         footer needs: `turn_idx` and `slot_pos` (the card's letters are SLOT
         letters: `12b` = turn 12, slot b). Imported nodes LEFT-JOIN to NULLs.
-        Other node readers stay unjoined."""
+        Other node readers stay unjoined. Oldest first; a blind run's takes
+        in its grid order."""
         q = ("SELECT n.*, t.idx AS turn_idx, s.pos AS slot_pos,"
              " pr.promoted_at FROM nodes n"
              " LEFT JOIN turns t ON t.id = n.turn_id"
              " LEFT JOIN slots s ON s.id = n.slot_id"
-             + self._PROMOTED_JOIN +
+             + self._BLIND_JOIN + self._PROMOTED_JOIN +
              " WHERE n.workspace_id=?")
         if not include_purged:
             q += " AND n.purged_at IS NULL"
-        rows = await self._all(q + " ORDER BY n.created_at", (wid,))
+        rows = await self._all(q + " ORDER BY COALESCE(b.created_at, n.created_at), " + self._IN_RUN_ORDER, (wid,))
         nodes = [self._node_row(r) for r in rows]
         await self._attach_parents(nodes)
         return nodes
@@ -1353,13 +1361,15 @@ class Database:
     async def tray_nodes(self, wid: str) -> list[dict]:
         """The set-aside tray: live set-aside nodes,
         newest first, carrying the same two label keys as the canvas feed
-        (`turn_idx`, `slot_pos`) — a tray entry is named like its card."""
+        (`turn_idx`, `slot_pos`) — a tray entry is named like its card. A
+        blind run's takes keep its grid order."""
         rows = await self._all(
             "SELECT n.*, t.idx AS turn_idx, s.pos AS slot_pos FROM nodes n"
             " LEFT JOIN turns t ON t.id = n.turn_id"
-            " LEFT JOIN slots s ON s.id = n.slot_id"
+            " LEFT JOIN slots s ON s.id = n.slot_id" + self._BLIND_JOIN +
             " WHERE n.workspace_id=? AND n.set_aside=1"
-            " AND n.purged_at IS NULL ORDER BY n.created_at DESC", (wid,))
+            " AND n.purged_at IS NULL ORDER BY COALESCE(b.created_at, n.created_at) DESC, "
+            + self._IN_RUN_ORDER, (wid,))
         nodes = [self._node_row(r) for r in rows]
         await self._attach_parents(nodes)
         return nodes

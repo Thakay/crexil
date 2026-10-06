@@ -490,6 +490,66 @@ async def test_set_aside_and_restore_answer_a_hidden_take_with_its_runs_time(tmp
         assert landed['created_at'] == takes[0]['created_at'] != created
 
 
+async def test_every_list_keeps_a_blind_runs_grid_order_whatever_order_its_takes_land_in(tmp_path, monkeypatch):
+    # The local engine's attempts sit first in the grid and land last: the
+    # hosted takes land while the local engine is held at a gate.
+    monkeypatch.setattr(blind, 'arrange', lambda specs: sorted(specs, key=lambda spec: spec['engine'] != LOCAL))
+    gate = asyncio.Event()
+    local = FakeAudioExecutor('voice-runner', 'local', data=tone_wav(seconds=3.5), gate=gate)
+    async with casting(tmp_path, monkeypatch, **{**LONG, 'voice-runner': local}) as (client, _):
+        p = await project(client)
+        direction = await prepared(client, p['id'], (LOCAL, 2), (HOSTED, 2))
+        check, answer = await submitted(client, direction)
+        assert check['ready'] and answer.status_code == 201, (check['errors'], answer.text)
+        turn_id = answer.json()['turn_id']
+
+        async def hosted_landed():
+            slots = (await store().get_turn(turn_id))['slots']
+            return [s['status'] for s in slots] == ['running', 'queued', 'landed', 'landed']
+
+        await until(hosted_landed)
+        gate.set()
+        turn = await settle_turn(turn_id, until={'landed'})
+        stored = await store()._all('SELECT * FROM nodes WHERE turn_id=? ORDER BY created_at', (turn_id,))
+        positions = {slot['id']: slot['pos'] for slot in turn['slots']}
+        landing = [positions[n['slot_id']] for n in stored]
+        assert set(landing[:6]) == {2, 3} and set(landing[6:]) == {0, 1}      # the hosted takes landed first
+        grid = [n['id'] for n in sorted(stored, key=lambda n: (positions[n['slot_id']], n['output_index']))]
+        aside = grid[3:]                       # the tray lists the second local attempt's takes and the hosted ones
+
+        async def lists():
+            for nid in aside:
+                assert (await client.post(f'/api/nodes/{nid}/set-aside')).status_code == 200
+            snapshot = (await client.get(f"/api/crexil/projects/{p['id']}")).json()
+            record = (await client.get(f"/api/crexil/projects/{p['id']}/record")).json()
+            tray = (await client.get(f"/api/workspaces/{p['id']}/tray")).json()
+            for nid in aside:
+                assert (await client.post(f'/api/nodes/{nid}/restore')).status_code == 200
+            ours = set(grid)
+            return {
+                'snapshot': [n['id'] for n in snapshot['nodes'] if n['id'] in ours],
+                'workspace': [n['id'] for n in (await client.get(f"/api/workspaces/{p['id']}/nodes")).json()
+                              if n['id'] in ours],
+                'record': [nid for nid in record['material_ids'] if nid in ours],
+                'tray': [n['id'] for n in tray['nodes'] if n['id'] in ours],
+                'groups': [positions[g['slot_id']] for g in snapshot['execution_groups'] if g['slot_id'] in positions],
+                'run view': [t['node_id'] for c in (await client.get(
+                    f"/api/crexil/directions/{direction['id']}/run")).json()['cells'] for t in c['takes']],
+                'candidates': [c['node_id'] for c in (await client.get(
+                    f"/api/crexil/projects/{p['id']}/decisions")).json()['records'][-1]['candidates']],
+            }
+
+        picked = await client.put(f"/api/crexil/directions/{direction['id']}/selection", json=command(
+            revision=next(d for d in (await client.get(f"/api/crexil/projects/{p['id']}")).json()['directions']
+                          if d['id'] == direction['id'])['revision'], node_ids=[grid[4]], reason='Warmest'))
+        assert picked.status_code == 200, picked.text
+        expected = {'snapshot': grid, 'workspace': grid, 'record': grid, 'tray': aside, 'groups': [0, 1, 2, 3],
+                    'run view': grid, 'candidates': grid}
+        assert await lists() == expected
+        await reveal(client, turn_id)
+        assert await lists() == expected                 # revealed or not
+
+
 async def test_a_hosted_engine_with_an_unknown_tariff_refuses_the_whole_run(tmp_path, monkeypatch):
     from test_crexil_hosted import discover
     async with booted(tmp_path, monkeypatch) as (client, fakes):

@@ -484,14 +484,23 @@ async def direction_state(did: str, body: DirectionState):
 
 @router.put('/directions/{did}/selection', response_model=DirectionView)
 async def display_selection(did: str, body: DisplaySelection):
+    """Change a direction's displayed selection: a choice with its author and
+    reason (law 23). The answer carries the decision it recorded, so a later
+    revision of its reason can name it."""
+    from .crexil_record import concerns_direction
+    from .crexil_record import decisions as history
+
     async def apply():
         before = await store().direction(did)
         if not set(body.node_ids).issubset(before['node_ids']):
             raise ValueError('Choose outputs from this direction. Acting on sources across directions is a separate action.')
         await check_references(before['workspace_id'], body.node_ids, require_available=True)
-        return await store().revise_direction(did, body.revision, {'selection': body.node_ids},
-                                               body.actor.model_dump(), body.reason,
-                                               facts=await blind.selection_facts(store().db, did, body.node_ids))
+        view = await store().revise_direction(did, body.revision, {'selection': body.node_ids},
+                                              body.actor.model_dump(), body.reason,
+                                              facts=await blind.selection_facts(store().db, did, body.node_ids))
+        view['latest_decision'] = next((item for item in reversed(await history(store().db, view['workspace_id']))
+                                        if concerns_direction(item, view)), None)
+        return view
     return await command(body, 'directions.selection:' + did, apply)
 
 
