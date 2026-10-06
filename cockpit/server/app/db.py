@@ -1367,7 +1367,7 @@ class Database:
     async def tray_nodes(self, wid: str) -> list[dict]:
         """The set-aside tray: live set-aside nodes,
         newest first, carrying the same two label keys as the canvas feed
-        (`turn_idx`, `slot_pos`) — a tray entry is named like its card. A
+        (`turn_idx`, `slot_pos`), so a tray entry is named like its card. A
         blind run's takes keep its grid order."""
         rows = await self._all(
             "SELECT n.*, t.idx AS turn_idx, s.pos AS slot_pos FROM nodes n"

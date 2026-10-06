@@ -112,7 +112,7 @@ def make_parser() -> argparse.ArgumentParser:
     # re-run to_glb at another target without reloading the 4B pipeline.
     # ON by default: the artist cannot know at generate
     # time whether a lower LOD is wanted later — that decision comes after
-    # looking at the mesh — and 21–182 MiB (measured across three props) is
+    # looking at the mesh, and 21–182 MiB (measured across three props) is
     # the cheaper half of that bet against 134 s of GPU.
     ap.add_argument("--no-save-fields", dest="save_fields", action="store_false",
                     help="skip fields.npz — no re-extraction from this take")

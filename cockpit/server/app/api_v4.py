@@ -392,7 +392,7 @@ TURNTABLE_MISSING = ("this mesh has no turntable render, so there is no "
                      "plate — the mesh file itself still downloads")
 
 RUNNER_SILENT = ("the turntable lives on the host and the 3D engine runner "
-                 "isn't answering — start this checkout's runner "
+                 "isn't answering. Start this checkout's runner "
                  "(scripts/3d-runner.sh), then reload")
 
 

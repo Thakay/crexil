@@ -273,5 +273,5 @@ async def mesh_health():
             "engines": sorted(MESH_ENGINES),
             "kinds": {k: sorted(v) for k, v in MESH_KINDS.items()},
             "why": None if up else
-            (f"the 3D engine runner isn't answering at {config.THREED_URL} — "
-             "start this checkout's runner there (scripts/3d-runner.sh)")}
+            (f"the 3D engine runner isn't answering at {config.THREED_URL}. "
+             "Start this checkout's runner there (scripts/3d-runner.sh)")}

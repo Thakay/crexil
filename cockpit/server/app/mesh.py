@@ -208,8 +208,8 @@ class MeshExecutor:
         script, never a service unit another installation may own."""
         return EngineFailure(
             "unreachable",
-            f"the 3D engine runner is not answering at {self._base} {when} "
-            f"— start this checkout's runner there (scripts/3d-runner.sh); "
+            f"the 3D engine runner is not answering at {self._base} {when}. "
+            f"Start this checkout's runner there (scripts/3d-runner.sh); "
             f"the image engines beside this one are unaffected",
             detail=str(e)[:600])
 
