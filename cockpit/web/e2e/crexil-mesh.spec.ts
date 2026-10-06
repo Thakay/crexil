@@ -66,7 +66,7 @@ test('artist generates a mesh then reduces and textures through shared runs',asy
   const {project:created,image}=await project(request);await page.goto(`/#/projects/${created.id}`);
   await page.getByRole('button',{name:'Act on Appearance.png',exact:true}).click();await page.getByRole('button',{name:'Generate 3D',exact:true}).click();
   await chooseOperation(page,'Generate 3D · TRELLIS.2 4B',1);
-  const submit=async()=>{await expect(drawer(page).getByRole('status')).toHaveText('Saved');await drawer(page).getByRole('button',{name:'Review run',exact:true}).click();await drawer(page).getByRole('button',{name:'Run 1 attempts',exact:true}).click();await expect(drawer(page)).not.toBeVisible();};
+  const submit=async()=>{await expect(drawer(page).getByRole('status')).toHaveText('Saved');await drawer(page).getByRole('button',{name:'Review run',exact:true}).click();await drawer(page).getByRole('button',{name:/^Run 1 attempt · /}).click();await expect(drawer(page)).not.toBeVisible();};
   const snapshot=async()=>await(await request.get(`/api/crexil/projects/${created.id}`)).json();
   const land=async()=>{const view=await snapshot(),turn=view.turns.at(-1);await request.post(`/api/harness/slots/${turn.slots[0].id}/resolve`,{data:{outcome:'land'}});await expect.poll(async()=>(await snapshot()).turns.at(-1).slots[0].status).toBe('landed');return turn;};
   await submit();await land();

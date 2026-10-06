@@ -44,30 +44,28 @@ export async function result<T>(request: Promise<{data?: T; error?: unknown; res
 export const imageUrl = (id: string, full = false) => `/api/nodes/${id}/${full ? 'image' : 'thumb'}`;
 export const label = (node: Material) => node.turn_idx === null ? (node.material?.filename ?? 'Imported image')
   : `${node.turn_idx}${String.fromCharCode(65 + (node.slot_pos ?? 0))}${node.output_index>0?`.${node.output_index+1}`:''}`;
-// One money format for the project surface. A cent or more keeps two decimals; a smaller
-// amount that is not zero keeps two significant digits, so money that moved never reads
-// as $0.00 (law 5). Exactly zero is $0.00.
-export function money(value: number): string {
-  const sign = value < 0 ? '-' : '', amount = Math.abs(value);
-  if (amount === 0 || amount >= 0.01) return `${sign}$${amount.toFixed(2)}`;
-  const digits = Math.min(20, Math.ceil(-Math.log10(amount)) + 1);
-  return `${sign}$${amount.toFixed(digits).replace(/0+$/, '')}`;
-}
+// The project surface spells money as every surface does (costs.ts): money that moved
+// never reads as $0.00 (law 5).
+export { usd as money } from '../costs';
 
-// Who made a material. A hidden identity is a blind run's withheld engine; it is never
-// mistaken for imported material, which has no engine at all.
+// Who made a material or an attempt. A hidden identity is a blind run's withheld engine,
+// read from the server's identity_hidden flag (its masked engine is a placeholder, never
+// a name); it is never mistaken for imported material, which has no engine at all.
 export type EngineIdentity = {kind: 'named'; name: string} | {kind: 'hidden'} | {kind: 'prepared'} | {kind: 'imported'};
-type Identified = {engine: string | null; material?: {origin: Record<string, unknown>} | null};
+type Identified = {engine: string | null; identity_hidden?: boolean | null; material?: {origin: Record<string, unknown>} | null};
+/** A blind run's material or attempt, before its reveal. */
+export const isHidden = (item: {identity_hidden?: boolean | null}) => item.identity_hidden === true;
 export function engineIdentity(node: Identified, hidden = false): EngineIdentity {
-  if (hidden) return {kind: 'hidden'};
+  if (hidden || isHidden(node)) return {kind: 'hidden'};
   if (node.engine) return {kind: 'named', name: node.engine};
   return node.material?.origin.kind === 'prepared_image' ? {kind: 'prepared'} : {kind: 'imported'};
 }
 // 'face' names the maker on a face footer; 'source' groups and heads material by origin.
+// A blind take reads "Blind" on its face and "Engine hidden" where material is grouped.
 export function engineLabel(node: Identified, variant: 'face' | 'source', hidden = false): string {
   const identity = engineIdentity(node, hidden);
   if (identity.kind === 'named') return identity.name;
-  if (identity.kind === 'hidden') return variant === 'face' ? 'Hidden' : 'Engine hidden';
+  if (identity.kind === 'hidden') return variant === 'face' ? 'Blind' : 'Engine hidden';
   if (variant === 'source') return 'Imported material';
   return identity.kind === 'prepared' ? 'Prepared' : 'Imported';
 }

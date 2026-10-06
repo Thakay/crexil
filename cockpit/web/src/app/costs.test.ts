@@ -13,5 +13,9 @@ test("month word and money spelling", () => {
   expect(monthWord("bogus")).toBe("bogus"); // never invents a month
   expect(usd(0)).toBe("$0.00");
   expect(usd(12.4)).toBe("$12.40");
-  expect(usd(0.005)).toBe("$0.01");
+  expect(usd(0.005)).toBe("$0.005"); // money that moved never rounds to a cent or to zero
+  expect(usd(0.0032)).toBe("$0.0032");
+  expect(usd(0.00004)).toBe("$0.00004");
+  expect(usd(0.004 + 0.0001)).toBe("$0.0041");
+  expect(usd(-0.0025)).toBe("-$0.0025");
 });

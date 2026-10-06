@@ -3,8 +3,10 @@
 import {useEffect} from 'react';
 import {$api} from '../../api/client';
 import {DecisionCard} from './RecordRoom';
-import {label,message,money,type Material,type Snapshot} from './api';
+import {isHidden,label,message,money,type Material,type Snapshot} from './api';
 import s from './Filmstrip.module.css';
+
+const WITHHELD='Withheld until the reveal';
 
 type RequestRecord={
   actor?:{kind:string;name:string};brief?:string;project_instructions?:string;
@@ -21,11 +23,18 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
   const request=recorded?.request as RequestRecord|null|undefined;
   const operation=request?.operation;
   const aliases=(data.restoration?.identities as {nodes?:Record<string,string>}|undefined)?.nodes??{};
+  // A blind run's take withholds its engine, operation, seed and charge until the reveal.
+  const hidden=isHidden(node);
   const controls=operation?.applied_controls??Object.fromEntries(Object.entries(recorded?.controls??{}).filter(([key])=>!['crexil','crexil_restore'].includes(key)));
   return <>
     {query.isLoading&&<p role="status">Reading the accepted request…</p>}
     {query.error&&<p role="alert">{message(query.error)}<button onClick={()=>void query.refetch()}>Read request again</button></p>}
-    {node.engine&&<dl><dt>Operation</dt><dd>{operation?.label??node.engine}</dd>
+    {hidden?<dl><dt>Operation</dt><dd>{WITHHELD}</dd>
+      <dt>Requested by</dt><dd>{request?.actor?`${request.actor.kind==='agent'?'Agent':'Artist'} · ${request.actor.name}`:'Not recorded'}</dd>
+      <dt>Attempt</dt><dd>{node.take} · {new Date(node.created_at).toLocaleString()}</dd>
+      <dt>Seed</dt><dd>{WITHHELD}</dd>
+      <dt>Charge</dt><dd>Shown after the reveal. The run's totals stay visible.</dd>
+    </dl>:node.engine&&<dl><dt>Operation</dt><dd>{operation?.label??node.engine}</dd>
       <dt>Operation revision</dt><dd className={s.hash}>{operation?.revision??'Not recorded'}</dd>
       <dt>Requested by</dt><dd>{request?.actor?`${request.actor.kind==='agent'?'Agent':'Artist'} · ${request.actor.name}`:'Not recorded'}</dd>
       <dt>Attempt</dt><dd>{node.take} · {new Date(node.created_at).toLocaleString()}</dd>

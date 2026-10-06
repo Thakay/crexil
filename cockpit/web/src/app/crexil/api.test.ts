@@ -59,6 +59,13 @@ describe('engine identity', () => {
     expect(engineLabel(prepared, 'source')).toBe('Imported material');
     expect(engineLabel(imported, 'source')).toBe('Imported material');
     expect(engineLabel(imported, 'source', true)).toBe('Engine hidden');
-    expect(engineLabel(generated, 'face', true)).toBe('Hidden');
+    expect(engineLabel(generated, 'face', true)).toBe('Blind');
+  });
+  it("honors the server's identity_hidden flag without being told: a masked engine is never a name", () => {
+    const masked = {engine: 'hidden', identity_hidden: true, material: null};
+    expect(engineIdentity(masked)).toEqual({kind: 'hidden'});
+    expect(engineLabel(masked, 'face')).toBe('Blind');
+    expect(engineLabel(masked, 'source')).toBe('Engine hidden');
+    expect(engineLabel({engine: 'hidden', identity_hidden: null, material: null}, 'face')).toBe('hidden');
   });
 });

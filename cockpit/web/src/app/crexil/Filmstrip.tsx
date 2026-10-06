@@ -14,7 +14,9 @@ import {hasLocalPreparation} from './usePreparationDraft';
 import {ConnectionsRoom} from './ConnectionsRoom';
 import {ProjectDetails,hasProjectEdits} from './ProjectDetails';
 import { OperationLibrary } from './OperationLibrary';
-import { ExecutionControls } from './ExecutionControls';
+import { deliverControl, ExecutionControls } from './ExecutionControls';
+import { AttemptFace } from './AttemptFace';
+import { attemptFace, sharedCauses, type AttemptFaceVM, type QueueFacts, type RemedyId } from './attempts';
 import { SequenceRoom } from './SequenceRoom';
 import { DeliveryRoom } from './DeliveryRoom';
 import { BackupRoom } from './BackupRoom';
@@ -28,10 +30,11 @@ import { initialImagePreparation } from './ImagePreparationFields';
 import { ACTIONS, type Action } from './actions';
 import { blankPreparation, command, engineIdentity, engineLabel, imageUrl, importFile, label, message, money, preparation,
   projectHref, result, type Direction, type Material, type Snapshot } from './api';
-import { gridCells } from './cells';
+import { gridCells, type Slot } from './cells';
+import { faceCost, pickerGroups } from './faces';
 import { useCommandKey, useEscapeBase, useEscapeKey } from './keys';
 import { IMPORT_ACCEPT, mediumOf } from './media';
-import { cardVerbs } from './verbCard';
+import { cardVerbs, type CardVerb } from './verbCard';
 import { createViewStore, overlay, useView, useViewStore, ViewContext, type FocusReturn, type Overlay } from './view';
 import s from './Filmstrip.module.css';
 
@@ -43,12 +46,6 @@ function keepFocus(event: ReactKeyboardEvent<HTMLElement>) {
   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
 }
 
-/** A face's cost line: the charge, or why no charge is shown. */
-function faceCost(node: Material): string {
-  if (node.charged_usd != null) return money(node.charged_usd);
-  const identity = engineIdentity(node);
-  return identity.kind === 'named' ? 'Unverified' : identity.kind === 'hidden' ? 'Hidden' : identity.kind === 'prepared' ? 'Derived' : 'Source';
-}
 
 export function Crexil() {
   // The page comes from the one route parser; each page reads its own query state.
@@ -134,6 +131,9 @@ function ProjectWorkspace({id}: {id: string}) {
   const query = $api.useQuery('get', '/api/crexil/projects/{wid}', {params:{path:{wid:id}}}, {refetchInterval:3000});
   const operations = $api.useQuery('get', '/api/crexil/operations');
   const costs = $api.useQuery('get', '/api/costs', {params:{query:{tz:-new Date().getTimezoneOffset()}}}, {refetchInterval:10000});
+  const gridOpen = useView(state => state.room !== null && state.room !== 'tray');
+  // A held attempt's covering bench comes from the queue view, read only while a grid room is open.
+  const queue = $api.useQuery('get', '/api/queue', {}, {enabled: gridOpen, refetchInterval: 3000});
   const cache = useQueryClient();
   const refresh = useCallback(() => {void cache.invalidateQueries({queryKey:$api.queryOptions('get', '/api/crexil/projects/{wid}', {params:{path:{wid:id}}}).queryKey});}, [cache,id]);
   const store = useViewStore();
@@ -163,9 +163,12 @@ function ProjectWorkspace({id}: {id: string}) {
   const closeLayer = useCallback(() => restoreFocus(store.getState().closeTop()), [store, restoreFocus]);
   useEscapeBase(closeLayer);
   const {inspect: inspectNode, openDrawer} = store.getState();
-  const act = async (work: () => Promise<unknown>) => {
+  // Runs one action; resolves to its failure message, or null when it succeeded.
+  const act = async (work: () => Promise<unknown>): Promise<string | null> => {
     setBusy(true); setError(''); working.current += 1;
-    try {await work(); refresh();} catch(err) {setError(message(err));} finally {setBusy(false); working.current -= 1;}
+    try {await work(); refresh(); return null;}
+    catch(err) {const failed = message(err); setError(failed); return failed;}
+    finally {setBusy(false); working.current -= 1;}
   };
   const newDirection = async (row?: number, action: Action = 'generate', parents: Material[] = []) => {
     await act(async () => {
@@ -186,7 +189,7 @@ function ProjectWorkspace({id}: {id: string}) {
   const visible = directions.filter(d => d.state !== 'discarded' && (room === 'tray' ? d.set_aside : room!==null||!d.set_aside));
   const rows = [...new Set(visible.map(d => d.row_idx))].sort((a,b) => a-b);
   const asideCount = directions.filter(d => d.set_aside && d.state !== 'discarded').length;
-  const stateAction = (direction: Direction, action: 'set_aside' | 'restore' | 'discard' | 'reuse') => act(async () => {
+  const stateAction = (direction: Direction, action: 'set_aside' | 'restore' | 'discard' | 'reuse'): Promise<string | null> => act(async () => {
     const next = await result(fetchClient.POST('/api/crexil/directions/{did}/state', {params:{path:{did:direction.id}}, body:{...command(), revision:direction.revision, action}}));
     if (action === 'reuse') openDrawer(next.id);
   });
@@ -209,6 +212,27 @@ function ProjectWorkspace({id}: {id: string}) {
   const displayed = new Set(visible.flatMap(direction=>direction.selection));
   const activeSlots = turns.flatMap(t => t.slots).filter(slot => ['queued','running','held','late'].includes(slot.status));
   const group = groupId ? data.execution_groups.find(g=>g.id===groupId) : undefined;
+  const controls = data.execution_controls ?? [];
+  const queueFacts = (slot: Slot): QueueFacts | null => {
+    const held = queue.data?.held.find(row => row.id === slot.id);
+    if (!held) return null;
+    const bench = queue.data?.benches.find(b => b.scope === held.bench);
+    return {bench: held.bench ?? null, benchKind: bench?.kind ?? null, benchCause: bench?.cause ?? null};
+  };
+  const faceOf = (slot: Slot): AttemptFaceVM | null => {
+    const turn = turns.find(t => t.id === slot.turn_id);
+    return turn ? attemptFace(slot, {turn, operations: operations.data ?? [], controls, queue: queueFacts(slot)}) : null;
+  };
+  const remedy = (direction: Direction, slot: Slot, face: AttemptFaceVM) => (which: RemedyId) => {
+    const run = controls.find(c => c.scope === 'run' && c.target_id === slot.turn_id);
+    const project = controls.find(c => c.scope === 'project');
+    if (which === 'reuse') void stateAction(direction, 'reuse');
+    else if (which === 'collect') void act(() => result(fetchClient.POST('/api/crexil/attempts/{sid}/collect', {params:{path:{sid:slot.id}}, body:{...command(), take:slot.attempt}})));
+    else if (which === 'resume-run' && run) void act(() => deliverControl(run, 'resume'));
+    else if (which === 'resume-project' && project) void act(() => deliverControl(project, 'resume'));
+    else if (which === 'copy-receipt' && face.receipt) void navigator.clipboard?.writeText(face.receipt).catch(() => setError('The clipboard refused. The receipt is under DETAILS on the cell.'));
+    else if (which === 'connections') location.hash = `#/connections?project=${id}`;
+  };
   return <>
     <header className={s.topbar}>
       <a className={s.back} href={projectHref()} aria-label="Projects">‹</a>
@@ -285,8 +309,9 @@ function ProjectWorkspace({id}: {id: string}) {
               </div>
               {cells.map(cell => {
                 const node = cell.material, slot = cell.slot;
+                const face = !node && slot ? faceOf(slot) : null;
                 return <div key={cell.key} className={room===row?s.slotBox:undefined}>
-                  {!node ? <div className={s.attempt}><strong>{slot!.kind === 'uncertain' ? 'Outcome uncertain' : slot!.status}</strong><span>{slot!.engine}</span><p title={slot!.cause??undefined}>{slot!.cause}</p></div> : <button data-lineage-node={node.id} aria-label={`Act on ${label(node)}`} className={`${s.face} ${acting.includes(node.id) ? s.acting : ancestry.has(node.id)?s.ancestor:''}`} aria-pressed={acting.includes(node.id)} onDoubleClick={() => inspectNode(node.id)}
+                  {!node ? (face ? <AttemptFace face={face} busy={busy} onRemedy={remedy(direction, slot!, face)}/> : null) : <button data-lineage-node={node.id} aria-label={`Act on ${label(node)}`} className={`${s.face} ${acting.includes(node.id) ? s.acting : ancestry.has(node.id)?s.ancestor:''}`} aria-pressed={acting.includes(node.id)} onDoubleClick={() => inspectNode(node.id)}
                     onClick={e => {focusOrigin.current=e.currentTarget; store.getState().act(e.shiftKey ? acting.includes(node.id) ? acting.filter(n => n !== node.id) : [...acting,node.id] : [node.id]);}}>
                     <div className={s.plate}><MaterialThumbnail key={node.id} node={node}/>{acting.includes(node.id) && <span className={s.actingMark}>Acting on</span>}{node.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
                     <footer><span>{label(node)} · {engineLabel(node,'face')}</span><span>{faceCost(node)}</span></footer>
@@ -295,6 +320,7 @@ function ProjectWorkspace({id}: {id: string}) {
                 </div>;
               })}
             </div>
+            {room===row&&<SharedCauses faces={cells.flatMap(cell=>!cell.material&&cell.slot?[faceOf(cell.slot)]:[]).filter((face):face is AttemptFaceVM=>face!==null)}/>}
             <div className={s.sectionFoot}><span>{direction.selection.length} of {material.length} selected{direction.state === 'draft' ? ' · Preparation' : ''}</span>
               <span className={s.actions}>{direction.sequence_id&&<button className={s.door} onClick={fromHere(()=>store.getState().showSequence(direction.sequence_id!))}>Sequence ›</button>}<button className={s.door} onClick={e => {focusOrigin.current=e.currentTarget; const box=e.currentTarget.closest('section')!.getBoundingClientRect(); store.getState().openPicker(direction,Math.min(box.left,window.innerWidth-530),Math.min(box.top,window.innerHeight-440));}}>Strip ›</button></span></div>
           </section>;
@@ -309,7 +335,16 @@ function ProjectWorkspace({id}: {id: string}) {
     {actingNodes.length > 0 && !drawer && !inspected && <section className={s.verbCard} aria-label="Actions on material">
       <div className={s.drawerHead}><span className={s.mono}>Acting on · {actingNodes.length}</span><button onClick={() => store.getState().clearActing()}>Esc</button></div>
       <button onClick={() => inspectNode(actingNodes[0].id)}>Inspect · V</button>
-      {cardVerbs(actingNodes).map(verb => <button key={verb.label} onClick={() => void (verb.each ? act(async () => {for (const node of verb.parents) await newDirection(undefined,verb.action,[node]);}) : newDirection(undefined,verb.action,verb.parents))}>{verb.label}</button>)}
+      {(() => {
+        const verbs = cardVerbs(actingNodes, operations.data);
+        const start = (verb: CardVerb) => void (verb.each ? act(async () => {for (const node of verb.parents) await newDirection(undefined,verb.action,[node]);}) : newDirection(undefined,verb.action,verb.parents));
+        const draw = (verb: CardVerb) => verb.live ? <button key={verb.label} onClick={() => start(verb)}>{verb.label}</button>
+          : <button key={verb.label} className={s.verbInert} aria-disabled="true" aria-label={verb.label} aria-describedby={`why-${verb.label.replace(/\W+/g,'-')}`}>{verb.label}
+            <small id={`why-${verb.label.replace(/\W+/g,'-')}`}>{verb.reason}</small></button>;
+        const other = verbs.filter(verb => verb.tier === 'notForThis');
+        return <>{verbs.filter(verb => verb.tier === 'main').map(draw)}
+          {other.length > 0 && <details className={s.notForThis}><summary>Not for this material · {other.length}</summary>{other.map(draw)}</details>}</>;
+      })()}
       <button onClick={fromHere(store.getState().deliverActing)}>Deliver selected material</button>
       <button onClick={fromHere(store.getState().returnActing)}>Return edited material</button>
     </section>}
@@ -324,7 +359,7 @@ function ProjectWorkspace({id}: {id: string}) {
 
 function Picker({state,nodes,current,close,saved,onInspect,stateAction}: {
   state:PickerState; nodes:Material[]; current:Direction; close:()=>void; saved:()=>void;
-  onInspect:(id:string)=>void; stateAction:(d:Direction, action:'set_aside'|'restore'|'reuse'|'discard')=>Promise<void>;
+  onInspect:(id:string)=>void; stateAction:(d:Direction, action:'set_aside'|'restore'|'reuse'|'discard')=>Promise<string|null>;
 }) {
   const [selected,setSelected]=useState(state.direction.selection);
   const [reason,setReason]=useState('');
@@ -332,7 +367,9 @@ function Picker({state,nodes,current,close,saved,onInspect,stateAction}: {
   const [busy,setBusy]=useState(false);
   const pending=useRef<ReturnType<typeof command> | null>(null);
   const material=nodes.filter(n=>current.node_ids.includes(n.id));
-  const groups=[...new Set(material.map(n=>engineLabel(n,'source')))];
+  const groups=pickerGroups(material);
+  // A direction action closes the picker only when it succeeded; a failure stays here with its words.
+  const settle=async(done:Promise<string|null>)=>{const failed=await done;if(failed)setError(failed);else close();};
   const apply=async()=>{
     setBusy(true);setError('');pending.current??=command();
     try {await result(fetchClient.PUT('/api/crexil/directions/{did}/selection',{params:{path:{did:state.direction.id}},
@@ -340,20 +377,20 @@ function Picker({state,nodes,current,close,saved,onInspect,stateAction}: {
     catch(err){setError(message(err));}finally{setBusy(false);}
   };
   return <section className={s.picker} style={{left:Math.max(16,state.left),top:Math.max(56,state.top)}} aria-label="Choose displayed takes">
-    <div className={s.pickerBody}>{groups.map(engine=><div className={s.pickerRow} key={engine}><span className={s.micro}>{engine}</span><div className={s.thumbs}>{material.filter(n=>engineLabel(n,'source')===engine).map(node=><button key={node.id} className={`${s.thumb} ${selected.includes(node.id)?s.selected:''}`} disabled={!node.available} aria-pressed={selected.includes(node.id)} aria-label={`Display ${label(node)}`} onDoubleClick={()=>onInspect(node.id)} onClick={()=>{pending.current=null;setSelected(previous=>previous.includes(node.id)?previous.filter(id=>id!==node.id):[...previous,node.id]);}}>
+    <div className={s.pickerBody}>{groups.map(group=><div className={s.pickerRow} key={group.label}><span className={s.micro}>{group.label}</span><div className={s.thumbs}>{group.nodes.map(node=><button key={node.id} className={`${s.thumb} ${selected.includes(node.id)?s.selected:''}`} disabled={!node.available} aria-pressed={selected.includes(node.id)} aria-label={`Display ${label(node)}`} onDoubleClick={()=>onInspect(node.id)} onClick={()=>{pending.current=null;setSelected(previous=>previous.includes(node.id)?previous.filter(id=>id!==node.id):[...previous,node.id]);}}>
       <MaterialThumbnail key={node.id} node={node} decorative/><span>{label(node)}</span></button>)}</div></div>)}
       {material.length===0&&<p>This direction has no outputs yet. Open its starter to continue preparation.</p>}
     </div>
     <label className={s.reason}>Reason <input placeholder="Optional, kept with your choice" value={reason} onChange={e=>{setReason(e.target.value);pending.current=null;}}/></label>
     {error&&<p className={s.error} role="alert">{error}</p>}
     <div className={s.pickerFoot}><span>{selected.length} of {material.length} selected</span><div className={s.spacer}/><button onClick={close}>Esc</button><button autoFocus className={s.primary} disabled={busy} onClick={()=>void apply()}>Apply</button></div>
-    <div className={s.pickerActions}><button onClick={()=>void stateAction(current,'reuse').then(close)}>Reuse setup</button>
-      <button onClick={()=>void stateAction(current,current.set_aside?'restore':'set_aside').then(close)}>{current.set_aside?'Restore direction':'Set direction aside'}</button>
-      {current.state==='draft'&&<button onClick={()=>void stateAction(current,'discard').then(close)}>Discard preparation</button>}</div>
+    <div className={s.pickerActions}><button onClick={()=>void settle(stateAction(current,'reuse'))}>Reuse setup</button>
+      <button onClick={()=>void settle(stateAction(current,current.set_aside?'restore':'set_aside'))}>{current.set_aside?'Restore direction':'Set direction aside'}</button>
+      {current.state==='draft'&&<button onClick={()=>void settle(stateAction(current,'discard'))}>Discard preparation</button>}</div>
   </section>;
 }
 
-function Inspection({node,data,close,navigate,openGroup,openRecord,returnLabel}: {node:Material;data:Snapshot;close:()=>void;navigate:(id:string)=>void;openGroup:(id:string)=>void;openRecord:()=>void;returnLabel:string}) {
+export function Inspection({node,data,close,navigate,openGroup,openRecord,returnLabel}: {node:Material;data:Snapshot;close:()=>void;navigate:(id:string)=>void;openGroup:(id:string)=>void;openRecord:()=>void;returnLabel:string}) {
   const origin=node.material?.origin;
   const medium=mediumOf(node.payload);
   const generated=!['imported','prepared'].includes(engineIdentity(node).kind);
@@ -406,4 +443,12 @@ function OutputGroup({group,close,refresh,inspect}: {group:Snapshot['execution_g
       </article>)}</div>
     </div>
   </section>;
+}
+
+/** Law 1: failed attempts that share a cause are named once for the run, in a
+ *  footer whose height never changes, so a failure never moves a cell (law 8). */
+function SharedCauses({faces}: {faces: AttemptFaceVM[]}) {
+  const groups = sharedCauses(faces);
+  return <div className={s.sharedCauses} aria-live="polite">{groups.map(group =>
+    <p key={group.cause} title={group.cause}><strong>{group.labels.join(' · ')}</strong> {group.cause}</p>)}</div>;
 }

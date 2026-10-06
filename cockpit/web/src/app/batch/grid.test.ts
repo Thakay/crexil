@@ -3,6 +3,8 @@ import { expect, test } from "vitest";
 import type { Node, Slot, Turn } from "../../types";
 import {
   benchLabel,
+  benchName,
+  benchWords,
   benchNotices,
   benchTurn,
   cancelBreath,
@@ -26,6 +28,7 @@ import {
   turnActive,
   waitingLine,
   type CellVM,
+  money,
 } from "./grid";
 
 function slot(over: Partial<Slot> & { id: string; pos: number }): Slot {
@@ -222,6 +225,48 @@ test("law 5: a local failure states GPU seconds and takes ahead — never money"
   // still ticking (no finished_at): measured against now
   const open = cellOf({ status: "failed", started_at: T0 });
   expect(costLine(open, [], NOW)).toBe("10s of GPU time spent");
+});
+
+test("law 3: every bench scope is named in plain words, never as its raw scope", () => {
+  const cases: [string, string, string][] = [
+    ["lane:local", "gpu_held", "Shared GPU held: the card is taken"],
+    ["lane:local", "unreachable", "Shared GPU paused: ComfyUI not answering"],
+    ["lane:local", "manual", "Shared GPU paused"],
+    ["lane:external", "dead_key", "Hosted lane paused: OpenRouter key missing or refused"],
+    ["lane:external", "unreachable", "Hosted lane paused: OpenRouter not answering"],
+    ["provider:comfy", "unreachable", "ComfyUI not answering"],
+    ["provider:elevenlabs", "dead_key", "ElevenLabs key missing or refused"],
+    ["provider:elevenlabs", "no_key", "ElevenLabs key missing or refused"],
+    ["provider:voice-runner", "unreachable", "Voice runner not answering"],
+    ["provider:acme", "unreachable", "The acme provider not answering"],
+    ["engine:hunyuan3d", "unreachable", "hunyuan3d not answering"],
+    ["engine:raw-flux2", "model_down", "raw-flux2 model unavailable"],
+    ["engine:raw-flux2", "timeout", "raw-flux2 timed out"],
+    ["engine:raw-flux2", "other", "raw-flux2 benched"],
+    ["engine:raw-flux2@turn:t1", "repeat", "raw-flux2 benched for this run after repeated failures"],
+    ["something:else", "x", "An engine is held"],
+  ];
+  for (const [scope, kind, words] of cases) {
+    expect(benchName({ scope, kind })).toBe(words);
+    expect(benchName({ scope, kind })).not.toContain(scope);
+  }
+  // an engine is named by the caller, so a blind surface withholds it
+  expect(benchName({ scope: "engine:raw-flux2@turn:t1", kind: "repeat" }, () => "Hidden")).toBe(
+    "Hidden benched for this run after repeated failures",
+  );
+  // the bench's own plain cause wins when the view carries one
+  expect(benchWords({ scope: "provider:comfy", kind: "unreachable", cause: "ComfyUI stopped answering at 12:00." })).toBe(
+    "ComfyUI stopped answering at 12:00.",
+  );
+  expect(benchWords({ scope: "provider:comfy", kind: "unreachable", cause: "  " })).toBe("ComfyUI not answering.");
+});
+
+test("law 5: a sub-cent charge is spelled exactly, never as $0.00", () => {
+  expect(
+    costLine(cellOf({ status: "failed", charged_usd: 0.0032 }, true), [], NOW),
+  ).toBe("$0.0032 was charged");
+  expect(money(0.004)).toBe("$0.004");
+  expect(money(null)).toBe("");
 });
 
 test("law 5: a paid failure states the dollars either way — charged, or not", () => {
@@ -536,7 +581,8 @@ test("C2 and A9: a held cell offers the move its bench kind calls for", () => {
 test("benches are worded by kind in the strip and reach the turn footer only where they touch it", () => {
   expect(benchLabel({ scope: "lane:local", kind: "gpu_held" })).toBe("LOCAL LANE HELD · THE CARD IS TAKEN");
   expect(benchLabel({ scope: "engine:raw-zimage@turn:t1", kind: "repeat" })).toBe("RAW-ZIMAGE BENCHED · THIS TURN ONLY");
-  expect(benchLabel({ scope: "engine:raw-zimage", kind: "model_down" })).toBe("ENGINE:RAW-ZIMAGE BENCHED");
+  expect(benchLabel({ scope: "engine:raw-zimage", kind: "model_down" })).toBe("RAW-ZIMAGE MODEL UNAVAILABLE");
+  expect(benchLabel({ scope: "provider:comfy", kind: "unreachable" })).toBe("COMFYUI NOT ANSWERING");
   expect(benchTurn("engine:raw-zimage@turn:t1")).toBe("t1");
   expect(benchTurn("lane:local")).toBeNull();
   const benches = [

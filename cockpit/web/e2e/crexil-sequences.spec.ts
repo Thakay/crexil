@@ -139,7 +139,7 @@ test('successful upstream outputs advance separately while a failed sibling rema
   expect((await state()).accounting.attempts).toBe(2);
   await room.getByRole('button',{name:'Open run',exact:true}).click();
   const run=page.getByRole('region',{name:'Explore variations · 1',exact:true});
-  await expect(run.getByText('failed',{exact:true})).toBeVisible();
+  await expect(run.getByRole('group',{name:'Attempt 0A · failed',exact:true})).toBeVisible();
   await expect(run.getByRole('button',{name:'Act on 0B',exact:true})).toBeVisible();
   const finished=await(await request.get(`/api/crexil/projects/${project.id}`)).json();
   expect(finished.turns[0].slots.map((slot:{status:string})=>slot.status)).toEqual(['failed','landed']);

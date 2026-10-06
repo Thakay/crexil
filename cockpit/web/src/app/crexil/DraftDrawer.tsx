@@ -9,6 +9,8 @@ import { ACTIONS, actionView } from './actions';
 import { ActionError, blankPreparation, command, isDefiniteRefusal, label, message,
   result, money, type Direction, type Material, type Operation, type Preparation } from './api';
 import { useEscapeLayer } from './keys';
+import { operationStanding } from './capability';
+import { runFace } from './runFace';
 import { sourceRoles as rolesOf } from './media';
 import s from './Filmstrip.module.css';
 import { ImagePreparationFields, initialImagePreparation } from './ImagePreparationFields';
@@ -234,14 +236,13 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
           const setChoice = (patch: Partial<NonNullable<Preparation['operations']>[number]>) => update({
             operations:choices.map(c => c.operation_id === operation.id ? {...c,...patch} : c),
           });
-          return <div className={`${s.operation} ${!operation.actions.includes(setup.action??'generate')||operation.availability==='unavailable'?s.operationUnavailable:''}`} key={operation.id}>
-            <div><span>{operation.label}</span><span className={s.micro}>{operation.evidence} · {operation.availability}</span></div>
+          const standing = operationStanding(operation, setup.action??'generate', refs.map(ref => nodes.find(n => n.id === ref.node_id)).filter((n): n is Material => Boolean(n)));
+          return <div className={`${s.operation} ${standing.tier!=='ready'?s.operationUnavailable:''}`} data-standing={standing.tier} key={operation.id}>
+            <div><span>{operation.label}</span><span className={s.micro}>{standing.tier==='notForThis'?'Not for this action':`${operation.evidence} · ${operation.availability}`}</span></div>
             <label className={s.count}>Attempts<input type="number" min={0} max={operation.attempt_max??16} value={choice?.count ?? 0} aria-label={`${operation.label} attempts`}
               onChange={e => update({operations:[...choices.filter(c => c.operation_id !== operation.id), ...(Number(e.target.value) > 0 ? [{operation_id:operation.id, revision:operation.revision, count:Number(e.target.value), controls: choice?.controls ?? {}}] : [])]})}/></label>
-            {!operation.actions.includes(setup.action??'generate')&&<p className={s.hint}>This operation does not perform {setup.action}. Its saved inputs remain available.</p>}
+            {standing.reasons.length > 0 && <p className={s.hint}>{standing.reasons.join(' ')}</p>}
             {choice&&(operation.limitations??[]).map(note=><p key={note} className={s.hint}>{note}</p>)}
-            {(operation.reasons.length > 0 || refs.length > operation.source_limit) && <p className={s.hint}>
-              {refs.length > operation.source_limit ? `Accepts ${operation.source_limit} source. All ${refs.length} sources remain in preparation. ` : ''}{operation.reasons.join(' ')}</p>}
             {choice && choice.revision !== operation.revision && <p className={s.hint}>The operation changed. Your inputs are kept. <button onClick={() => setChoice({revision:operation.revision})}>Accept current revision</button></p>}
             <details><summary>Inputs, cost and route</summary><p>{operation.execution_location} · {operation.data_destination}</p>
               <p>{operation.maximum_usd_per_attempt === null ? `${operation.price_usd === null ? 'Price unknown' : `${money(operation.price_usd)} estimated per attempt`}. ${operation.cost_basis}.` : `Maximum ${money(operation.maximum_usd_per_attempt)} per attempt. ${operation.cost_basis}.`}</p>
@@ -282,7 +283,11 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
     {runError && <p className={s.error} role="alert">{runError}</p>}
     <div className={s.drawerFoot} inert={regionEditing}><span>{preparingImage ? `${refs.length} sources · New derived image` : `${count} planned attempts · ${refs.length > 1 ? 'sources together' : 'one direction'}`}</span>
       {direction.sequence_template ? <span>This is a sequence preparation. Close to review and authorize its remaining work in Sequences.</span> : <span className={s.actions}><button disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || running || Boolean(submission) || direction.state!=='draft'} onClick={() => void reviewRun()}>{running ? 'Working…' : preparingImage ? 'Review image' : 'Review run'}</button>
-        {!submission&&review?.ready && <button className={s.primary} disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || running || direction.state!=='draft'} onClick={() => void submit()}>{preparingImage ? 'Save derived image' : `Run ${review.ready_attempts} attempts`}</button>}</span>}
+        {!submission&&review?.ready && (() => {
+          // The reviewed price sits on the button that spends it; a costed Run is never the default (law 6).
+          const face = preparingImage ? {label: 'Save derived image', paid: false} : runFace(review, setup.spending_policy);
+          return <button className={face.paid ? s.paidRun : s.primary} disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || running || direction.state!=='draft'} onClick={() => void submit()}>{face.label}</button>;
+        })()}</span>}
     </div>
   </section>;
 }
