@@ -143,7 +143,7 @@ def mask(kind: str, item: dict) -> dict:
     if out.get('cause'):
         out['cause'] = plain_cause(out.get('kind'))
     if kind == 'queue' and out.get('bench') and not str(out['bench']).startswith('lane:'):
-        out['bench'] = None                    # an engine or engine-in-run scope names it
+        out['bench'] = None                    # an engine, provider or engine-in-run scope names it
     if kind == 'group':
         out['metadata'] = scrub(out.get('metadata') or {})
         out['outputs'] = [

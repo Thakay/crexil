@@ -34,7 +34,7 @@ from . import regions as regions_mod
 from .db import new_id
 from .executors import DispatchRequest
 from .mesh import fields_sidecar
-from .scheduler import parse_frame, turn_scope
+from .scheduler import parse_frame
 from .schemas import (BackfillResult, CancelResult, Costs,
                       CreateWorkspace, Dials, Engines, Events, GpuCheckResult,
                       GpuHoldResult, Headroom, MoneyGate, RerollBody, Node, NodePos, NodePosition,
@@ -1170,14 +1170,11 @@ async def queue_view():
         take = snap["takes"].get(s["id"])
         bench = None
         if status == "held":
-            # the covering scope: the engine's, this turn's (A9),
-            # or the lane's — the cell offers its resume against it
-            for scope in (f"engine:{s['engine']}",
-                          turn_scope(s["engine"], s["turn_id"]),
-                          f"lane:{lane}"):
-                if scope in snap["benches"]:
-                    bench = scope
-                    break
+            # the covering scope by the scheduler's own rule: the engine's,
+            # this turn's (A9), the provider's or the lane's; the cell offers
+            # its resume against it
+            covering = sched.bench_for(s["engine"], s["turn_id"])
+            bench = covering.scope if covering else None
         view = {
             "id": s["id"], "turn_id": s["turn_id"],
             "turn_idx": s["turn_idx"], "workspace_id": s["workspace_id"],

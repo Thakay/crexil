@@ -11,7 +11,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app import audio, blind, config, main, wiring
+import importlib.util
+
+from app import audio, audio_executors, blind, config, main, wiring
 from app.audio_executors import NotBuiltExecutor
 from app.db import Database
 from app.executors import EngineFailure
@@ -98,12 +100,13 @@ async def designed(client, wid, engine='qwen3-tts', **fields):
 
 # --- engines and routing ---
 
-def test_audio_rows_are_well_formed_disabled_and_route_to_their_provider():
+def test_audio_rows_are_well_formed_enabled_only_with_their_adapter_and_route_to_their_provider():
     rows = {r['id']: r for r in json.loads((REPO / 'configs/engines.json').read_text())['engines']
             if r.get('payload') == 'audio'}
     assert set(rows) == {'elevenlabs-voice-design', 'elevenlabs-v4', 'elevenlabs-sfx', 'qwen3-tts'}
     for row in rows.values():
-        assert row['enabled'] is False                       # the integrator enables an engine
+        if row['enabled']:                                   # the integrator enables an engine once its adapter lands
+            assert importlib.util.find_spec(f"app.{audio_executors.MODULES[row['provider']]}") is not None
         assert audio.PROVIDERS[row['provider']] == row['lane']
         assert set(row['verbs']) <= set(audio.VERBS)
         assert set(row.get('params', {})) <= set(row['verbs'])
@@ -226,7 +229,9 @@ async def test_audio_that_cannot_be_measured_fails_collection_and_keeps_its_byte
 # --- speech, voices and provider terms ---
 
 async def test_speech_takes_a_voice_take_and_refuses_restricted_or_wrong_sources(tmp_path, monkeypatch):
-    async with booted_audio(tmp_path, monkeypatch, rows=[free_design_row()]) as (client, fakes):
+    cloneable = FakeAudioExecutor('voice-runner', 'local', data=tone_wav(seconds=3.5))   # the local engine clones from 3 s up
+    async with booted_audio(tmp_path, monkeypatch, rows=[free_design_row()],
+                            executors={'voice-runner': cloneable}) as (client, fakes):
         p = await project(client)
         _, local_takes = await designed(client, p['id'])
         voice = local_takes[0]

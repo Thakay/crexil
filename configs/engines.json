@@ -415,7 +415,7 @@
       "lane": "external",
       "payload": "audio",
       "provider": "elevenlabs",
-      "enabled": false,
+      "enabled": true,
       "verbs": [
         "voice-design"
       ],
@@ -499,7 +499,7 @@
       "lane": "external",
       "payload": "audio",
       "provider": "elevenlabs",
-      "enabled": false,
+      "enabled": true,
       "verbs": [
         "speak"
       ],
@@ -587,7 +587,7 @@
       "lane": "external",
       "payload": "audio",
       "provider": "elevenlabs",
-      "enabled": false,
+      "enabled": true,
       "verbs": [
         "sfx"
       ],
@@ -676,7 +676,8 @@
       "lane": "local",
       "payload": "audio",
       "provider": "voice-runner",
-      "enabled": false,
+      "enabled": true,
+      "voice_reference_min_seconds": 3,
       "verbs": [
         "voice-design",
         "speak"
