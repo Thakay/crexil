@@ -98,7 +98,7 @@ The provider's window is read from the `Retry-After` header (seconds or a date) 
 
 A project run freezes whether its slots may retry on their own: audio slots do, image and 3D slots do not. Both kinds that retry mean the provider refused the request or never received it, so a retry never pays twice. The refused attempt's known zero charge is recorded on its `slot.retrying` event, so its reservation stops counting against every cap (law 22).
 
-Nothing retries silently (law 9). Before the wait, the scheduler writes a `slot.retrying` event with the kind, the attempt, the limit, the wait, whose clock it is, and the time of the next try. The slot returns to `queued` with `retry_of` set. `GET /api/queue` lists the waits under `retries`. The cell reads RETRYING · ATTEMPT i OF n with a countdown, and the queue strip marks a running retry. `retry_of` stays on the row after the take lands. A manual reroll clears it. A cancel during the wait wins: the slot is skipped and nothing more is sent.
+Nothing retries silently (law 9). Before the wait, the scheduler writes a `slot.retrying` event with the kind, the attempt, the limit, the wait, whose clock it is, and the time of the next try. The slot returns to `queued` with `retry_of` set. `GET /api/queue` lists the waits under `retries`. The cell reads RETRYING · ATTEMPT i OF n with a countdown, and the queue strip marks a running retry. `retry_of` stays on the row after the take lands. A manual reroll clears it. A cancel during the wait wins: the slot is skipped and nothing more is sent. On the project surface the waiting face's GIVE UP ON THIS ATTEMPT sends that cancel.
 
 Tests: the retry section of `test_scheduler.py`, the `test_b2_*` tests in `test_hardware_cases.py`, `test_law_9_*` in `test_laws.py`, and the `law 9` tests in `batch/grid.test.ts` and `batch/TurnGrid.test.tsx`.
 
@@ -186,9 +186,9 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 
 ### A9 · Repeat failure of the same engine inside one turn
 **Status: implemented.**
-- **Artist sees:** one footer line naming the two slots that failed. The engine's remaining cells in that turn read HELD, each with TRY ONCE MORE. The queue strip says the engine is benched for this turn only.
+- **Artist sees:** one footer line naming the two slots that failed. The engine's remaining cells in that turn read HELD, each with TRY ONCE MORE. The queue strip says the engine is benched for this turn only. On the project surface the held face offers REUSE SETUP first, then TRY ONCE MORE, which shows what the held attempts it sends reserve when they reserve money (`TRY ONCE MORE · UP TO $0.004`, never the default), then CANCEL ATTEMPT.
 - **System does:** after the second `error`, `oom` or `charged_blank` of one engine in one turn, `_repeat_check` benches that engine for that turn. Its queued takes are held, not dropped. Other engines and other turns keep running. TRY ONCE MORE lifts the bench. On the project surface, TRY ONCE MORE calls `POST /api/crexil/attempts/{slot}/resume` and records who pressed it. `blank`, `moderation` and `rate_limit` do not count.
-- **Lives in:** `scheduler.py` (`A9_KINDS`, `_repeat_check`, `turn_scope`), `db.py` (`failed_in_turn`), `batch/grid.ts`. Tests: the `test_a9_*` tests and `test_the_queue_view_names_a_turn_scoped_bench_on_its_held_cells` in `test_hardware_cases.py`, `A9:` in `e2e/hardware-cases.spec.ts`, `test_authored_slot_controls.py`.
+- **Lives in:** `scheduler.py` (`A9_KINDS`, `_repeat_check`, `turn_scope`), `db.py` (`failed_in_turn`), `batch/grid.ts`. Tests: the `test_a9_*` tests and `test_the_queue_view_names_a_turn_scoped_bench_on_its_held_cells` in `test_hardware_cases.py`, `A9:` in `e2e/hardware-cases.spec.ts`, `test_authored_slot_controls.py`, `crexil/attempts.ts`, `crexil/attempts.test.tsx`, `crexil/Filmstrip.test.tsx`, `e2e/crexil-law-faces.spec.ts`.
 
 ### A10 · Model swap thrash
 **Status: not implemented.** The queue never reorders. A Run lays its slots out engine by engine and the local lane runs them in slot order, so one turn's takes on one engine run back to back (`test_run_lays_out_batches_engine_by_engine_each_with_its_own_raws` in `test_api_v4.py`). No time estimate exists (law 17).
@@ -296,7 +296,7 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 
 ### C7 · Dropping a queued slot gives its turn back
 **Status: implemented.**
-- **Artist sees:** a queued or held cell has a cancel mark. The cell then reads SKIPPED and says no GPU time was spent and its turn was given back. It states no number of seconds (law 17). A reroll runs it after all.
+- **Artist sees:** a queued or held cell has a cancel mark. The cell then reads SKIPPED and says no GPU time was spent and its turn was given back. It states no number of seconds (law 17). A reroll runs it after all. On the project surface a queued, held or running face offers CANCEL ATTEMPT last (GIVE UP ON THIS ATTEMPT while a retry shows), with a tooltip that says what stopping means in that state.
 - **System does:** `cancel_slot` moves the slot to `skipped` with the note "nothing spent" and removes it from the local queue. On the project surface, one attempt is cancelled through `POST /api/crexil/attempts/{slot}/cancel`.
 - **Lives in:** `scheduler.py`, `batch/SlotCell.tsx`, `batch/grid.ts` (`costLine`). Tests: `test_cancel_skips_queued_slots_and_says_nothing_spent` in `test_scheduler.py`, `batch/TurnGrid.test.tsx`.
 

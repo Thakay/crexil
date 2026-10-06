@@ -69,6 +69,7 @@ export default defineConfig({
       COCKPIT_HARNESS_EXECUTORS: "1",
       COMFYUI_URL: "http://127.0.0.1:9",
       THREED_URL: "http://127.0.0.1:9",
+      VOICE_RUNNER_URL: "http://127.0.0.1:9",
       OPENROUTER_URL: "http://127.0.0.1:9",
       // Keys are blank whatever the shell or a checkout's .env holds: an
       // empty variable is set, so the server's .env loading never fills it.

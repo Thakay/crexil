@@ -571,7 +571,7 @@
       "note": "Reads lines in a voice designed or saved at ElevenLabs. v4 honours stability and similarity only.",
       "notes": {
         "speak": [
-          "ElevenLabs receives each line and keeps the speech in your ElevenLabs history, so a lost take can be collected without paying again."
+          "ElevenLabs receives each line and keeps the speech in your ElevenLabs history, so a lost take can be collected without paying again.", "The first line in a designed voice saves that voice to your ElevenLabs account, which uses one of its voice slots. Crexil never deletes a saved voice."
         ]
       },
       "seed_range": [0, 4294967295],
