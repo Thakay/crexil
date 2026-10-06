@@ -29,6 +29,7 @@ services:
       # that is down benches its two ENGINES, never the local lane, so the
       # image takes beside them keep running.
       THREED_URL: http://host.docker.internal:8189
+      VOICE_RUNNER_URL: http://host.docker.internal:8190
       # compose interpolates ${...} from the repo .env (the file itself is
       # never baked into the image)
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

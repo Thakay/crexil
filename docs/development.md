@@ -157,6 +157,8 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 | `CREXIL_PREVIEW` | unset | `1` runs an isolated preview: store, staging, built client and promote folder under `<root>/.preview`, `.env` and path overrides ignored, no key, every engine URL closed. Generation and spending are impossible |
 | `COMFYUI_URL` | `http://127.0.0.1:8188` | ComfyUI base URL |
 | `THREED_URL` | `http://127.0.0.1:8189` | 3D runner base URL |
+| `THREED_RUNNER_ALLOW_REMOTE` | unset | Read by the 3D runner: `1` lets it listen beyond this machine |
+| `THREED_RUNNER_ALLOWED_HOSTS` | empty | Read by the 3D runner: extra host names it answers (comma-separated) |
 | `COCKPIT_THREED_POLL_S` | `2` | Seconds between polls of a running 3D job |
 | `COCKPIT_PRESETS_DIR` | `<root>/presets` | Preset folder |
 | `COCKPIT_WORKFLOWS_DIR` | `<root>/workflows` | Graph folder |

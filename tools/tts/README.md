@@ -48,13 +48,17 @@ default), and set `enabled` on the `qwen3-tts` row of `configs/engines.json`.
 | Option | Variable | Default | Meaning |
 |---|---|---|---|
 | `--port` | `VOICE_RUNNER_PORT` | `8190` | The port |
-| `--host` | `VOICE_RUNNER_HOST` | `127.0.0.1` | The address. The runner has no authentication; keep it on the loopback |
+| `--host` | `VOICE_RUNNER_HOST` | `127.0.0.1` | The address. The runner has no accounts; it listens beyond loopback only with `--allow-remote` |
+| `--allow-remote` | `VOICE_RUNNER_ALLOW_REMOTE=1` | off | Listen beyond this machine |
+| `--allow-host NAME` (repeatable) | `VOICE_RUNNER_ALLOWED_HOSTS` (comma-separated) | none | Also answer requests addressed to this host name |
 | `--state` | `VOICE_RUNNER_STATE` | `~/.local/state/crexil-voice-runner` | Job records and takes |
 | `--design-model`, `--speak-model` | `VOICE_RUNNER_DESIGN_MODEL`, `VOICE_RUNNER_SPEAK_MODEL` | the pinned revisions in the local cache | A model snapshot folder |
 | `--device` | `VOICE_RUNNER_DEVICE` | `cuda:0` | The card |
 
 ## How it behaves
 
+- **Only this machine's cockpit is served.** Requests addressed to another host, any request from a
+  web page, and a job body that is not `application/json` are refused.
 - **One job at a time.** Jobs queue first in, first out. The cockpit also runs local jobs one
   at a time across all engines (law 14).
 - **Nothing stays loaded between jobs.** Each job loads its model, runs and frees it. Between
