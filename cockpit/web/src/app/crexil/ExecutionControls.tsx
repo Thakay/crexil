@@ -3,7 +3,7 @@
 import {useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
-import {ActionError,command,message,result,type Snapshot} from './api';
+import {command,isDefiniteRefusal,message,result,type Snapshot} from './api';
 import s from './Filmstrip.module.css';
 
 type Control=components['schemas']['ExecutionControlView'];
@@ -34,7 +34,7 @@ export function ExecutionControls({control,slots,label,refresh,pendingWork=false
       }));
       pendingDeliveries.delete(key);pending.current=null;setAccepted(saved);refresh();
     }catch(error){
-      if(error instanceof ActionError&&[404,409,422].includes(error.status??0)){pendingDeliveries.delete(key);pending.current=null;}
+      if(isDefiniteRefusal(error)){pendingDeliveries.delete(key);pending.current=null;}
       setError(message(error));refresh();
     }finally{setBusy(false);}
   };

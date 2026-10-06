@@ -8,8 +8,11 @@ export type Material = components['schemas']['MaterialNode'];
 export type Preparation = components['schemas']['Preparation'];
 export type Operation = components['schemas']['OperationView'];
 export type Snapshot = components['schemas']['ProjectSnapshot'];
-export const actor = { kind: 'human' as const, name: 'Artist' };
-export const command = () => ({ request_id: crypto.randomUUID(), actor });
+export type Actor = components['schemas']['Actor'];
+export const HUMAN: Actor = { kind: 'human', name: 'Artist' };
+// Every write names its participant (law 23). Keys, buttons and agent tools build
+// their commands here, so an agent passes its own actor and nothing else differs.
+export const command = (actor: Actor = HUMAN) => ({ request_id: crypto.randomUUID(), actor });
 
 export function message(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -24,6 +27,14 @@ export class ActionError extends Error {
   constructor(error:unknown, public readonly status?:number) {super(message(error));}
 }
 
+// A saved command may be dropped only when the server definitely refused it: a client
+// error other than a timeout (408) or a rate limit (429). Network failures, server errors
+// and those two keep the same request for a confirmed retry (laws 7 and 9).
+export function isDefiniteRefusal(error: unknown): boolean {
+  if (!(error instanceof ActionError) || error.status === undefined) return false;
+  return error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+}
+
 export async function result<T>(request: Promise<{data?: T; error?: unknown; response?:Response}>): Promise<T> {
   const response = await request;
   if (response.error || response.data === undefined) throw new ActionError(response.error,response.response?.status);
@@ -33,7 +44,33 @@ export async function result<T>(request: Promise<{data?: T; error?: unknown; res
 export const imageUrl = (id: string, full = false) => `/api/nodes/${id}/${full ? 'image' : 'thumb'}`;
 export const label = (node: Material) => node.turn_idx === null ? (node.material?.filename ?? 'Imported image')
   : `${node.turn_idx}${String.fromCharCode(65 + (node.slot_pos ?? 0))}${node.output_index>0?`.${node.output_index+1}`:''}`;
-export const money = (value: number) => `$${value.toFixed(2)}`;
+// One money format for the project surface. A cent or more keeps two decimals; a smaller
+// amount that is not zero keeps two significant digits, so money that moved never reads
+// as $0.00 (law 5). Exactly zero is $0.00.
+export function money(value: number): string {
+  const sign = value < 0 ? '-' : '', amount = Math.abs(value);
+  if (amount === 0 || amount >= 0.01) return `${sign}$${amount.toFixed(2)}`;
+  const digits = Math.min(20, Math.ceil(-Math.log10(amount)) + 1);
+  return `${sign}$${amount.toFixed(digits).replace(/0+$/, '')}`;
+}
+
+// Who made a material. A hidden identity is a blind run's withheld engine; it is never
+// mistaken for imported material, which has no engine at all.
+export type EngineIdentity = {kind: 'named'; name: string} | {kind: 'hidden'} | {kind: 'prepared'} | {kind: 'imported'};
+type Identified = {engine: string | null; material?: {origin: Record<string, unknown>} | null};
+export function engineIdentity(node: Identified, hidden = false): EngineIdentity {
+  if (hidden) return {kind: 'hidden'};
+  if (node.engine) return {kind: 'named', name: node.engine};
+  return node.material?.origin.kind === 'prepared_image' ? {kind: 'prepared'} : {kind: 'imported'};
+}
+// 'face' names the maker on a face footer; 'source' groups and heads material by origin.
+export function engineLabel(node: Identified, variant: 'face' | 'source', hidden = false): string {
+  const identity = engineIdentity(node, hidden);
+  if (identity.kind === 'named') return identity.name;
+  if (identity.kind === 'hidden') return variant === 'face' ? 'Hidden' : 'Engine hidden';
+  if (variant === 'source') return 'Imported material';
+  return identity.kind === 'prepared' ? 'Prepared' : 'Imported';
+}
 export const projectHref = (id?: string) => id ? `#/projects/${id}` : '#/projects';
 
 export function blankPreparation(): Preparation {

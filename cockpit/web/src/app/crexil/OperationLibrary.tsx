@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { $api, fetchClient } from '../../api/client';
 import type { components } from '../../generated/openapi';
+import { useHash } from '../routes';
 import { blankPreparation, command, message, projectHref, result } from './api';
 import s from './Filmstrip.module.css';
 import {PreparedOperations} from './PreparedOperations';
@@ -20,8 +21,8 @@ const normalize = (value:components['schemas']['OperationDefinition']):Definitio
   inputs:(value.inputs??[]).map(control=>({...control,targets:control.targets??[],choices:control.choices??[],when:control.when??{}}))});
 
 export function OperationLibrary() {
-  const routeHash=location.hash;
-  const params = new URLSearchParams(location.hash.split('?')[1]);
+  const routeHash=useHash();
+  const params = new URLSearchParams(routeHash.split('?')[1]);
   const projects = $api.useQuery('get', '/api/crexil/projects');
   const query = $api.useQuery('get', '/api/crexil/registrations');
   const [selected, setSelected] = useState<string | null>(params.get('id'));

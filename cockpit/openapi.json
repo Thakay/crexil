@@ -132,6 +132,138 @@
         "title": "ArchiveUpload",
         "type": "object"
       },
+      "AudioFacts": {
+        "description": "Measured once by the server at collection; the bytes never change.\n\n`loudness_lufs` is gated integrated loudness by ITU-R BS.1770-4 (null\nwhen no 400 ms block clears the absolute gate). `peaks` is the absolute\nsample peak of up to 256 equal spans, from 0 to 1, for drawing. `text` is\nthe spoken words, `voice` the voice identity the engine reported, and\n`alignment` per-character timing when the engine reports it. Format facts\nare null only while a blind run withholds them.",
+        "properties": {
+          "alignment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alignment"
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels"
+          },
+          "codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec"
+          },
+          "container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container"
+          },
+          "duration_s": {
+            "title": "Duration S",
+            "type": "number"
+          },
+          "loudness_lufs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loudness Lufs"
+          },
+          "peak_dbfs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Dbfs"
+          },
+          "peaks": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Peaks",
+            "type": "array"
+          },
+          "sample_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Rate"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice"
+          }
+        },
+        "required": [
+          "container",
+          "codec",
+          "sample_rate",
+          "channels",
+          "duration_s",
+          "loudness_lufs",
+          "peak_dbfs",
+          "peaks",
+          "text",
+          "voice",
+          "alignment"
+        ],
+        "title": "AudioFacts",
+        "type": "object"
+      },
       "BackfillRefusal": {
         "properties": {
           "pos": {
@@ -231,6 +363,62 @@
           "of"
         ],
         "title": "BillCheck",
+        "type": "object"
+      },
+      "BlindRunView": {
+        "description": "A run whose engine identity is withheld until an authored reveal.",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "revealed": {
+            "title": "Revealed",
+            "type": "boolean"
+          },
+          "revealed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revealed At"
+          },
+          "revealed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id",
+          "workspace_id",
+          "actor",
+          "created_at",
+          "revealed",
+          "revealed_at",
+          "revealed_by"
+        ],
+        "title": "BlindRunView",
         "type": "object"
       },
       "CancelAction": {
@@ -336,6 +524,57 @@
           "actor"
         ],
         "title": "Command",
+        "type": "object"
+      },
+      "ConnectionView": {
+        "description": "One provider's first-use state. A key is described, never shown.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "key_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "env",
+                  "stored"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Source"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "label",
+          "ok",
+          "detail"
+        ],
+        "title": "ConnectionView",
         "type": "object"
       },
       "ControlExecution": {
@@ -1536,7 +1775,8 @@
           "payload": {
             "enum": [
               "image",
-              "3d"
+              "3d",
+              "audio"
             ],
             "title": "Payload",
             "type": "string"
@@ -1544,6 +1784,17 @@
           "price": {
             "title": "Price",
             "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
           },
           "verbs": {
             "default": [],
@@ -1640,6 +1891,61 @@
             "title": "Label",
             "type": "string"
           },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Length"
+          },
+          "required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required"
+          },
           "state": {
             "anyOf": [
               {
@@ -1655,6 +1961,17 @@
             ],
             "title": "State"
           },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
           "supported": {
             "default": true,
             "title": "Supported",
@@ -1663,7 +1980,14 @@
           "type": {
             "anyOf": [
               {
-                "const": "enum",
+                "enum": [
+                  "enum",
+                  "text",
+                  "int",
+                  "float",
+                  "bool",
+                  "seed"
+                ],
                 "type": "string"
               },
               {
@@ -1919,6 +2243,17 @@
             "title": "Id",
             "type": "string"
           },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
           "job_ref": {
             "anyOf": [
               {
@@ -2130,6 +2465,11 @@
           },
           "ready_attempts": {
             "title": "Ready Attempts",
+            "type": "integer"
+          },
+          "reserved_micro_usd": {
+            "default": 0,
+            "title": "Reserved Micro Usd",
             "type": "integer"
           },
           "reserved_usd": {
@@ -3412,6 +3752,16 @@
       },
       "MaterialNode": {
         "properties": {
+          "audio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AudioFacts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "available": {
             "title": "Available",
             "type": "boolean"
@@ -3468,6 +3818,17 @@
             "title": "Id",
             "type": "string"
           },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
           "material": {
             "anyOf": [
               {
@@ -3502,7 +3863,8 @@
           "payload": {
             "enum": [
               "image",
-              "3d"
+              "3d",
+              "audio"
             ],
             "title": "Payload",
             "type": "string"
@@ -3683,6 +4045,17 @@
             "additionalProperties": true,
             "title": "Controls",
             "type": "object"
+          },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
           },
           "node_id": {
             "title": "Node Id",
@@ -3940,6 +4313,17 @@
             "title": "Id",
             "type": "string"
           },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
           "mesh": {
             "anyOf": [
               {
@@ -3960,7 +4344,8 @@
           "payload": {
             "enum": [
               "image",
-              "3d"
+              "3d",
+              "audio"
             ],
             "title": "Payload",
             "type": "string"
@@ -4480,6 +4865,154 @@
         "title": "OperationDefinition",
         "type": "object"
       },
+      "OperationInput": {
+        "additionalProperties": true,
+        "description": "One public control. Absent facts stay null; producers may add more keys.",
+        "properties": {
+          "choices": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          },
+          "default": {
+            "title": "Default"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Length"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "supported": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supported"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "text",
+                  "int",
+                  "float",
+                  "enum",
+                  "seed",
+                  "bool"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "OperationInput",
+        "type": "object"
+      },
       "OperationRequirements": {
         "properties": {
           "checked_at": {
@@ -4553,6 +5086,12 @@
             "type": "integer"
           },
           "availability": {
+            "enum": [
+              "verified",
+              "unverified",
+              "incomplete",
+              "unavailable"
+            ],
             "title": "Availability",
             "type": "string"
           },
@@ -4565,6 +5104,11 @@
             "type": "string"
           },
           "evidence": {
+            "enum": [
+              "declared",
+              "observed",
+              "qualified"
+            ],
             "title": "Evidence",
             "type": "string"
           },
@@ -4578,8 +5122,7 @@
           },
           "inputs": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/OperationInput"
             },
             "title": "Inputs",
             "type": "array"
@@ -4608,8 +5151,37 @@
           },
           "output_payload": {
             "default": "image",
+            "enum": [
+              "image",
+              "3d",
+              "audio",
+              "file"
+            ],
             "title": "Output Payload",
             "type": "string"
+          },
+          "pinned": {
+            "default": false,
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "price_unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "attempt",
+                  "image",
+                  "1k_characters",
+                  "second",
+                  "generation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Unit"
           },
           "price_usd": {
             "anyOf": [
@@ -4621,6 +5193,17 @@
               }
             ],
             "title": "Price Usd"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
           },
           "reasons": {
             "items": {
@@ -4643,6 +5226,28 @@
             },
             "title": "Source Roles",
             "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRoleView"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "takes_per_attempt": {
+            "default": 1,
+            "title": "Takes Per Attempt",
+            "type": "integer"
+          },
+          "tariff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TariffView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4752,6 +5357,219 @@
         "title": "Passes",
         "type": "object"
       },
+      "PreferenceCandidate": {
+        "description": "One take the decision was made among, as the record states it.",
+        "properties": {
+          "cost_micro_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Micro Usd"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "node_id",
+          "position",
+          "engine",
+          "provider",
+          "model",
+          "seed",
+          "cost_micro_usd"
+        ],
+        "title": "PreferenceCandidate",
+        "type": "object"
+      },
+      "PreferenceExport": {
+        "description": "The artist's decision record: never a training or evaluation dataset,\nand it holds no audio.",
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/PreferenceRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "generated_at",
+          "purpose",
+          "records"
+        ],
+        "title": "PreferenceExport",
+        "type": "object"
+      },
+      "PreferenceRecord": {
+        "description": "One decision, derived from a selection or an assessment event.",
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Actor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blind": {
+            "title": "Blind",
+            "type": "boolean"
+          },
+          "brief": {
+            "title": "Brief",
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PreferenceCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "chosen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chosen",
+            "type": "array"
+          },
+          "decided_at": {
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "direction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Id"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "verb": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verb"
+          }
+        },
+        "required": [
+          "decision_id",
+          "project_id",
+          "run_id",
+          "direction_id",
+          "verb",
+          "brief",
+          "candidates",
+          "chosen",
+          "reason",
+          "author",
+          "blind",
+          "decided_at"
+        ],
+        "title": "PreferenceRecord",
+        "type": "object"
+      },
       "Preparation": {
         "additionalProperties": false,
         "properties": {
@@ -4767,7 +5585,10 @@
               "decimate",
               "texture",
               "import",
-              "prepare"
+              "prepare",
+              "voice-design",
+              "speak",
+              "sfx"
             ],
             "title": "Action",
             "type": "string"
@@ -4778,6 +5599,17 @@
             "minimum": 1.0,
             "title": "Attempt Limit",
             "type": "integer"
+          },
+          "blind": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blind"
           },
           "controls": {
             "additionalProperties": true,
@@ -5100,6 +5932,13 @@
             "additionalProperties": true,
             "title": "Accounting",
             "type": "object"
+          },
+          "blind_runs": {
+            "items": {
+              "$ref": "#/components/schemas/BlindRunView"
+            },
+            "title": "Blind Runs",
+            "type": "array"
           },
           "charged_usd": {
             "title": "Charged Usd",
@@ -6855,6 +7694,32 @@
         "title": "ReuseSelection",
         "type": "object"
       },
+      "RevealRun": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "actor"
+        ],
+        "title": "RevealRun",
+        "type": "object"
+      },
       "Run": {
         "description": "One Run: any number of local engines, each with its own\ntake count and raws, plus any external models, each with its own\ncount (the roster's rows, verbatim). One turn, ≤ 16 slots.\n\n`seed` is the turn's ONE policy: {\"mode\": \"random\"} rolls fresh per\ntake · {\"mode\": \"locked\", \"value\": n} broadcasts one seed to every\ntake of every engine (the SEED dial's lock — so engine and dial\ndifferences are the only variables in the batch) · {\"mode\": \"fixed\",\n\"value\": n} is the fixed seed+pos spread.\n\n`parents` are PLAIN parents — image nodes handed to the run as\nsources, with no declared meaning (style / identity / composition\nchannels are not built yet). Empty = a txt2img root run; one entry = every\nlocal batch's `img2img` recipe with that node as `source_image`, which\nis what Refine is. It takes at most one for now: every committed\nimg2img graph has exactly one source, and inventing a blend would be a\nguess.\n\nRegion turns take their own route, POST /workspaces/{wid}/region-turns\n(RegionRun): masks ride that request, never this one.",
         "properties": {
@@ -7323,6 +8188,13 @@
             "title": "Comfyui Url",
             "type": "string"
           },
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionView"
+            },
+            "title": "Connections",
+            "type": "array"
+          },
           "openrouter": {
             "$ref": "#/components/schemas/SetupStatus"
           },
@@ -7504,6 +8376,17 @@
             "title": "Id",
             "type": "string"
           },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
           "job_ref": {
             "anyOf": [
               {
@@ -7680,6 +8563,17 @@
             "title": "Id",
             "type": "string"
           },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
           "passes": {
             "anyOf": [
               {
@@ -7790,6 +8684,40 @@
         "title": "SourcePort",
         "type": "object"
       },
+      "SourceRoleView": {
+        "description": "One source an operation takes, in order, with the payloads it accepts\n(law 21) and the reasons some takes of those payloads are refused.",
+        "properties": {
+          "accepts": {
+            "items": {
+              "enum": [
+                "image",
+                "3d",
+                "audio"
+              ],
+              "type": "string"
+            },
+            "title": "Accepts",
+            "type": "array"
+          },
+          "restrictions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Restrictions",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "accepts"
+        ],
+        "title": "SourceRoleView",
+        "type": "object"
+      },
       "StartSequence": {
         "additionalProperties": false,
         "properties": {
@@ -7876,6 +8804,54 @@
         "title": "SubmittedDirection",
         "type": "object"
       },
+      "TariffView": {
+        "description": "A published price, exact in integer micro-dollars (one millionth of a US\ndollar). `measure` names the control or text the unit counts; a\nreservation from it is still a tariff, never a hard bound (law 22).",
+        "properties": {
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
+          "micro_usd": {
+            "minimum": 0.0,
+            "title": "Micro Usd",
+            "type": "integer"
+          },
+          "read_on": {
+            "default": "",
+            "title": "Read On",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "attempt",
+              "image",
+              "1k_characters",
+              "second",
+              "generation"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "micro_usd"
+        ],
+        "title": "TariffView",
+        "type": "object"
+      },
       "Tray": {
         "properties": {
           "bytes": {
@@ -7960,6 +8936,17 @@
             "title": "Id",
             "type": "string"
           },
+          "identity_hidden": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Hidden"
+          },
           "mesh": {
             "anyOf": [
               {
@@ -7980,7 +8967,8 @@
           "payload": {
             "enum": [
               "image",
-              "3d"
+              "3d",
+              "audio"
             ],
             "title": "Payload",
             "type": "string"
@@ -9648,6 +10636,48 @@
         ]
       }
     },
+    "/api/crexil/material/{nid}/audio": {
+      "get": {
+        "description": "An audio take's own bytes, for listening. A blind run's takes stay playable.",
+        "operationId": "material_audio_api_crexil_material__nid__audio_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nid",
+            "required": true,
+            "schema": {
+              "title": "Nid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "audio/wav": {}
+            },
+            "description": "the audio take, byte for byte"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Material Audio",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
     "/api/crexil/material/{nid}/files/{fid}": {
       "get": {
         "operationId": "retained_material_file_api_crexil_material__nid__files__fid__get",
@@ -10600,6 +11630,87 @@
         ]
       }
     },
+    "/api/crexil/projects/{wid}/preferences": {
+      "get": {
+        "description": "The decision record: never a dataset, and it holds no audio.",
+        "operationId": "preference_export_api_crexil_projects__wid__preferences_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preference Export",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/projects/{wid}/preferences.jsonl": {
+      "get": {
+        "operationId": "preference_lines_api_crexil_projects__wid__preferences_jsonl_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {}
+            },
+            "description": "one PreferenceRecord per line"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preference Lines",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
     "/api/crexil/projects/{wid}/record": {
       "get": {
         "operationId": "project_record_api_crexil_projects__wid__record_get",
@@ -11508,6 +12619,59 @@
           }
         },
         "summary": "Setup Overview",
+        "tags": [
+          "Crexil shared actions"
+        ]
+      }
+    },
+    "/api/crexil/turns/{tid}/reveal": {
+      "post": {
+        "description": "Reveal a blind run's engines to every reader; an authored event (law 23).",
+        "operationId": "reveal_run_api_crexil_turns__tid__reveal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "title": "Tid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevealRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlindRunView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reveal Run",
         "tags": [
           "Crexil shared actions"
         ]

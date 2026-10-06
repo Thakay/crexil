@@ -549,8 +549,10 @@ async def test_nodes_list_serves_the_canvas_feed_and_leaks_nothing(
             # submitted_graph, no external, no dials on the wire. `mesh` is
             # the one DERIVED key (_mesh_view): a curated slice of
             # the mesh envelope, never the envelope, and null on an image.
-            assert set(row) == set(NODE_KEYS) | {"mesh"}
+            # `identity_hidden` is the blind-run flag, false outside one.
+            assert set(row) == set(NODE_KEYS) | {"mesh", "identity_hidden"}
             assert row["mesh"] is None
+            assert row["identity_hidden"] is None
             assert row["turn_idx"] == 0
             assert row["payload"] == "image"
             assert row["engine"] == "testpreset"

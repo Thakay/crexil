@@ -130,6 +130,10 @@ class ExecutionResult:
     # the same names.
     sidecars: dict[str, bytes] | None = None
     primary_identity: str | None = None
+    # facts the executor reports about the primary file, stored with it as
+    # its descriptor; an audio take puts its spoken text, voice identity and
+    # alignment under "audio" (the server measures the bytes itself)
+    descriptor: dict | None = None
 
 
 def is_region_payload(payload: dict | None) -> bool:
@@ -327,6 +331,13 @@ class Executor(Protocol):
         this job billed, or None when it has no answer yet. Never a
         re-generate — this must not put work in flight. Local executors
         answer None: nothing bills on the GPU."""
+
+    # Two optional members, read with getattr:
+    # `max_concurrency: int` caps this executor's takes in flight; waiting
+    # takes stay queued (law 17) and never hold another provider's permit.
+    # `async collect_existing(slot, *, request) -> Reconciliation` retrieves
+    # an earlier attempt's results without generating again; the scheduler
+    # calls it for free collection when the executor offers it.
 
 
 # --- ComfyUI ---

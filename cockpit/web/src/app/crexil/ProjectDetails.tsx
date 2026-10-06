@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
-import {ActionError,command,message,money,result,type Project} from './api';
+import {ActionError,command,isDefiniteRefusal,message,money,result,type Project} from './api';
 import s from './Filmstrip.module.css';
 
 type Values={name:string;brief:string;instructions:string;attemptLimit:string;spendingLimit:string;policy:'hard_cap'|'published_tariff'};
@@ -38,7 +38,7 @@ export function ProjectDetails({project,accounting,onSaved}:{project:Project;acc
       if(retained(project.id)?.pending?.request_id===body.request_id)sessionStorage.removeItem(key(project.id));
       if(mounted.current)onSaved();
     }catch(error){
-      if(error instanceof ActionError&&error.status&&error.status>=400&&error.status<500&&error.status!==408&&retained(project.id)?.pending?.request_id===body.request_id){retain({...draft,pending:null});if(mounted.current)setConflict(error.status===409);}
+      if(isDefiniteRefusal(error)&&retained(project.id)?.pending?.request_id===body.request_id){retain({...draft,pending:null});if(mounted.current)setConflict(error instanceof ActionError&&error.status===409);}
       if(mounted.current)setError(message(error));
     }finally{if(mounted.current)setBusy(false);}
   };

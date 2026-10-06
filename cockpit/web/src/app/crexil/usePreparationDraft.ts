@@ -4,7 +4,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
-import {ActionError,command,message,preparation,result,saveDirection,type Direction,type Preparation} from './api';
+import {ActionError,command,isDefiniteRefusal,message,preparation,result,saveDirection,type Direction,type Preparation} from './api';
 
 type Values={title:string;setup:Preparation};
 type Pending=components['schemas']['UpdateDirection'];
@@ -62,7 +62,7 @@ export function usePreparationDraft(direction:Direction,onSaved:()=>void,holdRem
         if(mounted.current)refreshed.current();
         return true;
       }catch(error) {
-        const definite=error instanceof ActionError&&Boolean(error.status&&error.status>=400&&error.status<500&&error.status!==408);
+        const definite=isDefiniteRefusal(error);
         const conflict=error instanceof ActionError&&error.status===409;
         commit({...current.current,pending:definite?null:body,conflict,error:message(error)});
         if(conflict&&mounted.current){setComparison(null);refreshed.current();}
@@ -127,7 +127,7 @@ export function usePreparationDraft(direction:Direction,onSaved:()=>void,holdRem
       if(mounted.current)refreshed.current();
       return saved;
     }catch(error) {
-      const definite=error instanceof ActionError&&Boolean(error.status&&error.status>=400&&error.status<500&&error.status!==408);
+      const definite=isDefiniteRefusal(error);
       commit({...current.current,copy:definite?null:body,conflict:true,error:message(error)});
       return null;
     }finally{if(mounted.current)setSaving(false);}

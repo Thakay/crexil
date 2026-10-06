@@ -5,8 +5,9 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
-import {ActionError,command,label,message,money,result,type Direction,type Snapshot} from './api';
+import {command,isDefiniteRefusal,label,message,money,result,type Direction,type Snapshot} from './api';
 import {ExecutionControls} from './ExecutionControls';
+import {useEscapeLayer} from './keys';
 import s from './Filmstrip.module.css';
 
 type Sequence=components['schemas']['SequenceView'];
@@ -37,21 +38,22 @@ export function SequenceRoom({data,refresh,close,edit,inspect,openRun,initialId,
     void pending.current.work().then(saved=>{
       pending.current=null;setAccepted(saved);setSelected(saved.id);setCreating(false);refresh();
     }).catch(error=>{
-      if(error instanceof ActionError&&[400,404,409,422].includes(error.status??0))pending.current=null;
+      if(isDefiniteRefusal(error))pending.current=null;
       setError(message(error));refresh();
     }).finally(()=>setBusy(false));
   };
   const root=useRef<HTMLElement>(null);
   const locked=busy||Boolean(pending.current)||inactive;
   useEffect(()=>{document.getElementById('sequence-room-title')?.focus();},[]);
+  // An unconfirmed command keeps the room open: Escape waits for its retry.
+  useEscapeLayer(()=>Boolean(pending.current));
   useEffect(()=>{
     const origin=location.hash;
-    const key=(event:KeyboardEvent)=>{if(pending.current&&event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();}};
     const leave=(event:BeforeUnloadEvent)=>{if(pending.current){event.preventDefault();event.returnValue='';}};
     const click=(event:MouseEvent)=>{if(pending.current&&(!root.current?.contains(event.target as Node)||(event.target as HTMLElement).closest('a[href]'))){event.preventDefault();event.stopImmediatePropagation();}};
     const hash=(event:HashChangeEvent)=>{if(pending.current&&location.hash!==origin){event.stopImmediatePropagation();history.replaceState(null,'',origin);}};
-    window.addEventListener('keydown',key,true);window.addEventListener('beforeunload',leave);window.addEventListener('click',click,true);window.addEventListener('hashchange',hash,true);
-    return()=>{window.removeEventListener('keydown',key,true);window.removeEventListener('beforeunload',leave);window.removeEventListener('click',click,true);window.removeEventListener('hashchange',hash,true);};
+    window.addEventListener('beforeunload',leave);window.addEventListener('click',click,true);window.addEventListener('hashchange',hash,true);
+    return()=>{window.removeEventListener('beforeunload',leave);window.removeEventListener('click',click,true);window.removeEventListener('hashchange',hash,true);};
   },[]);
   return <section ref={root} inert={inactive} className={s.sequenceRoom} aria-label="Sequences">
     <header className={s.roomHead}><strong id="sequence-room-title" tabIndex={-1}>Sequences</strong><span className={s.hint}>Saved steps, explicit dependencies, retained decisions.</span><button disabled={locked} onClick={close}>Esc · Project</button></header>

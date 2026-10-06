@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 from starlette.concurrency import run_in_threadpool
 
-from . import config, wiring
+from . import blind, config, wiring
 from . import presets as presets_mod
 from . import regions as regions_mod
 from .db import new_id
@@ -271,7 +271,11 @@ async def workspace_detail(wid: str):
     ws = await db.get_workspace(wid)
     if ws is None:
         raise HTTPException(404, "no such workspace")
+    hidden = await blind.hidden_turns(db, wid)
     turns = [_turn_view(t) for t in await db.list_turns(wid)]
+    for turn in turns:
+        if turn["id"] in hidden:
+            turn["slots"] = [blind.mask("slot", slot) for slot in turn["slots"]]
     return {**ws, "turns": turns,
             "charged_usd": await db.workspace_charged(wid)}
 
@@ -354,7 +358,8 @@ async def workspace_nodes(wid: str):
     db = _stack().db
     if await db.get_workspace(wid) is None:
         raise HTTPException(404, "no such workspace")
-    return [_node_view(n) for n in await db.list_nodes(wid)]
+    return await blind.apply(db, "node", [_node_view(n) for n in await db.list_nodes(wid)],
+                             workspace_id=wid)
 
 
 def _make_thumb(src: Path, dst: Path) -> None:
@@ -564,6 +569,7 @@ async def workspace_tray(wid: str):
     entries = [{**_node_view(n), "bytes": size,
                 "children": kids.get(n["id"], 0)}
                for n, size in zip(nodes, sizes, strict=True)]
+    entries = await blind.apply(db, "node", entries, workspace_id=wid)
     return {"nodes": entries, "bytes": sum(e["bytes"] for e in entries)}
 
 
@@ -1195,6 +1201,8 @@ async def queue_view():
             external.append(view)
 
     depth = len(local)                       # queued+running local rows
+    local, external, held, late = [await blind.apply(db, "queue", rows)
+                                   for rows in (local, external, held, late)]
     return {
         "seq": await db.latest_seq(),
         "now": now.isoformat(),
@@ -1314,5 +1322,6 @@ async def events(since: int = 0, workspace_id: str | None = None,
     db = _stack().db
     rows = await db.events_since(since, workspace_id=workspace_id,
                                  limit=max(1, min(limit, 500)))
+    rows = await blind.apply(db, "event", rows, workspace_id=workspace_id)
     return {"events": rows,
             "seq": rows[-1]["seq"] if rows else since}

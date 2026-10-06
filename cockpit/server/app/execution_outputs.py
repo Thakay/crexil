@@ -7,6 +7,8 @@ Missing descriptors remain visible and can be collected again without running
 the engine. A runtime that changes bytes under an identity creates a new member.
 Retained runtime inputs can gain one immutable upload/graph binding before
 dispatch; recording that binding never replaces the previously retained bytes.
+An audio take is measured before its transaction and lands with its facts and
+its provider's recorded terms; audio that cannot be measured stays a file.
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from dataclasses import replace
 
 from PIL import Image, UnidentifiedImageError
 
+from . import audio
 from .db import Database, new_id, now_iso
 from .executors import CollectedOutput, DispatchRequest
 
@@ -104,6 +107,12 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
     output = replace(output, descriptor={**output.descriptor, 'receipt': {
         'submitted_graph': output.submitted_graph, 'external': output.external, 'payload': output.payload}})
     digest = hashlib.sha256(output.data).hexdigest() if output.data is not None else None
+    facts = None
+    if output.data is not None and output.payload == audio.PAYLOAD:
+        try:
+            facts = await asyncio.to_thread(audio.inspect, output.data)
+        except ValueError as exc:
+            output = replace(output, payload=None, error=f'{output.filename} was declared as audio but could not be measured. {exc}')
     async with db._tx():
         item = await group(db, slot)
         identity = output.identity
@@ -118,6 +127,12 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
                 # Adopt it before asking the runtime for these same bytes again.
                 output = replace(output, data=cached, error=None)
                 digest = hashlib.sha256(cached).hexdigest()
+                if output.payload == audio.PAYLOAD:
+                    try:
+                        facts = audio.inspect(cached)
+                    except ValueError as exc:
+                        output = replace(output, payload=None,
+                                         error=f'{output.filename} was declared as audio but could not be measured. {exc}')
         if previous and previous['sha256'] and digest and previous['sha256'] != digest:
             identity += '/changed:' + digest
             previous = await db._one('SELECT * FROM execution_outputs WHERE group_id=? AND identity=?', (item['id'], identity))
@@ -167,7 +182,9 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
                         media = Image.MIME.get(image.format, media)
                 except (UnidentifiedImageError, OSError, ValueError):
                     pass
-            if output.payload in {'image', '3d'}:
+            if facts is not None:
+                media = audio.MEDIA_TYPE
+            if output.payload in {'image', '3d', audio.PAYLOAD}:
                 node = await db.land_node(slot['id'], payload=output.payload, verb=req.verb,
                     output_path=str(path), prompt=req.prompt, parents=list(req.parents),
                     submitted_graph=output.submitted_graph, external=output.external, x=req.x, y=req.y,
@@ -177,9 +194,16 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
                     metadata['companion_owner_id'] = node['id']
                     await db.conn.execute('UPDATE execution_groups SET metadata_json=? WHERE id=?',
                                           (json.dumps(metadata), item['id']))
-                await db.conn.execute('INSERT OR IGNORE INTO material_info VALUES(?,?,?,?,?,?,?)',
-                    (node['id'], digest, output.filename, media, width, height,
-                     json.dumps({'kind': 'execution', 'group_id': item['id'], 'output_id': oid, 'role': output.role})))
+                origin = {'kind': 'execution', 'group_id': item['id'], 'output_id': oid, 'role': output.role}
+                terms = audio.terms(audio.engines().get(slot['engine'], {}))
+                if terms:
+                    origin['terms'] = terms
+                await db.conn.execute('INSERT OR IGNORE INTO material_info(node_id,sha256,filename,media_type,width,height,origin_json) '
+                                      'VALUES(?,?,?,?,?,?,?)',
+                    (node['id'], digest, output.filename, media, width, height, json.dumps(origin)))
+                if facts is not None:
+                    reported = output.descriptor.get('audio') or {}
+                    await db.record_audio_facts(node['id'], {**facts, **{key: reported.get(key) for key in ('text', 'voice', 'alignment')}})
         values = (node['id'] if node else None, output.role, output.filename, media,
                   str(path), digest,
                   len(output.data) if output.data is not None else None,
@@ -222,7 +246,8 @@ async def recover_files(db: Database, staging: Path, slot: dict, req: DispatchRe
     for row in rows:
         if row['output_path'] and Path(row['output_path']).is_file():
             descriptor = json.loads(row['descriptor_json'])
-            payload = 'image' if row['media_type'].startswith('image/') else '3d' if Path(row['filename']).suffix in {'.glb', '.gltf', '.ply', '.obj'} else None
+            payload = ('image' if row['media_type'].startswith('image/') else audio.PAYLOAD if row['media_type'].startswith('audio/')
+                       else '3d' if Path(row['filename']).suffix in {'.glb', '.gltf', '.ply', '.obj'} else None)
             await collect(db, staging, slot, req, CollectedOutput(identity=row['identity'], filename=row['filename'],
                 payload=descriptor.get('receipt', {}).get('payload', payload), role=row['role'], descriptor=descriptor,
                 submitted_graph=descriptor.get('receipt', {}).get('submitted_graph'),

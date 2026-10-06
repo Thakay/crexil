@@ -19,11 +19,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import ValidationError
 from fastapi.responses import FileResponse, Response
 from PIL import Image, UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
-from . import config, wiring
+from . import audio, blind, config, preferences, wiring
 from .crexil_schemas import (CollectExecution, ExecutionGroupView, CreateDirection, CreateProject, DirectionState,
     DirectionView, DisplaySelection, ImportMaterial, ImportResult, OperationView,
     ExecutionReview, SubmitDirection, SubmittedDirection,
@@ -34,7 +35,8 @@ from .crexil_schemas import (CollectExecution, ExecutionGroupView, CreateDirecti
     DeliverySelection, CreateDelivery, DeliveryReview, DeliveryView,
     ReuseSelection, CreateReuse, ReuseReview,
     ReserveArchive, RestoreArchive, ArchiveUpload, ArchiveRestoreResult, ProjectBackup,
-    RecordAssessment, DecisionView, ProjectRecord, MaterialRecord, SetupOverview, OperationRequirements)
+    RecordAssessment, DecisionView, ProjectRecord, MaterialRecord, SetupOverview, OperationRequirements,
+    BlindRunView, PreferenceExport, RevealRun)
 from .crexil_store import Conflict, CreativeStore
 from .db import new_id
 
@@ -47,15 +49,31 @@ def store() -> CreativeStore:
     return CreativeStore(wiring.current.db)
 
 
+# Defects, not refusals: they reach the app's failure handler, which records
+# them and answers 500 in words, instead of passing as "not found" (law 3).
+DEFECTS = (KeyError, IndexError, ValidationError, json.JSONDecodeError, UnicodeError)
+
+
+def refused(exc: Exception) -> HTTPException:
+    """The one translation of a refusal into a plain-language response.
+    Raises a defect unchanged; maps unfinished features to 501, conflicts to
+    409, missing records to 404 and other refusals to 422."""
+    if isinstance(exc, DEFECTS):
+        raise exc
+    if isinstance(exc, (blind.NotBuilt, preferences.NotBuilt)):
+        return HTTPException(501, str(exc))
+    if isinstance(exc, Conflict):
+        return HTTPException(409, str(exc))
+    if isinstance(exc, LookupError):
+        return HTTPException(404, str(exc))
+    return HTTPException(422, str(exc))
+
+
 async def command(body, scope, action):
     try:
         return await store().command(body.request_id, scope, body.model_dump(), action)
-    except Conflict as exc:
-        raise HTTPException(409, str(exc)) from exc
-    except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+    except (LookupError, ValueError) as exc:
+        raise refused(exc) from exc
 
 
 async def check_references(wid: str, ids: list[str], *, require_available=False):
@@ -75,9 +93,9 @@ async def review_delivery(wid: str, body: DeliverySelection):
     try:
         return await review(store().db, wid, body)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/projects/{wid}/deliveries', response_model=DeliveryView, status_code=201)
@@ -93,7 +111,7 @@ async def list_deliveries(wid: str):
     try:
         return await inventory(store().db, wid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/deliveries/{did}', response_model=DeliveryView)
@@ -102,7 +120,7 @@ async def delivery_state(did: str):
     try:
         return await state(store().db, did)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/deliveries/{did}/transfer', response_model=DeliveryView)
@@ -117,7 +135,7 @@ async def transfer_delivery(did: str, body: Command):
     try:
         return await transfer(store().db, did)
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/projects/{wid}/deliveries.csv', response_class=Response)
@@ -127,7 +145,7 @@ async def delivery_csv(wid: str):
         return Response(await csv_records(store().db, wid), media_type='text/csv',
                         headers={'Content-Disposition': 'attachment; filename="deliveries.csv"'})
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/projects', response_model=list[ProjectView])
@@ -154,7 +172,7 @@ async def project_snapshot(wid: str):
     try:
         return await store().snapshot(wid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/projects/{wid}/record', response_model=ProjectRecord)
@@ -165,7 +183,7 @@ async def project_record(wid: str, q: str = Query(default='', max_length=500), n
     try:
         return await record(store().db, wid, q=q, node_id=node_id, direction_id=direction_id, turn_id=turn_id, before=before, limit=limit)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/projects/{wid}/assessments', response_model=DecisionView, status_code=201)
@@ -178,9 +196,52 @@ async def record_assessment(wid: str, body: RecordAssessment):
 async def material_record(nid: str):
     from .crexil_record import material_record as read
     try:
-        return await read(store().db, nid)
+        found = await read(store().db, nid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
+    node = await store().db.get_node(nid)
+    return blind.mask('material_record', found) if await blind.is_hidden(store().db, node['turn_id']) else found
+
+
+@router.get('/material/{nid}/audio', responses={200: {'content': {audio.MEDIA_TYPE: {}},
+                                                      'description': 'the audio take, byte for byte'}})
+async def material_audio(nid: str):
+    """An audio take's own bytes, for listening. A blind run's takes stay playable."""
+    node = await store().db.get_node(nid)
+    if not node or node['payload'] != audio.PAYLOAD:
+        raise HTTPException(404, 'This audio take was not found.')
+    if node['purged_at'] or not Path(node['output_path']).is_file():
+        raise HTTPException(404, 'This audio is unavailable. Its record remains.')
+    return FileResponse(node['output_path'], media_type=audio.MEDIA_TYPE,
+                        headers={'Cache-Control': 'public, max-age=31536000, immutable'})
+
+
+@router.post('/turns/{tid}/reveal', response_model=BlindRunView)
+async def reveal_run(tid: str, body: RevealRun):
+    """Reveal a blind run's engines to every reader; an authored event (law 23)."""
+    return await command(body, 'turns.reveal:' + tid, lambda: blind.reveal(store().db, tid, body))
+
+
+@router.get('/projects/{wid}/preferences', response_model=PreferenceExport)
+async def preference_export(wid: str):
+    """The decision record: never a dataset, and it holds no audio."""
+    try:
+        return await preferences.export(store().db, wid)
+    except (LookupError, ValueError) as exc:
+        raise refused(exc) from exc
+
+
+@router.get('/projects/{wid}/preferences.jsonl', response_class=Response,
+            responses={200: {'content': {'application/x-ndjson': {}},
+                             'description': 'one PreferenceRecord per line'}})
+async def preference_lines(wid: str):
+    try:
+        found = await preferences.export(store().db, wid)
+    except (LookupError, ValueError) as exc:
+        raise refused(exc) from exc
+    lines = ''.join(json.dumps(record, sort_keys=True) + '\n' for record in found['records'])
+    return Response(lines, media_type='application/x-ndjson',
+                    headers={'Content-Disposition': f'attachment; filename="decisions-{wid}.jsonl"'})
 
 
 @router.patch('/projects/{wid}', response_model=ProjectView)
@@ -213,7 +274,7 @@ async def execution_control_state(scope: Literal['project', 'run', 'sequence'], 
     try:
         return await state(store().db, scope, target_id)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/execution/{scope}/{target_id}', response_model=ExecutionControlView)
@@ -239,7 +300,7 @@ async def sequence_state(sid: str):
     try:
         return await state(store().db, sid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.patch('/sequences/{sid}', response_model=SequenceView)
@@ -258,7 +319,7 @@ async def review_sequence(sid: str):
         await refresh(wiring.current, sid)
         return await review(wiring.current, sid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.patch('/sequences/{sid}/steps/{key}', response_model=SequenceView)
@@ -275,7 +336,7 @@ async def start_sequence(sid: str, body: StartSequence):
     try:
         await refresh(wiring.current, sid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     saved = await command(body, 'sequences.start:' + sid, lambda: start(wiring.current, sid, body))
     wiring.current.sequences.wake.set()
     return saved
@@ -342,7 +403,8 @@ async def display_selection(did: str, body: DisplaySelection):
             raise ValueError('Choose outputs from this direction. Acting on sources across directions is a separate action.')
         await check_references(before['workspace_id'], body.node_ids, require_available=True)
         return await store().revise_direction(did, body.revision, {'selection': body.node_ids},
-                                               body.actor.model_dump(), body.reason)
+                                               body.actor.model_dump(), body.reason,
+                                               facts=await blind.selection_facts(store().db, did, body.node_ids))
     return await command(body, 'directions.selection:' + did, apply)
 
 
@@ -374,7 +436,7 @@ async def import_material(wid: str, body: ImportMaterial):
     try:
         data, fmt, width, height, metadata = await run_in_threadpool(inspect_import, body)
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
     async def apply():
         creative = store()
@@ -422,9 +484,9 @@ async def review_reuse(wid: str, body: ReuseSelection):
     try:
         return await review(store().db, wid, body)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/projects/{wid}/reuse', response_model=ImportResult, status_code=201)
@@ -453,9 +515,9 @@ async def retained_material_file(nid: str, fid: str):
         path, receipt = await get_file(store().db, nid, fid)
         return FileResponse(path, filename=receipt['filename'], media_type=receipt['media_type'])
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/operations', response_model=list[OperationView])
@@ -484,9 +546,9 @@ async def operation_requirements(operation_id: str, revision: str):
     try:
         return await requirements(wiring.current, operation_id, revision)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     except Conflict as exc:
-        raise HTTPException(409, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/directions/{did}/image-review', response_model=ExecutionReview)
@@ -495,9 +557,9 @@ async def review_image_preparation(did: str):
     try:
         return await review(store().db, did)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/directions/{did}/prepare-image', response_model=ImportResult, status_code=201)
@@ -513,7 +575,7 @@ async def mask_source(wid: str, nid: str):
         info, _ = await source(store().db, wid, nid)
         return info
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/projects/{wid}/masks', response_model=list[MaskView])
@@ -522,7 +584,7 @@ async def saved_masks(wid: str):
     try:
         return await list_masks(store().db, wid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/projects/{wid}/masks', response_model=MaskView, status_code=201)
@@ -539,9 +601,9 @@ async def mask_image(mid: str):
         row = await get(store().db, mid)
         return Response(await verified_bytes(row), media_type='image/png')
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.get('/registrations', response_model=list[RegistrationView])
@@ -562,7 +624,7 @@ async def registration(rid: str):
     try:
         return await OperationRegistry(store().db).get(rid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.patch('/registrations/{rid}', response_model=RegistrationView)
@@ -577,7 +639,7 @@ async def inspect_operation(rid: str, body: InspectOperation):
     try:
         receipt = await store().delivered(body.request_id, 'operations.inspect:' + rid, body.model_dump())
     except Conflict as exc:
-        raise HTTPException(409, str(exc)) from exc
+        raise refused(exc) from exc
     if receipt is not None:
         return receipt
     item = await registration(rid)
@@ -612,7 +674,7 @@ async def review_direction(did: str):
         await refresh_for_direction(wiring.current, did)
         return await review(wiring.current, did)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/directions/{did}/submit', response_model=SubmittedDirection, status_code=201)
@@ -650,6 +712,10 @@ async def output_file(oid: str):
     from .execution_outputs import purged_at
     if await purged_at(store().db, member) or not member['sha256'] or not member['output_path'] or not Path(member['output_path']).is_file():
         raise HTTPException(404, 'This file is unavailable. Its execution record remains.')
+    turn = await store().db._one('SELECT s.turn_id FROM execution_groups g JOIN slots s ON s.id=g.slot_id WHERE g.id=?',
+                                 (member['group_id'],))
+    if turn and await blind.is_hidden(store().db, turn['turn_id']) and not blind.may_serve(dict(member)):
+        raise HTTPException(404, 'This file is withheld while its run is blind. Reveal the run to read it.')
     return FileResponse(member['output_path'], media_type=member['media_type'],
                         filename=Path(member['filename']).name)
 
@@ -674,7 +740,7 @@ async def collect_execution(sid: str, body: CollectExecution):
         ids = await store().db._slot_ids(slot)
         return next(g for g in await inventory(store().db, ids['workspace_id']) if g['id'] == group['id'])
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
     except Exception as exc:
         from .executors import EngineFailure
         if isinstance(exc, EngineFailure):
@@ -726,7 +792,7 @@ async def archive_upload_state(uid: str):
     try:
         return await upload_state(store().db, uid)
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.put('/archive-uploads/{uid}/file', response_model=ArchiveUpload)
@@ -736,9 +802,9 @@ async def upload_archive(uid: str, request: Request):
         async with upload_lock(uid):
             return await accept_upload(store().db, uid, request.stream())
     except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise refused(exc) from exc
     except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise refused(exc) from exc
 
 
 @router.post('/archive-uploads/{uid}/restore', response_model=ArchiveRestoreResult, status_code=201)

@@ -4,7 +4,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
-import {ActionError,command,label,message,result,type Snapshot} from './api';
+import {ActionError,command,engineLabel,isDefiniteRefusal,label,message,result,type Snapshot} from './api';
 import {MaterialThumbnail} from './MaterialThumbnail';
 import s from './Filmstrip.module.css';
 
@@ -71,7 +71,7 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
         <div className={s.actions}>{before&&<button onClick={()=>setBefore(undefined)}>Newest decisions</button>}{record?.next_before&&<button onClick={()=>setBefore(record.next_before!)}>Older decisions</button>}</div>
       </>}
       {tab==='material'&&<><div className={s.recordMaterials}>{material.map(node=><button key={node.id} className={s.recordMaterial} onClick={()=>inspect(node.id)}>
-        <MaterialThumbnail node={node} decorative/><strong>{label(node)}</strong><span>{node.engine??'Imported material'}</span><span>{!node.available?'Material unavailable':node.set_aside?'Set aside':'Available'} · Inspect ›</span>
+        <MaterialThumbnail node={node} decorative/><strong>{label(node)}</strong><span>{engineLabel(node,'source')}</span><span>{!node.available?'Material unavailable':node.set_aside?'Set aside':'Available'} · Inspect ›</span>
       </button>)}</div>{record&&!material.length&&<p>No material matches this search.</p>}</>}
       {tab==='directions'&&<>{directions.map(direction=><article key={direction.id} className={s.decision}>
         <span className={s.micro}>T{direction.row_idx} · {direction.state}{direction.set_aside?' · Set aside':''}</span><h2>{direction.title}</h2><p>{String(direction.setup.prompt??'')}</p>
@@ -114,7 +114,7 @@ function AssessmentEditor({wid,previous:offeredPrevious,nodeIds:offeredNodes,dir
     const body=pending??{...command(),reason,...(previous&&!independent?{previous_id:previous.event_id}:{node_ids:previous?.node_ids??nodeIds,direction_id:previous?.direction_id??directionId,turn_id:previous?.turn_id??turnId})};
     setBusy(true);setError('');setPending(body);retain(reason,body);
     try{await result(fetchClient.POST('/api/crexil/projects/{wid}/assessments',{params:{path:{wid}},body}));sessionStorage.removeItem(storageKey(wid));setPending(null);saved();}
-    catch(err){setError(message(err));if(err instanceof ActionError&&err.status&&err.status<500&&err.status!==408){setPending(null);retain(reason,null);setConflict(err.status===409);}}
+    catch(err){setError(message(err));if(isDefiniteRefusal(err)){setPending(null);retain(reason,null);setConflict(err instanceof ActionError&&err.status===409);}}
     finally{setBusy(false);}
   };
   return <form className={s.assessmentEditor} onSubmit={e=>{e.preventDefault();void save();}}>

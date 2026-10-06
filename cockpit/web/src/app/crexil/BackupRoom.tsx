@@ -2,9 +2,11 @@
 // commands survive room navigation and reload, while binary files stay outside
 // browser storage. A response lost in transit never creates a new command ID.
 import {useEffect,useRef,useState,type ReactNode} from 'react';
+import {useHotkeys} from 'react-hotkeys-hook';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
-import {ActionError,command,message,result,type Project} from './api';
+import {ActionError,command,isDefiniteRefusal,message,result,type Project} from './api';
+import {useEscapeLayer} from './keys';
 import s from './Filmstrip.module.css';
 
 type Command=components['schemas']['Command'];
@@ -16,7 +18,7 @@ type BackupPending={version:1;mode:'backup';body:Command};
 type RestorePending={version:1;mode:'restore';reserve:Reserve;uid?:string;name:string;restore?:Restore};
 type FileRecord={source?:unknown;error?:unknown;available?:unknown};
 const RESTORE_KEY='crexil.archive.restore';
-const rejected=(error:unknown)=>error instanceof ActionError&&[404,409,422].includes(error.status??0);
+const rejected=isDefiniteRefusal;
 
 function load<T extends BackupPending|RestorePending>(key:string,mode:T['mode']):T|null{
   try{
@@ -62,25 +64,22 @@ function Room({title,busy,close,children}:{title:string;busy:boolean;close:()=>v
   const room=useRef<HTMLElement>(null);
   const origin=useRef(document.activeElement as HTMLElement|null);
   const current=useRef({busy,close});current.current={busy,close};
+  // The room holds Escape and keeps Tab inside itself until it closes.
+  useEscapeLayer(()=>{if(!current.current.busy)current.current.close();return true;});
+  useHotkeys('tab, shift+tab',event=>{
+    if(!room.current)return;
+    const targets=Array.from(room.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary,[tabindex="0"]'))
+      .filter(element=>element.getClientRects().length>0&&!element.closest('[inert]'));
+    const first=targets[0],last=targets[targets.length-1];
+    if(!first){event.preventDefault();room.current.focus();}
+    else if(!targets.includes(document.activeElement as HTMLElement)){event.preventDefault();(event.shiftKey?last:first).focus();}
+    else if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+  },{enableOnFormTags:true,enableOnContentEditable:true});
   useEffect(()=>{
     if(!room.current?.contains(document.activeElement))room.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
-    const key=(event:KeyboardEvent)=>{
-      if(event.key==='Escape'){
-        event.preventDefault();event.stopImmediatePropagation();
-        if(!current.current.busy)current.current.close();
-      }
-      if(event.key!=='Tab'||!room.current)return;
-      const targets=Array.from(room.current.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary,[tabindex="0"]'))
-        .filter(element=>element.getClientRects().length>0&&!element.closest('[inert]'));
-      const first=targets[0],last=targets[targets.length-1];
-      if(!first){event.preventDefault();room.current.focus();}
-      else if(!targets.includes(document.activeElement as HTMLElement)){event.preventDefault();(event.shiftKey?last:first).focus();}
-      else if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
-      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
-    };
-    window.addEventListener('keydown',key,true);
     const entry=origin.current;
-    return()=>{window.removeEventListener('keydown',key,true);if(entry?.isConnected)entry.focus();};
+    return()=>{if(entry?.isConnected)entry.focus();};
   },[]);
   return <section ref={room} tabIndex={-1} className={s.sequenceRoom} aria-label={title} aria-busy={busy}>
     <div className={s.roomHead}><strong>{title}</strong><span className={s.hint}>Project records and available material</span><button disabled={busy} onClick={close}>Esc · Close</button></div>

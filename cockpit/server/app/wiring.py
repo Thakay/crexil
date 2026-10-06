@@ -24,7 +24,7 @@ from typing import Awaitable
 import asyncio
 import httpx
 
-from . import config, secrets_store
+from . import audio, audio_executors, config, secrets_store
 from .capture import Capture
 from .comfy import ComfyClient
 from .db import Database
@@ -37,22 +37,33 @@ from .providers import ProviderCatalog
 from .scheduler import OnEvent, Scheduler
 
 
+# Every executor and the lane it serves. Local executors share one GPU and
+# take turns (law 14); external ones run concurrently and may cost money.
+EXECUTOR_LANES = {"comfy": "local", "region": "local", "mesh": "local",
+                  "openrouter": "external", **audio.PROVIDERS}
+
+
 def route_engine(engine: str) -> str:
-    """Engine id -> executor name. OpenRouter model ids are 'vendor/model' —
-    the slash IS the router; local preset ids never contain one (the Run
-    route refuses a slashed preset id, keeping the invariant enforced). The
-    mesh engines route by id: the capability matrix names them all
-    (the generators and the verb tools alike), and unlike a region
-    take they never borrow a preset id, so no payload peek is needed here."""
+    """Engine id -> executor name, from the source that declares the engine.
+
+    Audio engines name their provider in the capability matrix (PRD §2),
+    and the provider names the executor. Mesh engines are the matrix's 3D
+    rows. OpenRouter model ids are 'vendor/model': the slash is only the
+    OpenRouter catalogue's own claim, checked after the declared sources.
+    Every other id is a ComfyUI preset (the Run route refuses a slashed
+    preset id). A region take borrows a preset id and is told apart by its
+    payload in the scheduler, not here."""
+    provider = audio.route(engine)
+    if provider is not None:
+        return provider
     if engine in MESH_ENGINES:
         return "mesh"
     return "openrouter" if "/" in engine else "comfy"
 
 
 def lane_of(engine: str) -> str:
-    """Engine id -> lane, for view classification. Mesh is local (one
-    GPU, serialised across executors), so only OpenRouter is external."""
-    return "external" if route_engine(engine) == "openrouter" else "local"
+    """Engine id -> lane, for view classification (law 13)."""
+    return EXECUTOR_LANES.get(route_engine(engine), "local")
 
 
 # Test seam: set to a callable(openrouter) -> Sequence[Executor] and
@@ -175,9 +186,8 @@ async def start(on_event: OnEvent | None = None) -> Stack:
     scripted = EXECUTOR_FACTORY is not None or config.HARNESS_EXECUTORS
     probe = GPU_PROBE
     if config.CREXIL_PREVIEW:
-        executors = [UnavailableExecutor(name, lane) for name, lane in (
-            ("comfy", "local"), ("region", "local"), ("mesh", "local"),
-            ("openrouter", "external"))]
+        executors = [UnavailableExecutor(name, lane)
+                     for name, lane in EXECUTOR_LANES.items()]
         probe = None
     elif EXECUTOR_FACTORY is not None:
         executors = list(EXECUTOR_FACTORY(openrouter))
@@ -191,7 +201,8 @@ async def start(on_event: OnEvent | None = None) -> Stack:
         # its close() closes it
         from .region_exec import RegionExecutor
         executors = [ComfyExecutor(comfy), OpenRouterExecutor(openrouter),
-                     RegionExecutor(ComfyClient()), MeshExecutor()]
+                     RegionExecutor(ComfyClient()), MeshExecutor(),
+                     *audio_executors.build()]
         if probe is None:
             client = comfy
 
@@ -257,6 +268,11 @@ async def startup_checks(sched: Scheduler, comfy: ComfyClient,
     # ENGINE bench, never the lane's — a down runner must not stop the image
     # takes beside it (law 1).
     await mesh_startup_check(sched, benches)
+    # Audio adapters bench their own engines the same way, when they say how.
+    for provider in audio.PROVIDERS:
+        module = audio_executors.adapter(provider)
+        if module is not None and callable(getattr(module, "startup_check", None)):
+            await module.startup_check(sched, benches)
 
     ext = benches.get("lane:external")
     if not openrouter.key_present:

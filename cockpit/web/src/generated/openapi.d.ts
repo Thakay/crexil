@@ -317,6 +317,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/crexil/material/{nid}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Material Audio
+         * @description An audio take's own bytes, for listening. A blind run's takes stay playable.
+         */
+        get: operations["material_audio_api_crexil_material__nid__audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/crexil/material/{nid}/files/{fid}": {
         parameters: {
             query?: never;
@@ -610,6 +630,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/crexil/projects/{wid}/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preference Export
+         * @description The decision record: never a dataset, and it holds no audio.
+         */
+        get: operations["preference_export_api_crexil_projects__wid__preferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/projects/{wid}/preferences.jsonl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preference Lines */
+        get: operations["preference_lines_api_crexil_projects__wid__preferences_jsonl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/crexil/projects/{wid}/record": {
         parameters: {
             query?: never;
@@ -862,6 +919,26 @@ export interface paths {
         get: operations["setup_overview_api_crexil_setup_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/crexil/turns/{tid}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Run
+         * @description Reveal a blind run's engines to every reader; an authored event (law 23).
+         */
+        post: operations["reveal_run_api_crexil_turns__tid__reveal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1723,6 +1800,45 @@ export interface components {
              */
             state: "waiting" | "ready";
         };
+        /**
+         * AudioFacts
+         * @description Measured once by the server at collection; the bytes never change.
+         *
+         *     `loudness_lufs` is gated integrated loudness by ITU-R BS.1770-4 (null
+         *     when no 400 ms block clears the absolute gate). `peaks` is the absolute
+         *     sample peak of up to 256 equal spans, from 0 to 1, for drawing. `text` is
+         *     the spoken words, `voice` the voice identity the engine reported, and
+         *     `alignment` per-character timing when the engine reports it. Format facts
+         *     are null only while a blind run withholds them.
+         */
+        AudioFacts: {
+            /** Alignment */
+            alignment: {
+                [key: string]: unknown;
+            } | null;
+            /** Channels */
+            channels: number | null;
+            /** Codec */
+            codec: string | null;
+            /** Container */
+            container: string | null;
+            /** Duration S */
+            duration_s: number;
+            /** Loudness Lufs */
+            loudness_lufs: number | null;
+            /** Peak Dbfs */
+            peak_dbfs: number | null;
+            /** Peaks */
+            peaks: number[];
+            /** Sample Rate */
+            sample_rate: number | null;
+            /** Text */
+            text: string | null;
+            /** Voice */
+            voice: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** BackfillRefusal */
         BackfillRefusal: {
             /** Pos */
@@ -1770,6 +1886,24 @@ export interface components {
             slot_id: string;
         };
         /**
+         * BlindRunView
+         * @description A run whose engine identity is withheld until an authored reveal.
+         */
+        BlindRunView: {
+            actor: components["schemas"]["Actor"];
+            /** Created At */
+            created_at: string;
+            /** Revealed */
+            revealed: boolean;
+            /** Revealed At */
+            revealed_at: string | null;
+            revealed_by: components["schemas"]["Actor"] | null;
+            /** Turn Id */
+            turn_id: string;
+            /** Workspace Id */
+            workspace_id: string;
+        };
+        /**
          * CancelAction
          * @enum {string}
          */
@@ -1807,6 +1941,22 @@ export interface components {
             actor: components["schemas"]["Actor"];
             /** Request Id */
             request_id: string;
+        };
+        /**
+         * ConnectionView
+         * @description One provider's first-use state. A key is described, never shown.
+         */
+        ConnectionView: {
+            /** Detail */
+            detail: string;
+            /** Key Source */
+            key_source?: ("env" | "stored") | null;
+            /** Label */
+            label: string;
+            /** Ok */
+            ok: boolean | null;
+            /** Provider */
+            provider: string;
         };
         /** ControlExecution */
         ControlExecution: {
@@ -2241,9 +2391,11 @@ export interface components {
              * Payload
              * @enum {string}
              */
-            payload: "image" | "3d";
+            payload: "image" | "3d" | "audio";
             /** Price */
             price: string;
+            /** Provider */
+            provider?: string | null;
             /**
              * Verbs
              * @default []
@@ -2295,15 +2447,27 @@ export interface components {
             evidence?: string | null;
             /** Label */
             label: string;
+            /** Max */
+            max?: number | null;
+            /** Max Length */
+            max_length?: number | null;
+            /** Min */
+            min?: number | null;
+            /** Min Length */
+            min_length?: number | null;
+            /** Required */
+            required?: boolean | null;
             /** State */
             state?: ("verified" | "unverified") | null;
+            /** Step */
+            step?: number | null;
             /**
              * Supported
              * @default true
              */
             supported: boolean;
             /** Type */
-            type?: "enum" | null;
+            type?: ("enum" | "text" | "int" | "float" | "bool" | "seed") | null;
             /** Why */
             why?: string | null;
         };
@@ -2383,6 +2547,8 @@ export interface components {
             created_at: string;
             /** Id */
             id: string;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
             /** Job Ref */
             job_ref: string | null;
             /** Metadata */
@@ -2451,6 +2617,11 @@ export interface components {
             ready: boolean;
             /** Ready Attempts */
             ready_attempts: number;
+            /**
+             * Reserved Micro Usd
+             * @default 0
+             */
+            reserved_micro_usd: number;
             /**
              * Reserved Usd
              * @default 0
@@ -2958,6 +3129,7 @@ export interface components {
         };
         /** MaterialNode */
         MaterialNode: {
+            audio?: components["schemas"]["AudioFacts"] | null;
             /** Available */
             available: boolean;
             /** Charged Usd */
@@ -2972,6 +3144,8 @@ export interface components {
             engine: string | null;
             /** Id */
             id: string;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
             material: components["schemas"]["MaterialInfo"] | null;
             mesh?: components["schemas"]["NodeMesh"] | null;
             /** Output Index */
@@ -2982,7 +3156,7 @@ export interface components {
              * Payload
              * @enum {string}
              */
-            payload: "image" | "3d";
+            payload: "image" | "3d" | "audio";
             /** Promoted At */
             promoted_at?: string | null;
             /** Prompt */
@@ -3020,6 +3194,8 @@ export interface components {
             controls: {
                 [key: string]: unknown;
             };
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
             /** Node Id */
             node_id: string;
             /** Regions */
@@ -3169,6 +3345,8 @@ export interface components {
             engine: string | null;
             /** Id */
             id: string;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
             mesh?: components["schemas"]["NodeMesh"] | null;
             /** Parents */
             parents: string[];
@@ -3176,7 +3354,7 @@ export interface components {
              * Payload
              * @enum {string}
              */
-            payload: "image" | "3d";
+            payload: "image" | "3d" | "audio";
             /** Promoted At */
             promoted_at?: string | null;
             /** Prompt */
@@ -3360,6 +3538,40 @@ export interface components {
             /** Sources */
             sources?: components["schemas"]["SourcePort"][];
         };
+        /**
+         * OperationInput
+         * @description One public control. Absent facts stay null; producers may add more keys.
+         */
+        OperationInput: {
+            /** Choices */
+            choices?: unknown[] | null;
+            /** Default */
+            default?: unknown;
+            /** Key */
+            key: string;
+            /** Label */
+            label?: string | null;
+            /** Max */
+            max?: number | null;
+            /** Max Length */
+            max_length?: number | null;
+            /** Min */
+            min?: number | null;
+            /** Min Length */
+            min_length?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Required */
+            required?: boolean | null;
+            /** Step */
+            step?: number | null;
+            /** Supported */
+            supported?: boolean | null;
+            /** Type */
+            type?: ("text" | "int" | "float" | "enum" | "seed" | "bool") | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** OperationRequirements */
         OperationRequirements: {
             /** Checked At */
@@ -3390,22 +3602,26 @@ export interface components {
              * @default 16
              */
             attempt_max: number;
-            /** Availability */
-            availability: string;
+            /**
+             * Availability
+             * @enum {string}
+             */
+            availability: "verified" | "unverified" | "incomplete" | "unavailable";
             /** Cost Basis */
             cost_basis: string;
             /** Data Destination */
             data_destination: string;
-            /** Evidence */
-            evidence: string;
+            /**
+             * Evidence
+             * @enum {string}
+             */
+            evidence: "declared" | "observed" | "qualified";
             /** Execution Location */
             execution_location: string;
             /** Id */
             id: string;
             /** Inputs */
-            inputs: {
-                [key: string]: unknown;
-            }[];
+            inputs: components["schemas"]["OperationInput"][];
             /** Label */
             label: string;
             /** Limitations */
@@ -3415,10 +3631,20 @@ export interface components {
             /**
              * Output Payload
              * @default image
+             * @enum {string}
              */
-            output_payload: string;
+            output_payload: "image" | "3d" | "audio" | "file";
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
+            /** Price Unit */
+            price_unit?: ("attempt" | "image" | "1k_characters" | "second" | "generation") | null;
             /** Price Usd */
             price_usd: number | null;
+            /** Provider */
+            provider?: string | null;
             /** Reasons */
             reasons: string[];
             /** Revision */
@@ -3427,6 +3653,14 @@ export interface components {
             source_limit: number;
             /** Source Roles */
             source_roles?: string[];
+            /** Sources */
+            sources?: components["schemas"]["SourceRoleView"][];
+            /**
+             * Takes Per Attempt
+             * @default 1
+             */
+            takes_per_attempt: number;
+            tariff?: components["schemas"]["TariffView"] | null;
         };
         /** OutputPort */
         OutputPort: {
@@ -3480,6 +3714,70 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * PreferenceCandidate
+         * @description One take the decision was made among, as the record states it.
+         */
+        PreferenceCandidate: {
+            /** Cost Micro Usd */
+            cost_micro_usd: number | null;
+            /** Engine */
+            engine: string;
+            /** Model */
+            model: string | null;
+            /** Node Id */
+            node_id: string;
+            /** Position */
+            position: number;
+            /** Provider */
+            provider: string | null;
+            /** Seed */
+            seed: number | null;
+        };
+        /**
+         * PreferenceExport
+         * @description The artist's decision record: never a training or evaluation dataset,
+         *     and it holds no audio.
+         */
+        PreferenceExport: {
+            /** Generated At */
+            generated_at: string;
+            /** Project Id */
+            project_id: string;
+            /** Purpose */
+            purpose: string;
+            /** Records */
+            records: components["schemas"]["PreferenceRecord"][];
+        };
+        /**
+         * PreferenceRecord
+         * @description One decision, derived from a selection or an assessment event.
+         */
+        PreferenceRecord: {
+            author: components["schemas"]["Actor"] | null;
+            /** Blind */
+            blind: boolean;
+            /** Brief */
+            brief: string;
+            /** Candidates */
+            candidates: components["schemas"]["PreferenceCandidate"][];
+            /** Chosen */
+            chosen: string[];
+            /** Decided At */
+            decided_at: string;
+            /** Decision Id */
+            decision_id: string;
+            /** Direction Id */
+            direction_id: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Reason */
+            reason: string | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Verb */
+            verb: string | null;
+        };
         /** Preparation */
         Preparation: {
             /**
@@ -3487,12 +3785,14 @@ export interface components {
              * @default generate
              * @enum {string}
              */
-            action: "generate" | "continue" | "combine" | "region" | "custom" | "mesh" | "decimate" | "texture" | "import" | "prepare";
+            action: "generate" | "continue" | "combine" | "region" | "custom" | "mesh" | "decimate" | "texture" | "import" | "prepare" | "voice-design" | "speak" | "sfx";
             /**
              * Attempt Limit
              * @default 16
              */
             attempt_limit: number;
+            /** Blind */
+            blind?: boolean | null;
             /** Controls */
             controls?: {
                 [key: string]: unknown;
@@ -3619,6 +3919,8 @@ export interface components {
             accounting?: {
                 [key: string]: unknown;
             };
+            /** Blind Runs */
+            blind_runs?: components["schemas"]["BlindRunView"][];
             /** Charged Usd */
             charged_usd: number;
             /** Directions */
@@ -4316,6 +4618,17 @@ export interface components {
             /** Source Project Id */
             source_project_id: string;
         };
+        /** RevealRun */
+        RevealRun: {
+            actor: components["schemas"]["Actor"];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Request Id */
+            request_id: string;
+        };
         /**
          * Run
          * @description One Run: any number of local engines, each with its own
@@ -4525,6 +4838,8 @@ export interface components {
             comfyui: components["schemas"]["HealthComfy"];
             /** Comfyui Url */
             comfyui_url: string;
+            /** Connections */
+            connections?: components["schemas"]["ConnectionView"][];
             openrouter: components["schemas"]["SetupStatus"];
             /** Preview */
             preview: boolean;
@@ -4586,6 +4901,8 @@ export interface components {
             frame: string | null;
             /** Id */
             id: string;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
             /** Job Ref */
             job_ref: string | null;
             /** Kind */
@@ -4633,6 +4950,8 @@ export interface components {
             engine: string;
             /** Id */
             id: string;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
             passes?: components["schemas"]["Passes"] | null;
             /** Position */
             position: number | null;
@@ -4679,6 +4998,19 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * SourceRoleView
+         * @description One source an operation takes, in order, with the payloads it accepts
+         *     (law 21) and the reasons some takes of those payloads are refused.
+         */
+        SourceRoleView: {
+            /** Accepts */
+            accepts: ("image" | "3d" | "audio")[];
+            /** Restrictions */
+            restrictions?: string[];
+            /** Role */
+            role: string;
+        };
         /** StartSequence */
         StartSequence: {
             actor: components["schemas"]["Actor"];
@@ -4706,6 +5038,33 @@ export interface components {
             review_token: string;
             /** Turn Id */
             turn_id: string;
+        };
+        /**
+         * TariffView
+         * @description A published price, exact in integer micro-dollars (one millionth of a US
+         *     dollar). `measure` names the control or text the unit counts; a
+         *     reservation from it is still a tariff, never a hard bound (law 22).
+         */
+        TariffView: {
+            /** Measure */
+            measure?: string | null;
+            /** Micro Usd */
+            micro_usd: number;
+            /**
+             * Read On
+             * @default
+             */
+            read_on: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "attempt" | "image" | "1k_characters" | "second" | "generation";
         };
         /** Tray */
         Tray: {
@@ -4737,6 +5096,8 @@ export interface components {
             engine: string | null;
             /** Id */
             id: string;
+            /** Identity Hidden */
+            identity_hidden?: boolean | null;
             mesh?: components["schemas"]["NodeMesh"] | null;
             /** Parents */
             parents: string[];
@@ -4744,7 +5105,7 @@ export interface components {
              * Payload
              * @enum {string}
              */
-            payload: "image" | "3d";
+            payload: "image" | "3d" | "audio";
             /** Promoted At */
             promoted_at?: string | null;
             /** Prompt */
@@ -5642,6 +6003,38 @@ export interface operations {
             };
         };
     };
+    material_audio_api_crexil_material__nid__audio_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the audio take, byte for byte */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "audio/wav": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retained_material_file_api_crexil_material__nid__files__fid__get: {
         parameters: {
             query?: never;
@@ -6307,6 +6700,68 @@ export interface operations {
             };
         };
     };
+    preference_export_api_crexil_projects__wid__preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferenceExport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preference_lines_api_crexil_projects__wid__preferences_jsonl_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description one PreferenceRecord per line */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     project_record_api_crexil_projects__wid__record_get: {
         parameters: {
             query?: {
@@ -6890,6 +7345,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupOverview"];
+                };
+            };
+        };
+    };
+    reveal_run_api_crexil_turns__tid__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevealRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlindRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
