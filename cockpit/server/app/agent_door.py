@@ -19,11 +19,15 @@ same cell.
 A voice session is started by the artist: it opens the microphone and spends
 minutes. The server asks ElevenLabs for a short-lived conversation token, or a
 signed URL, with the key; the key never leaves the server and the token is handed
-over once and kept out of every receipt (law 18). Minutes are capped (law 22): an
-open session counts its whole maximum until it ends, a session starts only when
-the minutes left cover that maximum, and ElevenLabs is not asked when they do not.
-Session starts and ends are events that name their author (law 23); they belong
-to the installation, not to a project, so no project backup carries them.
+over once and kept out of every receipt (law 18), so a replayed start answers its
+session without asking for another. Minutes are capped (law 22): an open session
+counts its whole maximum until it ends, a session starts only when the minutes
+left cover that maximum, and ElevenLabs is not asked when they do not. A session
+is ended by its starter's kind of participant, and its minutes are the longer of
+what the panel observed and the server's own time since the start, never more
+than its maximum, so no client's account lowers the meter. Session starts and
+ends are events that name their author (law 23); they belong to the
+installation, not to a project, so no project backup carries them.
 """
 
 from __future__ import annotations
@@ -313,23 +317,23 @@ async def _session(db, sid: str) -> dict:
 
 async def start_session(creative: CreativeStore, body) -> dict:
     """Start one voice session for the artist and return a `VoiceSessionStarted`.
-    A replay of the same request returns the same session with a fresh token;
-    the token is never part of the stored receipt."""
+    The token is handed over once and never kept: a replay of the same request
+    answers the same session without one, so one session never opens two
+    conversations."""
     db, scope, request = creative.db, 'voice_sessions.start', body.model_dump()
     previous = await creative.delivered(body.request_id, scope, request)
     if previous is not None:
-        session = await _session(db, previous['session']['session_id'])
-        if session['ended_at'] is not None:
-            raise Conflict('This voice session already ended. Start a new one.')
-        return {**previous, **_handover(await mint(body.connection)), 'session': session, 'usage': await usage(db)}
+        return await _replayed(db, previous)
     if body.project_id is not None:
         await creative.project(body.project_id)
     allowed = await usage(db)
     if not allowed['ready']:
         raise ValueError(' '.join(allowed['reasons']))
     minted = await mint(body.connection)
+    started = False
 
     async def apply():
+        nonlocal started
         allowed = await usage(db)
         if not allowed['ready']:
             raise ValueError(' '.join(allowed['reasons']))
@@ -338,27 +342,49 @@ async def start_session(creative: CreativeStore, body) -> dict:
             'session_id': sid, 'project_id': body.project_id, 'actor': body.actor.model_dump(),
             'max_seconds': config.VOICE_SESSION_MAX_S, 'connection': body.connection,
             'conversation_id': minted['conversation_id']})
+        started = True
         return {'session': await _session(db, sid), 'conversation_token': None, 'signed_url': None}
 
     receipt = await creative.command(body.request_id, scope, request, apply)
+    if not started:                            # the same request started its session meanwhile
+        return await _replayed(db, receipt)
     return {**receipt, **_handover(minted), 'usage': await usage(db)}
+
+
+async def _replayed(db, receipt: dict) -> dict:
+    session = await _session(db, receipt['session']['session_id'])
+    if session['ended_at'] is not None:
+        raise Conflict('This voice session already ended. Start a new one.')
+    return {**receipt, 'session': session, 'usage': await usage(db)}
 
 
 def _handover(minted: dict) -> dict:
     return {'conversation_token': minted['conversation_token'], 'signed_url': minted['signed_url']}
 
 
+ENDED_BY_STARTER = ('A voice session is ended by the artist who started it: ending it settles its minutes. '
+                    'An agent may ask the artist to end it.')
+
+
 async def end_session(creative: CreativeStore, sid: str, body) -> dict:
-    """Record a session's end with the minutes the panel observed (law 17). A session
-    already ended keeps its first end and author."""
+    """Record a session's end by its starter's kind of participant (law 23).
+    Its minutes are the longer of what the panel observed (law 17) and the
+    server's own time since the start, never more than the session's maximum,
+    so no client's account lowers the meter (law 22); the panel's own figure
+    stays on the event. A session already ended keeps its first end and author."""
+    from .execution_controls import ArtistsMove
     db = creative.db
 
     async def apply():
         session = await _session(db, sid)
         if session['ended_at'] is None:
+            if body.actor.kind != session['actor']['kind']:
+                raise ArtistsMove(ENDED_BY_STARTER)
+            ran = (datetime.now(timezone.utc) - datetime.fromisoformat(session['started_at'])).total_seconds()
             await db.append_event('voice_session.ended', payload={
-                'session_id': sid, 'actor': body.actor.model_dump(), 'elapsed_s': body.elapsed_s,
-                'conversation_id': body.conversation_id})
+                'session_id': sid, 'actor': body.actor.model_dump(),
+                'elapsed_s': round(min(max(body.elapsed_s, ran), session['max_seconds']), 3),
+                'reported_s': body.elapsed_s, 'conversation_id': body.conversation_id})
             session = await _session(db, sid)
         return session
 

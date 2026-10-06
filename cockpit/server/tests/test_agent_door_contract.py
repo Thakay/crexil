@@ -5,6 +5,7 @@ changes state or spends."""
 
 import asyncio
 import json
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
@@ -272,7 +273,9 @@ async def test_a_voice_session_hands_over_a_token_never_the_key_and_stores_no_to
         stored, events = await receipts_and_events()
     first, second = started.json(), again.json()
     assert first['conversation_token'] == 'tok-1' and first['signed_url'] is None
-    assert second['session']['session_id'] == first['session']['session_id'] and second['conversation_token'] == 'tok-2'
+    # A replay answers the same session and asks ElevenLabs for nothing: one session, one conversation.
+    assert second['session']['session_id'] == first['session']['session_id']
+    assert second['conversation_token'] is second['signed_url'] is None and len(provider.calls) == 1
     assert first['session']['actor'] == body['actor'] and first['session']['project_id'] == p['id']
     assert first['session']['max_seconds'] == 300 and first['session']['conversation_id'] == 'conv-1'
     assert first['usage']['reserved_seconds'] == 300 and first['usage']['left_seconds'] == 0
@@ -307,6 +310,40 @@ async def test_minutes_are_capped_before_elevenlabs_is_asked(tmp_path, monkeypat
         _, events = await receipts_and_events()
     assert unknown.status_code == 404
     assert [e['actor']['kind'] for e in events] == ['human', 'human', 'human']   # start, end, start
+
+
+async def test_a_session_ends_by_its_starter_and_counts_at_least_the_servers_own_time(tmp_path, monkeypatch):
+    class Later(datetime):
+        """The server's clock, `ahead` seconds after a session started."""
+        ahead = 0.0
+
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(tz) + timedelta(seconds=cls.ahead)
+
+    monkeypatch.setattr(agent_door, 'datetime', Later)
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        voice(monkeypatch, cap_minutes=20)
+
+        async def started(seconds_ago):
+            Later.ahead = seconds_ago
+            return (await client.post('/api/crexil/voice-sessions', json=command())).json()['session']['session_id']
+
+        sid = await started(120)
+        agent = await client.post(f'/api/crexil/voice-sessions/{sid}/end', json=command(elapsed_s=0, actor=AGENT))
+        assert (agent.status_code, agent.json()['detail']) == (403, agent_door.ENDED_BY_STARTER)
+        # The panel's account of 0 s never lowers the meter below the server's own clock.
+        ended = (await client.post(f'/api/crexil/voice-sessions/{sid}/end', json=command(elapsed_s=0))).json()
+        assert 120 <= ended['elapsed_s'] < 125
+        longer = await started(30)
+        assert (await client.post(f'/api/crexil/voice-sessions/{longer}/end',
+                                  json=command(elapsed_s=61.5))).json()['elapsed_s'] == 61.5
+        stale = await started(1000)                  # never more than the session's maximum
+        assert (await client.post(f'/api/crexil/voice-sessions/{stale}/end',
+                                  json=command(elapsed_s=5))).json()['elapsed_s'] == 300
+        _, events = await receipts_and_events()
+    reported = [e['reported_s'] for e in events if 'reported_s' in e]
+    assert reported == [0, 61.5, 5]                  # the panel's own figure stays on the record
 
 
 async def test_an_agent_never_starts_a_voice_session(tmp_path, monkeypatch):
