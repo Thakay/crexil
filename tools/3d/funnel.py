@@ -57,9 +57,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
-def _promote_dir() -> Path:
+def promote_dir() -> Path:
     """PROMOTE_DIR from the environment, then the repo .env, then the default:
-    the same order as scripts/promote.py."""
+    the same order as scripts/promote.py. Read only when a run resolves a
+    promoted asset or promotes its results, never on import, so the runner,
+    which imports this module and never promotes, never opens `.env`."""
     value = os.environ.get("PROMOTE_DIR")
     env_file = HERE.parents[1] / ".env"
     if not value and env_file.is_file():
@@ -70,7 +72,6 @@ def _promote_dir() -> Path:
     return Path(os.path.expanduser(value or "/mnt/d/PROMOTED"))
 
 
-PROMOTED = _promote_dir()
 RUNS = HERE / "runs"
 ENGINES = {
     "trellis2": {
@@ -139,8 +140,9 @@ def sha256(path: Path) -> str:
 
 
 def find_promoted(asset_id: str) -> tuple[Path, dict]:
-    """Locate <asset_id>.png (+ manifest, any vintage) anywhere under PROMOTED except _3d/."""
-    for preset_dir in sorted(PROMOTED.iterdir()):
+    """Locate <asset_id>.png (+ manifest, any vintage) anywhere under the promote folder except _3d/."""
+    promoted = promote_dir()
+    for preset_dir in sorted(promoted.iterdir()):
         if not preset_dir.is_dir() or preset_dir.name == "_3d":
             continue
         png = preset_dir / f"{asset_id}.png"
@@ -153,7 +155,7 @@ def find_promoted(asset_id: str) -> tuple[Path, dict]:
                 except Exception as e:  # tolerate broken/legacy manifests
                     manifest = {"_manifest_read_error": str(e)}
             return png, manifest
-    sys.exit(f"asset id {asset_id!r} not found under {PROMOTED} (excluding _3d/)")
+    sys.exit(f"asset id {asset_id!r} not found under {promoted} (excluding _3d/)")
 
 
 def cutout(src_png: Path, dst_rgba: Path) -> dict:
@@ -829,7 +831,7 @@ def main() -> int:
         Path(args.json_out).write_text(record)
 
     if not args.no_promote:
-        dest = PROMOTED / "_3d" / name
+        dest = promote_dir() / "_3d" / name
         dest.mkdir(parents=True, exist_ok=True)
         shutil.copy2(run_dir / "funnel.json", dest / "funnel.json")
         for eng, res in funnel_record["engines"].items():
