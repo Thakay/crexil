@@ -46,12 +46,12 @@ const words = (value: unknown, limit: number) => typeof value === 'string' ? val
 const excerpt = (value: string, limit: number) => value.length > limit ? `${value.slice(0, limit - 1).trimEnd()}…` : value;
 const seconds = (value: number | null | undefined) => value === null || value === undefined ? undefined : Math.round(value * 10) / 10;
 
-/** A take of a run by its label ("2B", "2B.2"); a bare letter means the latest submission. */
+/** A take of a run by its label ("2B", "2B.2", "2AA"); bare letters mean the latest submission. */
 export function findTake(view: RunView, wanted: string) {
   const name = wanted.trim().toUpperCase();
   const takes = view.cells.flatMap(cell => cell.takes.map(take => ({take, cell})));
   const exact = takes.find(({take}) => take.label.toUpperCase() === name);
-  if (exact || !/^[A-Z](\.\d+)?$/.test(name) || !view.submissions.length) return exact ?? null;
+  if (exact || !/^[A-Z]+(\.\d+)?$/.test(name) || !view.submissions.length) return exact ?? null;
   const latest = Math.max(...view.submissions.map(submission => submission.idx));
   return takes.find(({take}) => take.label.toUpperCase() === `${latest}${name}`) ?? null;
 }

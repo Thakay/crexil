@@ -9,7 +9,7 @@ terms forbid its audio as input to any machine learning and an agent's language
 model is one. A blind run passes through
 `blind.mask`, so engine, model, seed, per-take cost and timing stay withheld
 until its authored reveal; run totals and the cap stay visible (law 22). Takes are
-named the way the grid names them: run index, cell letter, and `.n` for a later
+named the way the grid names them: run index, cell letters, and `.n` for a later
 output of the same cell.
 
 A voice session is started by the artist: it opens the microphone and spends

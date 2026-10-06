@@ -165,6 +165,14 @@ describe('takes', () => {
     expect(findTake(view, '3B')).toBeNull();
   });
 
+  test('cells past Z keep their letters: "AA" finds the latest submission\'s 27th cell', () => {
+    const view = runView();
+    const first = view.cells[0];
+    view.cells.push({...first, label: '2AA', position: 26, takes: [{...first.takes[0], label: '2AA', node_id: 'take-2aa'}]});
+    expect(findTake(view, 'aa')?.take.node_id).toBe('take-2aa');
+    expect(findTake(view, '2AA')?.take.node_id).toBe('take-2aa');
+  });
+
   test('playing a take plays it for the artist and returns facts only', async () => {
     const {call, handoff} = setup();
     expect(await call('play_take', {run_id: 'run-2', take: 'B'})).toEqual({played: true, take: '2B', seconds: 3.5,

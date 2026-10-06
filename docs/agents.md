@@ -72,6 +72,8 @@ limits.
 
 Agent-facing reads carry facts, ids, labels and reasons. They never carry a take's bytes or an
 address to fetch them. `GET directions/{id}/run` is the compact read of one run, made for agents.
+It names takes as the grid does: the run's number, the cell's letters, and a later output's
+number from 2, such as `3B` or `3B.2`; cells past `Z` continue as `3AA`, `3AB` and on.
 It holds no file addresses or waveform data, and a blind run names no engine until the artist
 reveals it. ElevenLabs' terms forbid using its audio as input to any machine learning, and the
 model behind an agent is one, so no agent tool hands audio to a model.
@@ -153,7 +155,9 @@ artist listens, picks and delivers. With the door registered at a `0` ceiling, t
 The artist then auditions the takes in the run's grid room (a digit plays a take, Space pauses, X
 switches two marked takes), selects one with S and a reason, reveals a blind run, and delivers it. A
 later run can `speak` the character's lines with that voice: pass the picked take as the run's
-source, whose role is `voice`.
+source, whose role is `voice`. One run speaks one line, so each line, and each voice, gets its own
+run. To keep a character's runs together on the Filmstrip, create the sections that start from its
+words with one `row_idx`, and a continuation with the `row_idx` after its source's row.
 
 ## Delivery and its files
 
