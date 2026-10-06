@@ -23,13 +23,19 @@ export function monthWord(month: string): string {
   return MONTHS[m - 1] ?? month;
 }
 
-/** One money spelling for every surface. A cent or more keeps two decimals; a
- *  smaller amount that is not zero keeps two significant digits, so money that
- *  moved never reads as $0.00 (law 5). Exactly zero is $0.00. */
+/** One money spelling for every surface: the exact amount, to the micro-dollar the
+ *  tariffs count in, with at least two decimals and no trailing zeros past them
+ *  ("$0.012", "$0.0336", "$1.50"). A cent or more is never rounded down to the cent,
+ *  so the price a button carries is the amount it reserves (law 6); an amount below a
+ *  micro-dollar keeps two significant digits, so money that moved never reads as
+ *  $0.00 (law 5). Exactly zero is $0.00. */
 export function usd(v: number): string {
   const sign = v < 0 ? "-" : "";
   const amount = Math.abs(v);
-  if (amount === 0 || amount >= 0.01) return `${sign}$${amount.toFixed(2)}`;
-  const digits = Math.min(20, Math.ceil(-Math.log10(amount)) + 1);
-  return `${sign}$${amount.toFixed(digits).replace(/0+$/, "")}`;
+  if (amount === 0) return "$0.00";
+  let text = amount.toFixed(6);
+  if (Number(text) === 0)
+    text = amount.toFixed(Math.min(20, Math.ceil(-Math.log10(amount)) + 1));
+  const [whole, fraction = ""] = text.replace(/0+$/, "").split(".");
+  return `${sign}$${whole}.${fraction.padEnd(2, "0")}`;
 }

@@ -1,6 +1,7 @@
 // The Filmstrip is a client of the same typed actions exposed to agents.
 import { fetchClient } from '../../api/client';
 import type { components } from '../../generated/openapi';
+import { engineName } from './catalogue';
 
 export type Project = components['schemas']['ProjectView'];
 export type Direction = components['schemas']['DirectionView'];
@@ -27,11 +28,27 @@ export function setArtistName(name: string) {
     else localStorage.removeItem(ARTIST_NAME);
   } catch { /* storage unavailable: nothing is kept */ }
 }
+/** Who made a decision or a request, as every surface names them (law 23): "Artist" for
+ *  the default artist, "Artist · Kay" for one with a name of their own, "Agent · <name>" for
+ *  an agent, and plainly when the record holds no participant. */
+export function actorLine(actor: Actor | null | undefined): string {
+  if (!actor) return 'Participant not recorded';
+  if (actor.kind === 'agent') return `Agent · ${actor.name}`;
+  return actor.name === HUMAN.name ? HUMAN.name : `${HUMAN.name} · ${actor.name}`;
+}
 // Every write names its participant (law 23). Keys, buttons and agent tools build
 // their commands here, so an agent passes its own actor and nothing else differs.
 export const command = (actor: Actor = artist()) => ({ request_id: crypto.randomUUID(), actor });
 
+/** What a browser's fetch says when a request never reached the server or its answer
+ *  never came back, in each browser's own words. */
+const UNANSWERED = /failed to fetch|networkerror|load failed|network request failed/i;
+export const NO_ANSWER = 'The Crexil server did not answer. Check that it is running, then try again.';
+
+/** A failure in plain words (law 3): the server's own sentence, or what happened when the
+ *  server never answered; never the browser's raw "Failed to fetch". */
 export function message(error: unknown): string {
+  if (error instanceof TypeError && UNANSWERED.test(error.message)) return NO_ANSWER;
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object' && 'detail' in error) {
     if (typeof error.detail === 'string') return error.detail;
@@ -94,10 +111,11 @@ export function engineIdentity(node: Identified, hidden = false): EngineIdentity
   return node.material?.origin.kind === 'prepared_image' ? {kind: 'prepared'} : {kind: 'imported'};
 }
 // 'face' names the maker on a face footer; 'source' groups and heads material by origin.
-// A blind take reads "Blind" on its face and "Engine hidden" where material is grouped.
+// An engine reads by its catalogue name (catalogue.ts). A blind take reads "Blind" on its
+// face and "Engine hidden" where material is grouped.
 export function engineLabel(node: Identified, variant: 'face' | 'source', hidden = false): string {
   const identity = engineIdentity(node, hidden);
-  if (identity.kind === 'named') return identity.name;
+  if (identity.kind === 'named') return engineName(identity.name);
   if (identity.kind === 'hidden') return variant === 'face' ? 'Blind' : 'Engine hidden';
   if (variant === 'source') return 'Imported material';
   return identity.kind === 'prepared' ? 'Prepared' : 'Imported';

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ActionError, HUMAN, artist, command, engineIdentity, engineLabel, isDefiniteRefusal, isSpendingConflict, label, money, result,
-  setArtistName, takeLabel, type Material } from './api';
+import { ActionError, HUMAN, NO_ANSWER, artist, command, engineIdentity, engineLabel, isDefiniteRefusal, isSpendingConflict, label, message,
+  money, result, setArtistName, takeLabel, type Material } from './api';
 
 describe('money', () => {
   it('keeps two decimals from a cent up, and for exactly zero', () => {
@@ -18,6 +18,22 @@ describe('money', () => {
   it('keeps the sign of a negative amount', () => {
     expect(money(-0.5)).toBe('-$0.50');
     expect(money(-0.004)).toBe('-$0.004');
+  });
+  it('shows a reservation of a cent or more exactly, never rounded down (law 6)', () => {
+    expect(money(0.012)).toBe('$0.012');
+    expect(money(0.0336)).toBe('$0.0336');
+  });
+});
+
+describe('message', () => {
+  it("never shows the browser's raw words for a request the server never answered", () => {
+    for (const words of ['Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed'])
+      expect(message(new TypeError(words))).toBe(NO_ANSWER);
+  });
+  it("says the server's own sentence, and any other failure in its own words", () => {
+    expect(message({detail: 'This run is over its spending limit.'})).toBe('This run is over its spending limit.');
+    expect(message(new ActionError({detail: 'Refused.'}, 409))).toBe('Refused.');
+    expect(message(new TypeError('x is not a function'))).toBe('x is not a function');
   });
 });
 

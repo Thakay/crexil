@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Operation } from './api';
-import { dataLine, priceLine, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
+import { dataLine, priceLine, priceTag, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
 
 const op = (fields: Partial<Operation>) => ({label: 'Op', maximum_usd_per_attempt: null, price_usd: null, tariff: null,
   price_unit: null, cost_basis: 'Basis', data_destination: 'https://api.elevenlabs.io', ...fields}) as Operation;
@@ -38,6 +38,25 @@ describe('priceLine and the tariff offer (laws 5 and 22)', () => {
     expect(tariffOffer([paid])).toBe('Design voice · ElevenLabs Voice Design is priced by its published tariff, with no hard ceiling. '
       + 'A hard cap refuses it before anything is sent.');
     expect(tariffOffer([paid, op({label: 'Speak · ElevenLabs v4'})])).toMatch(/^Design voice · ElevenLabs Voice Design and Speak · ElevenLabs v4 are priced/);
+  });
+});
+
+describe('priceTag: the price a roster row carries before it is chosen (laws 6 and 22)', () => {
+  it('says a ceiling, a price per image, or a tariff in its own unit', () => {
+    expect(priceTag(op({maximum_usd_per_attempt: 0.004}))).toBe('up to $0.004');
+    expect(priceTag(op({price_usd: 0.039, price_unit: 'image'}))).toBe('$0.039 per image');
+    expect(priceTag(op({price_usd: 0.08, price_unit: '1k_characters', tariff: {unit: '1k_characters', micro_usd: 80000} as Operation['tariff']})))
+      .toBe('$0.08 per 1,000 characters');
+    expect(priceTag(op({price_usd: 0.002, price_unit: 'second', tariff: {unit: 'second', micro_usd: 2000} as Operation['tariff']})))
+      .toBe('$0.002 per second');
+  });
+  it('reads "price unknown" for a hosted engine that publishes no price it can reserve', () => {
+    expect(priceTag(op({price_unit: 'image'}))).toBe('price unknown');
+    expect(priceTag(op({}))).toBe('price unknown');
+  });
+  it('carries no price for unmetered local work', () => {
+    expect(priceTag(op({maximum_usd_per_attempt: 0, price_usd: 0, price_unit: 'attempt', tariff: {unit: 'attempt', micro_usd: 0} as Operation['tariff']}))).toBeNull();
+    expect(priceTag(op({price_usd: 0}))).toBeNull();
   });
 });
 

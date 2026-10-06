@@ -140,7 +140,8 @@ test('a held paid attempt carries its reservation on TRY ONCE MORE, never as the
   await drawer.getByRole('button',{name:'Review run',exact:true}).click();
   await expect(drawer.getByRole('region',{name:'Run review'})).toContainText('An attempt whose engine asks to wait or cannot be reached '
     +'is tried again on its own, and the retry shows on that attempt.');
-  await drawer.getByRole('button',{name:'Run 7 attempts · reserves $0.03',exact:true}).click();
+  // the reservation reads exactly, never rounded down to the cent (law 6)
+  await drawer.getByRole('button',{name:'Run 7 attempts · reserves $0.028',exact:true}).click();
   await expect(drawer).not.toBeVisible();
   // four hosted attempts run at once and three wait their turn; a rate limit sends one back to wait on the provider's clock
   await expect.poll(count).toEqual({running:4,queued:3});
@@ -172,7 +173,7 @@ test('a held paid attempt carries its reservation on TRY ONCE MORE, never as the
   await expect.poll(count).toEqual({running:3,held:1,failed:2,skipped:1});
   const kept=await first(slot=>slot.status==='held');
   const held=section.getByRole('group',{name:name(kept,'held'),exact:true});
-  await expect(held).toContainText('nothing charged while it waits');
+  await expect(held).toContainText('nothing charged yet');
   // law 6: the costed move shows what it sends, sits after the free one, and is never the default
   await expect(held.getByRole('button')).toHaveText(['REUSE SETUP','TRY ONCE MORE · UP TO $0.004','CANCEL ATTEMPT']);
   const tryAgain=held.getByRole('button',{name:'TRY ONCE MORE · UP TO $0.004',exact:true});
@@ -220,8 +221,10 @@ test("a blind run's held attempt resumes from its face, naming no engine and no 
   await page.getByRole('button',{name:'Grid ›',exact:true}).click();
   const kept=(await slotsNow()).find(slot=>slot.status==='held')!;
   const held=page.getByRole('group',{name:`Attempt 0${String.fromCharCode(65+kept.pos)} · held`,exact:true});
-  await expect(held).toContainText('Its engine is held.');
-  await expect(held.getByRole('button')).toHaveText(['CONNECTIONS','RESUME ENGINE','CANCEL ATTEMPT']);
+  // one neutral face: its setup first, its resume live, no engine, lane, cause or price (V1b S-4)
+  await expect(held).toContainText('waiting costs nothing');
+  await expect(held).not.toContainText('Its engine is held.');
+  await expect(held.getByRole('button')).toHaveText(['REUSE SETUP','RESUME ENGINE','CANCEL ATTEMPT']);
   await expect(held).not.toContainText(/qwen|elevenlabs|\$/i);
   const resume=held.getByRole('button',{name:'RESUME ENGINE',exact:true});
   await expect(resume).not.toHaveAttribute('aria-disabled','true');

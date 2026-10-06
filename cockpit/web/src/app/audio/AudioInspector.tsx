@@ -1,12 +1,13 @@
 // Inspection of one audio take: play, pause, scrub, a loop region, the spoken words as they
-// pass, and the take's measured facts (law 17). While its run is blind, the engine, the voice,
-// any withheld format facts and every level figure stay hidden, since levels differ by engine;
-// the sound stays playable at its matched level. It lives inside the inspection layer and never
+// pass, and the sound's own measured facts (law 17), in words: its level, format and voice.
+// The record column beside it holds the engine, the seed and the length, once each. While
+// its run is blind, the voice, any withheld format facts and every level figure stay
+// hidden, since levels differ by engine; the sound stays playable at its matched level. It lives inside the inspection layer and never
 // opens a dialog of its own (law 2). Space plays and pauses this take, except on a focused
 // control, which Space presses; the arrow keys move the playhead a tenth of a second and Page
 // Up and Page Down a second.
 import { useEffect, useState, type KeyboardEvent } from 'react';
-import { engineLabel, type Material } from '../crexil/api';
+import type { Material } from '../crexil/api';
 import { spaceActivates, useCommandKey } from '../crexil/keys';
 import s from './audio.module.css';
 import type { Level } from './level';
@@ -28,21 +29,24 @@ export function levelLine(level: Level | null, hidden = false): string {
   return `Matched level · turned down ${(-level.gainDb).toFixed(1)} dB`;
 }
 
-/** The voice an engine reported, in words. */
+/** The voice an engine reported, in words; its provider's own voice id stays in the record. */
 export function voiceLine(voice: Facts['voice'], hidden: boolean): string {
   if (hidden) return WITHHELD;
-  const text = (key: string) => (voice && typeof voice[key] === 'string' ? voice[key] as string : '');
-  if (text('kind') === 'designed') return `Designed voice · ${text('generated_voice_id') || 'unnamed'}`;
-  if (text('kind') === 'saved') return `Saved voice · ${text('voice_id') || 'unnamed'}`;
-  if (text('kind') === 'cloned') return `Cloned from material ${text('reference_node_id') || 'not recorded'}`;
+  const kind = voice && typeof voice.kind === 'string' ? voice.kind : '';
+  if (kind === 'designed') return 'Designed voice';
+  if (kind === 'saved') return 'Saved voice';
+  if (kind === 'cloned') return 'Cloned voice';
   return voice ? 'Reported by the engine' : 'Not reported';
 }
 
-/** The container, codec, rate and channels, as far as they are known. */
+const CODECS: Readonly<Record<string, string>> = {pcm_s16le: '16-bit PCM', pcm_s24le: '24-bit PCM', pcm_s32le: '32-bit PCM',
+  pcm_f32le: '32-bit float PCM', mp3: 'MP3', opus: 'Opus', vorbis: 'Vorbis', aac: 'AAC', flac: 'FLAC'};
+
+/** The container, codec, rate and channels, as far as they are known, in words. */
 export function formatLine(facts: Facts | null, hidden: boolean): string {
   if (!facts) return 'Not measured';
   const channels = facts.channels === null ? '' : facts.channels === 1 ? 'mono' : facts.channels === 2 ? 'stereo' : `${facts.channels} channels`;
-  const parts = [facts.container?.toUpperCase() ?? '', facts.codec ?? '',
+  const parts = [facts.container?.toUpperCase() ?? '', facts.codec ? CODECS[facts.codec] ?? facts.codec : '',
     facts.sample_rate === null ? '' : `${facts.sample_rate / 1000} kHz`, channels].filter(Boolean);
   if (parts.length) return parts.join(' · ');
   return hidden ? WITHHELD : 'Not reported';
@@ -108,14 +112,11 @@ export function AudioInspector({node}: {node: Material}) {
         </section>
       )}
       <dl className={s.facts}>
-        <dt>Length</dt><dd>{clock(total)}</dd>
         <dt>Loudness</dt><dd>{hidden ? LEVEL_WITHHELD : facts?.loudness_lufs == null ? 'Too short or too quiet to measure' : `${facts.loudness_lufs.toFixed(1)} LUFS`}</dd>
         <dt>Peak</dt><dd>{hidden ? LEVEL_WITHHELD : facts?.peak_dbfs == null ? 'Not measured' : `${facts.peak_dbfs.toFixed(1)} dBFS`}</dd>
         <dt>Plays at</dt><dd>{levelLine(level, hidden)}</dd>
         <dt>Format</dt><dd>{formatLine(facts, hidden)}</dd>
-        <dt>Engine</dt><dd>{engineLabel(node, 'source', hidden)}</dd>
-        <dt>Voice</dt><dd>{voiceLine(facts?.voice ?? null, hidden)}</dd>
-        {!hidden && node.seed !== null && <><dt>Seed</dt><dd>{node.seed}</dd></>}
+        {node.verb !== 'sfx' && <><dt>Voice</dt><dd>{voiceLine(facts?.voice ?? null, hidden)}</dd></>}
       </dl>
     </div>
   );

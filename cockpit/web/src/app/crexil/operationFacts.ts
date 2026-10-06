@@ -24,6 +24,22 @@ export function priceLine(op: Operation): string {
   return `${op.price_usd === null ? 'Price unknown' : `${money(op.price_usd)} estimated per attempt`}. ${op.cost_basis}.`;
 }
 
+const UNITS: Readonly<Record<string, string>> = {attempt: 'attempt', image: 'image', '1k_characters': '1,000 characters',
+  second: 'second', generation: 'generation'};
+
+/** The price a roster row carries beside its name, before it is chosen (law 6): its ceiling,
+ *  its published price per image or attempt, or its tariff in its own unit; "price unknown"
+ *  when it publishes none, which counts as over every cap (law 22). Unmetered work carries
+ *  none. */
+export function priceTag(op: Pick<Operation, 'maximum_usd_per_attempt' | 'price_usd' | 'price_unit' | 'tariff'>): string | null {
+  if (op.maximum_usd_per_attempt !== null) return op.maximum_usd_per_attempt > 0 ? `up to ${money(op.maximum_usd_per_attempt)}` : null;
+  const unit = UNITS[op.price_unit ?? 'attempt'] ?? 'attempt';
+  if (op.tariff && op.price_unit && op.price_unit !== 'attempt')
+    return op.tariff.micro_usd > 0 ? `${money(op.tariff.micro_usd / 1e6)} per ${unit}` : null;
+  if (op.price_usd === null) return 'price unknown';
+  return op.price_usd > 0 ? `${money(op.price_usd)} per ${unit}` : null;
+}
+
 /** Priced by a published tariff with no hard ceiling, so a hard cap refuses it (law 22). */
 export const tariffPriced = (op: Operation): boolean =>
   op.maximum_usd_per_attempt === null && (op.tariff?.micro_usd ?? op.price_usd ?? 0) > 0;
