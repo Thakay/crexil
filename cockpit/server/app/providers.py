@@ -3,7 +3,14 @@
 Original model and endpoint descriptions survive discovery and offline
 snapshots, including provider identity, capability bounds and every pricing
 variant. Endpoint timestamps advance only after successful endpoint discovery;
-a failed refresh preserves the prior facts and marks the failure.
+a failed refresh preserves the prior facts and records a plain reason, which
+every served entry carries with the catalogue's age (law 17).
+
+Freshness: passive reads start one background refresh once the catalogue is
+REFRESH_AHEAD_S old and never repeat a failed one (law 9). A review awaits
+`ensure_fresh` first, so hosted requests compile against current endpoint
+facts; it shares any running refresh, waits at most REFRESH_WAIT_S, and starts
+a new attempt at most once per RETRY_AFTER_S. Every refresh is single-flight.
 
 Legacy display estimates and config prices remain separate from these facts.
 They are neither endpoint tariffs nor provider-enforced spending ceilings.
@@ -17,14 +24,35 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Iterable
 from copy import deepcopy
 from datetime import datetime, timezone
+
+import httpx
 
 from . import config
 
 log = logging.getLogger("cockpit.providers")
 
-CATALOG_TTL_S = 6 * 3600  # refresh the live list at most every 6 h
+CATALOG_TTL_S = 6 * 3600  # endpoint facts older than this cannot compile a hosted request
+REFRESH_AHEAD_S = 3600    # reads refresh in the background once the catalogue is this old
+REFRESH_WAIT_S = 15.0     # a review waits this long for a running refresh, then uses the facts it has
+RETRY_AFTER_S = 60.0      # a review starts a new refresh at most this often
+
+
+def _plain_failure(exc: Exception) -> str:
+    """One plain reason for a failed catalogue refresh; never a status code (law 3)."""
+    if isinstance(exc, httpx.TimeoutException):
+        return "the model catalogue service did not answer in time"
+    if isinstance(exc, httpx.HTTPStatusError):
+        return "the model catalogue service refused the request"
+    if isinstance(exc, (httpx.TransportError, OSError)):
+        return "the model catalogue service could not be reached"
+    return "the model catalogue answered in a form that could not be read"
+
+
+def _iso(stamp: float | None) -> str | None:
+    return datetime.fromtimestamp(stamp, timezone.utc).isoformat() if stamp else None
 
 
 class ProviderError(Exception):
@@ -95,6 +123,9 @@ class ProviderCatalog:
         self._fetched_at: float | None = None
         self._refresh_task: asyncio.Task | None = None
         self._snapshot_loaded = False
+        self._started_at: float | None = None  # when the latest refresh began
+        self._failed_at: float | None = None   # the latest failed refresh; a success clears it
+        self._failure: str | None = None       # its plain reason
 
     # --- snapshot (offline fallback across restarts) ---
 
@@ -129,7 +160,10 @@ class ProviderCatalog:
             return  # Preview serves config/snapshots, including forced refresh.
         try:
             listing = await self.client.list_models()
+            if not isinstance(listing, list) or any(not isinstance(m, dict) for m in listing):
+                raise ValueError("the model listing is not a list of models")
         except Exception as e:
+            self._failed_at, self._failure = time.time(), _plain_failure(e)
             log.warning("openrouter catalog fetch failed (keeping %s): %s",
                         "snapshot" if self._live else "config-only", e)
             return
@@ -165,18 +199,75 @@ class ProviderCatalog:
                                           if m.get("id")))
         self._live = {e["id"]: e for e in enriched}
         self._fetched_at = time.time()
+        self._failed_at = self._failure = None
         self._save_snapshot()
         log.info("openrouter catalog refreshed: %d models", len(self._live))
 
     def _kick_refresh(self) -> asyncio.Task:
+        """Start a refresh unless one is running; every caller shares that one."""
         if self._refresh_task is None or self._refresh_task.done():
+            self._started_at = time.time()
             self._refresh_task = asyncio.create_task(self._refresh())
         return self._refresh_task
+
+    def _refreshing(self) -> bool:
+        return self._refresh_task is not None and not self._refresh_task.done()
+
+    def _older_than(self, seconds: float) -> bool:
+        return self._fetched_at is None or time.time() - self._fetched_at > seconds
+
+    def _may_start(self) -> bool:
+        """A new refresh started on request: at most once per RETRY_AFTER_S."""
+        return self._started_at is None or time.time() - self._started_at >= RETRY_AFTER_S
+
+    def _refresh_ahead(self) -> None:
+        """Passive reads keep the catalogue current in the background. They never
+        repeat a failed refresh (law 9); only a review or a forced refresh does."""
+        if (config.CREXIL_PREVIEW or self._failed_at is not None
+                or not self._older_than(REFRESH_AHEAD_S)):
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return  # a synchronous caller has no loop to refresh on
+        self._kick_refresh()
+
+    def state(self) -> dict:
+        """The catalogue's observed freshness (law 17), served on every entry."""
+        return {"fetched_at": _iso(self._fetched_at), "refreshing": self._refreshing(),
+                "last_failure": self._failure, "failed_at": _iso(self._failed_at)}
+
+    async def ensure_fresh(self, operation_ids: Iterable[str] | None = None) -> None:
+        """Before a review compiles hosted requests: when the catalogue is older than
+        REFRESH_AHEAD_S, or a requested model's endpoint discovery failed, await a
+        refresh. A running refresh is shared; a new one starts at most once per
+        RETRY_AFTER_S. Waits at most REFRESH_WAIT_S, after which the refresh keeps
+        running and the review uses the facts at hand. A cancelled review never
+        cancels the shared refresh. Never raises; failures are recorded, not looped."""
+        if config.CREXIL_PREVIEW:
+            return
+        served = self.selectable()
+        wanted = list(served) if operation_ids is None else [i for i in operation_ids if i in served]
+        if not wanted:
+            return
+        undiscovered = any(served[i].get("endpoint_discovery_error") for i in wanted)
+        if not (self._older_than(REFRESH_AHEAD_S) or undiscovered):
+            return
+        if not self._refreshing() and not self._may_start():
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(self._kick_refresh()), REFRESH_WAIT_S)
+        except TimeoutError:
+            pass
+        except Exception as exc:
+            self._failed_at, self._failure = time.time(), _plain_failure(exc)
+            log.warning("openrouter catalog refresh failed: %s", exc)
 
     # --- merged views ---
 
     def _merged(self) -> list[dict]:
         pins = {m["id"]: m for m in load_providers()["models"]}
+        state = self.state()
         out: list[dict] = []
         seen: set[str] = set()
         for mid, live in self._live.items():
@@ -195,6 +286,7 @@ class ProviderCatalog:
                 "params": pin.get("params"),
                 "pinned": bool(pin.get("enabled")),
                 "source": "live",
+                "catalogue_state": state,
             })
             seen.add(mid)
         # pins with no live entry yet (offline / first boot): config fallback
@@ -202,7 +294,8 @@ class ProviderCatalog:
             if mid in seen:
                 continue
             out.append({**pin, "name": pin["label"], "pinned": pin["enabled"],
-                        "price_note": None, "source": "config"})
+                        "price_note": None, "source": "config",
+                        "catalogue_state": state})
         out.sort(key=lambda m: (not m.get("pinned"), m["provider"], m["id"]))
         # Consumers compile frozen requests from these facts. Mutating a returned
         # nested endpoint must never rewrite the catalogue's cached evidence.
@@ -212,18 +305,18 @@ class ProviderCatalog:
         """id -> entry for everything a turn may dispatch to (sync, cached)."""
         if not self._snapshot_loaded:
             self._load_snapshot()
+        self._refresh_ahead()
         return {m["id"]: m for m in self._merged()}
 
     async def get(self, force: bool = False) -> dict:
         if not self._snapshot_loaded:
             self._load_snapshot()
-        stale = (self._fetched_at is None
-                 or time.time() - self._fetched_at > CATALOG_TTL_S)
-        if force or (stale and not self._live):
-            # nothing usable yet (or explicit refresh): fetch inline
-            await self._refresh()
-        elif stale:
-            self._kick_refresh()  # stale-while-revalidate
+        if force or (not self._live and self._older_than(CATALOG_TTL_S)
+                     and (self._refreshing() or self._may_start())):
+            # explicit refresh, or nothing usable yet: fetch inline, shared
+            await asyncio.shield(self._kick_refresh())
+        else:
+            self._refresh_ahead()  # stale-while-revalidate
         models = self._merged()
         return {
             "fetched_at": (datetime.fromtimestamp(

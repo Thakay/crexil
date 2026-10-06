@@ -50,8 +50,16 @@ def takes(row: dict, verb: str) -> int:
 
 
 def tariff(row: dict, verb: str) -> dict | None:
+    """The verb's published tariff, or None when the row names none or names one this
+    version cannot read; either way the price is unknown and counts as over the
+    spending limit (law 22)."""
     found = (row.get('tariffs') or {}).get(verb)
-    return dict(found) if isinstance(found, dict) else None
+    if not isinstance(found, dict):
+        return None
+    micro = found.get('micro_usd')
+    if found.get('unit') not in PER_UNIT or not isinstance(micro, int) or isinstance(micro, bool) or micro < 0:
+        return None
+    return dict(found)
 
 
 def restrictions(row: dict) -> list[str]:
@@ -99,14 +107,23 @@ def reasons(stack, row: dict) -> list[str]:
     return []
 
 
+PER_UNIT = {'1k_characters': 'per 1,000 characters', 'second': 'per second',
+            'generation': 'per generation', 'attempt': 'per attempt'}
+
+
 def cost_basis(price: dict | None) -> str:
+    """One plain line on how an operation is priced. A price this version cannot read
+    is described, never raised, so one misconfigured row cannot hide the others; it
+    counts as over the spending limit like any unknown price (law 22)."""
+    unknown = 'An unknown price counts as over the spending limit.'
     if price is None:
-        return 'No published price. An unknown price counts as over the spending limit.'
-    if price['micro_usd'] == 0:
+        return f'No published price. {unknown}'
+    micro, per = price.get('micro_usd'), PER_UNIT.get(price.get('unit'))
+    if micro == 0:
         return 'Unmetered local operation'
-    per = {'1k_characters': 'per 1,000 characters', 'second': 'per second',
-           'generation': 'per generation', 'attempt': 'per attempt'}[price['unit']]
-    return f"Published tariff, {Decimal(price['micro_usd']) / crexil_budget.MICRO_USD} US dollars {per}"
+    if per is None or not isinstance(micro, int) or isinstance(micro, bool):
+        return f'This engine row names a price this version cannot read. {unknown}'
+    return f"Published tariff, {Decimal(micro) / crexil_budget.MICRO_USD} US dollars {per}"
 
 
 def catalogue(stack) -> list[dict]:
@@ -118,7 +135,7 @@ def catalogue(stack) -> list[dict]:
                 continue
             specs, notes, price = inputs(row, verb), limitations(row, verb), tariff(row, verb)
             why = reasons(stack, row)
-            free = price is not None and price['micro_usd'] == 0
+            free = price is not None and price.get('micro_usd') == 0
             results.append({'id': f"audio:{verb}:{row['id']}", 'engine_id': row['id'], 'audio_verb': verb,
                 'label': f"{LABELS[verb]} · {row['name']}",
                 'revision': digest([row, verb, specs, notes, destination(row.get('provider'))])[:16],
