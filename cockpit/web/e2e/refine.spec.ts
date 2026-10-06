@@ -21,6 +21,7 @@ import {
   type APIRequestContext,
   type Page,
 } from "@playwright/test";
+import { DB } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 type Node = { id: string; verb: string; parents: string[] };
@@ -30,7 +31,6 @@ type Detail = { turns: { id: string; slots: Slot[] }[] };
 const T = { timeout: 10_000 };
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const DB = path.resolve(HERE, "../../../.staging/e2e-harness/cockpit-v4.sqlite");
 
 function seed(preset: "small" | "verbs"): Seed {
   const name = `refine-${preset}-${Date.now()}`;

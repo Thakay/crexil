@@ -13,6 +13,7 @@ import {
   type APIRequestContext,
   type Page,
 } from "@playwright/test";
+import { DB } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 type Slot = { id: string; pos: number; status: string };
@@ -22,7 +23,6 @@ type NodeRow = { id: string; parents: string[]; set_aside: boolean };
 const T = { timeout: 10_000 };
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const DB = path.resolve(HERE, "../../../.staging/e2e-harness/cockpit-v4.sqlite");
 
 function seed(preset: "small"): Seed {
   const name = `tray-${preset}-${Date.now()}`;

@@ -1,8 +1,11 @@
 import {test,expect} from '@playwright/test';
+import {artifact} from './paths';
 
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Onboarding verification'}});
 
 test('an offline newcomer discovers prepared work and recovers one preparation after lost acceptance',async({page,request})=>{
+ const health=await(await request.get('/api/health')).json();
+ test.skip(!health.preview,'The offline wording and the locked key field belong to the isolated preview.');
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  const project=await(await request.post('/api/crexil/projects',{data:{...command(),name:`First prepared direction ${Date.now()}`}})).json();
  await page.goto(`/#/projects/${project.id}`);
@@ -18,7 +21,7 @@ test('an offline newcomer discovers prepared work and recovers one preparation a
  await expect(page.getByRole('region',{name:'Local runtime',exact:true})).toContainText('COMFYUI_URL');
  for(const width of [1440,1920]){
   await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-  await page.screenshot({path:`../../.preview/screenshots/connections-${width}.png`});
+  await page.screenshot({path:artifact(`connections-${width}.png`)});
  }
  await page.getByRole('link',{name:'Prepared operations',exact:true}).click();
  const operations=page.getByRole('region',{name:'Prepared operations',exact:true});
@@ -29,7 +32,7 @@ test('an offline newcomer discovers prepared work and recovers one preparation a
  await expect(operation.getByRole('region',{name:'Requirements for Raw · FLUX.2 klein',exact:true})).toContainText('disconnected');
  for(const width of [1440,1920]){
   await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-  await page.screenshot({path:`../../.preview/screenshots/prepared-operations-${width}.png`});
+  await page.screenshot({path:artifact(`prepared-operations-${width}.png`)});
  }
  let lost=true;const bodies:unknown[]=[];
  await page.route(`**/api/crexil/projects/${project.id}/directions`,async route=>{

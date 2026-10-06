@@ -5,12 +5,12 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { DB } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const DB = path.resolve(HERE, "../../../.staging/e2e-harness/cockpit-v4.sqlite");
 
 test("200 landed nodes: the API serves all, the canvas culls to the viewport", async ({
   page,

@@ -4,6 +4,17 @@ import path from "node:path";
 
 import { defineConfig } from "@playwright/test";
 
+import {
+  ARTIFACTS,
+  DB,
+  HARNESS_DIR,
+  PORT,
+  PROMOTE_SIBLING,
+  PROMOTED,
+  RUN_DIR,
+  STAGING,
+} from "./e2e/paths";
+
 // On a box without chromium's system deps, a user-space shim dir
 // (built via `apt-get download libnss3 libnspr4 libasound2t64` + `dpkg -x`,
 // no sudo needed) supplies libnss3/libnspr4/libasound2.
@@ -16,37 +27,53 @@ if (existsSync(shim)) {
     .join(":");
 }
 
-// E2E harness. Self-contained: boots the FastAPI app on :8123 with a
-// throwaway DB under .staging/ and the built SPA from dist/ — run
-// `npm run build` first. Leaves the runtime singletons alone: never touches
-// the deployed container on :8000, and never opens the default store
-// (cockpit/server/cockpit-v4.sqlite). That holds by construction, not by convention:
-// COCKPIT_HARNESS_EXECUTORS swaps in scripted executors (app/harness.py) so
-// a spec-driven Run can land/fail slots on command, and COMFYUI_URL points
-// at a genuinely closed port so nothing in the process can reach the real
-// :8188.
+// The harness suite: every spec, against scripted executors. The crexil
+// journeys also run against the isolated preview (playwright.preview.config.ts);
+// a test that holds in only one of the two declares it by reading
+// /api/health's `preview` and skipping with its reason. scripts/e2e.sh runs
+// both suites offline, each in a fresh run folder.
+//
+// Self-contained: boots the FastAPI app on CREXIL_E2E_PORT (default 8123)
+// with a throwaway store under the run folder (e2e/paths.ts), recreated at
+// every boot, and the built SPA from dist/ — run `npm run build` first.
+// It never touches the deployed container on :8000 and never opens the
+// default store (cockpit/server/cockpit-v4.sqlite). That holds by
+// construction, not by convention: COCKPIT_HARNESS_EXECUTORS swaps in
+// scripted executors (app/harness.py) so a spec-driven Run can land/fail
+// slots on command, and every runtime and provider URL points at port 9,
+// a privileged port nothing in a user session listens on. The hosted
+// catalogue therefore comes from providers.json alone, never the network.
 export default defineConfig({
   testDir: "./e2e",
   // One shared server, and its queue/bench state is process-global one-GPU
   // truth — parallel spec files would read each other's batches (the law
   // specs run live turns). Serialise; the suite is small.
   workers: 1,
-  use: { baseURL: "http://127.0.0.1:8123" },
+  use: { baseURL: `http://127.0.0.1:${PORT}` },
   webServer: {
     command:
-      "bash -c 'mkdir -p ../../.staging/e2e-harness ../../.staging/e2e-promote && exec uv run uvicorn app.main:app --host 127.0.0.1 --port 8123'",
+      `bash -c 'rm -rf "${HARNESS_DIR}" "${STAGING}" "${PROMOTED}" "${PROMOTE_SIBLING}"` +
+      ` && mkdir -p "${HARNESS_DIR}" "${STAGING}" "${PROMOTED}" "${ARTIFACTS}"` +
+      ` && exec uv run uvicorn app.main:app --host 127.0.0.1 --port ${PORT}'`,
     cwd: "../server",
     // readiness = "app booted" (/api answers only after the lifespan
     // completes). /api/health would 503 here by design: it reports engine
     // truth, and this harness points ComfyUI at a closed port.
-    url: "http://127.0.0.1:8123/api",
+    url: `http://127.0.0.1:${PORT}/api`,
     reuseExistingServer: false,
     timeout: 30_000,
     env: {
-      COCKPIT_DB: "../../.staging/e2e-harness/cockpit-v4.sqlite",
+      COCKPIT_DB: DB,
+      COCKPIT_STAGING_DIR: STAGING,
       COCKPIT_STATIC_DIR: "../web/dist",
       COCKPIT_HARNESS_EXECUTORS: "1",
-      COMFYUI_URL: "http://127.0.0.1:8199",
+      COMFYUI_URL: "http://127.0.0.1:9",
+      THREED_URL: "http://127.0.0.1:9",
+      OPENROUTER_URL: "http://127.0.0.1:9",
+      // Keys are blank whatever the shell or a checkout's .env holds: an
+      // empty variable is set, so the server's .env loading never fills it.
+      OPENROUTER_API_KEY: "",
+      ELEVENLABS_API_KEY: "",
       // B4's bill re-asks come "over about a minute" in production (20 s
       // gaps); the trust-cases spec watches them through the 2 s polls, so
       // the gap is 4 s here — long enough to be seen, short enough to wait
@@ -59,16 +86,16 @@ export default defineConfig({
       // the product's.
       COCKPIT_RATE_LIMIT_BACKOFF_S: "3",
       COCKPIT_GPU_RECHECK_S: "1",
-      // The promotion boundary, pointed inside .staging so the spec
-      // writes a real asset tree without touching /mnt/d. The folder is
-      // created by the command above, never by the app — validate_target's
+      // The promotion boundary, pointed inside the run folder so the spec
+      // writes a real asset tree without touching a real drive. The folder
+      // is created by the command above, never by the app — validate_target's
       // whole point is that a missing root is refused, not built.
-      PROMOTE_DIR: "../../.staging/e2e-promote",
-      // The fence. `.staging` stands in for the promotion drive here,
+      PROMOTE_DIR: PROMOTED,
+      // The fence. The run folder stands in for the promotion drive here,
       // so a spec can re-point to a sibling folder the way the artist can
-      // on D: — and anything above it is refused, which is the case that
-      // catches /tmp and /data being accepted.
-      PROMOTE_ROOTS: "../../.staging",
+      // on their drive — and anything above it is refused, which is the
+      // case that catches /tmp and /data being accepted.
+      PROMOTE_ROOTS: RUN_DIR,
     },
   },
 });

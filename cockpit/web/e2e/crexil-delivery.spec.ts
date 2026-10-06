@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {artifact} from './paths';
 const source=fileURLToPath(new URL('../../../bench/sources/rc-keep/source.png',import.meta.url));
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Delivery verification'}});
 
@@ -41,7 +42,7 @@ test('artist returns edited material, resolves a lost response and delivers orig
   await expect(delivery.getByRole('heading',{name:'1 of 1 outputs delivered',exact:true})).toBeVisible();
   expect(accepted).toHaveLength(2);expect(accepted[0]).toEqual(accepted[1]);
   const history=await(await request.get(`/api/crexil/projects/${p.id}/deliveries`)).json();expect(history).toHaveLength(1);expect(history[0].items[0].state).toBe('complete');
-  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:`../../.preview/screenshots/delivery-${width}.png`});}
+  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:artifact(`delivery-${width}.png`)});}
   expect(errors).toEqual([]);
 });
 

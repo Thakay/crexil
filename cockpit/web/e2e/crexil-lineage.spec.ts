@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {artifact} from './paths';
 const source=readFileSync(fileURLToPath(new URL('../../../bench/sources/rc-keep/source.png',import.meta.url))).toString('base64');
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Lineage verification'}});
 
@@ -28,7 +29,7 @@ test('source buses preserve combined and long ancestry through selection, scroll
     await page.setViewportSize({width,height:900});
     await expect(svg).toHaveAttribute('data-connection-count','4');
     expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-    await page.screenshot({path:`../../.preview/screenshots/lineage-${width}.png`});
+    await page.screenshot({path:artifact(`lineage-${width}.png`)});
   }
   const row=page.locator('[data-lineage-row="0"] [data-lineage-strip]');
   await row.evaluate(element=>{element.scrollLeft=element.scrollWidth;});
@@ -49,6 +50,6 @@ test('source buses preserve combined and long ancestry through selection, scroll
   await expect(svg.locator(`polyline[data-binding^="${combined.direction.id}:"][data-arrival]`)).toHaveCount(0);
   await row.evaluate(element=>{element.scrollLeft=0;});
   await expect(svg.locator(`polyline[data-binding^="${combined.direction.id}:"][data-arrival]`)).toHaveCount(1);
-  await page.screenshot({path:'../../.preview/screenshots/lineage-overflow-1440.png'});
+  await page.screenshot({path:artifact('lineage-overflow-1440.png')});
   expect(errors).toEqual([]);
 });

@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {artifact} from './paths';
 
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'agent',name:'Draft collaborator'}});
 
@@ -30,7 +31,7 @@ test('a stale preparation survives reload and a lost separate-copy response with
   for(const width of [1440,1920]){
     await page.setViewportSize({width,height:900});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
-    await page.screenshot({path:`../../.preview/screenshots/preparation-conflict-${width}.png`});
+    await page.screenshot({path:artifact(`preparation-conflict-${width}.png`)});
   }
   await conflict.getByRole('button',{name:'Keep in this tab and close',exact:true}).click();
   await expect(drawer).not.toBeVisible();

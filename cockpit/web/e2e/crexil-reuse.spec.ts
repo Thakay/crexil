@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {artifact} from './paths';
 const image=readFileSync(fileURLToPath(new URL('../../../bench/sources/rc-keep/source.png',import.meta.url))).toString('base64');
 const command=()=>({request_id:crypto.randomUUID(),actor:{kind:'human',name:'Reuse verification'}});
 
@@ -23,7 +24,7 @@ test('reuse reviews known origin and recovers one independent copy after lost ac
   await room.getByRole('button',{name:'Review import',exact:true}).click();
   const review=room.getByRole('region',{name:'Import review',exact:true});
   await expect(review.getByText('From '+source.name,{exact:true})).toBeVisible();
-  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});await review.scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:`../../.preview/screenshots/reuse-${width}.png`});}
+  for(const width of [1440,1920]){await page.setViewportSize({width,height:900});await review.scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:artifact(`reuse-${width}.png`)});}
   const bodies:unknown[]=[];
   await page.route(`**/api/crexil/projects/${target.id}/reuse`,async route=>{
     bodies.push(route.request().postDataJSON());
@@ -50,7 +51,7 @@ test('reuse reviews known origin and recovers one independent copy after lost ac
   const inspection=page.getByRole('region',{name:'Inspect material',exact:true});
   await expect(inspection.getByRole('link',{name:source.name+' ›',exact:true})).toBeVisible();
   await expect(inspection.getByText('Retained related files',{exact:true})).toBeVisible();
-  await page.screenshot({path:'../../.preview/screenshots/reuse-inspection-1920.png'});
+  await page.screenshot({path:artifact('reuse-inspection-1920.png')});
   expect(await inspection.locator('aside').evaluate(element=>element.scrollWidth>element.clientWidth)).toBe(false);
   await inspection.getByRole('link',{name:source.name+' ›',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(source.id+'\\?material='+material.node.id));

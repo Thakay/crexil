@@ -6,12 +6,12 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { DB } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const DB = path.resolve(HERE, "../../../.staging/e2e-harness/cockpit-v4.sqlite");
 
 function seed(preset: "small" | "perf200"): Seed {
   const name = `canvas-${preset}-${Date.now()}`;

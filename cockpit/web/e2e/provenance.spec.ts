@@ -13,13 +13,13 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
+import { DB, artifact } from "./paths";
 
 type Seed = { workspace_id: string; node_ids: string[] };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(HERE, "../../server");
-const DB = path.resolve(HERE, "../../../.staging/e2e-harness/cockpit-v4.sqlite");
-const SHOTS = path.resolve(HERE, "../../../.staging/e2e-harness/shots");
+const SHOTS = artifact("provenance");
 
 function seed(): Seed {
   const name = `provenance-${Date.now()}`;
