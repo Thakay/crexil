@@ -4,7 +4,7 @@
 // generated take's words show as typed and as submitted (`TakeWords`).
 import {useEffect} from 'react';
 import {$api} from '../../api/client';
-import {DecisionCard,latestVersions} from './RecordRoom';
+import {DecisionCard} from './RecordRoom';
 import {actionView} from './actions';
 import {actorLine,engineLabel,isHidden,label,message,money,type Actor,type Material,type Snapshot} from './api';
 import {recordedWords} from './family';
@@ -74,8 +74,7 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
     {request&&<details><summary>Full accepted request and source hashes</summary><pre>{JSON.stringify(request,null,2)}</pre></details>}
     <h3>Decisions about this material</h3>
     {decisions.error&&<p role="alert">{message(decisions.error)}<button onClick={()=>void decisions.refetch()}>Read decisions again</button></p>}
-    {latestVersions(decisions.data?.decisions??[]).slice(0,3).map(item=><DecisionCard key={item.event_id} item={item} data={data} inspect={navigate}
-      previous={decisions.data?.decisions.find(other=>other.event_id===item.previous_id)}/>)}
+    {decisions.data?.decisions.slice(0,3).map(item=><DecisionCard key={item.event_id} item={item} data={data} inspect={navigate}/>)}
     {decisions.data&&!decisions.data.decisions.length&&<p>No assessment or display choice is recorded for this material.</p>}
     <button onClick={openRecord}>Decisions and assessments ›</button>
   </>;

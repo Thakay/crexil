@@ -52,70 +52,49 @@ const mount = (data: Snapshot, refresh?: () => void) =>
 const press = (key: string) => fireEvent.keyDown(document.activeElement ?? document.body, {key, code: `Key${key.toUpperCase()}`});
 
 describe('S selects the focused take (the row is the choice)', () => {
-  it('adds it to its direction through the selection action, then keeps the reason as an assessment', async () => {
+  it('asks for its reason, then records the choice once, with the reason, through the selection action (law 23)', async () => {
     const refresh = vi.fn();
     mount(snapshot(['b1']), refresh);
     screen.getByRole('button', {name: 'Act on a2'}).focus();
     press('s');
     const reason = await screen.findByRole('textbox', {name: 'Why 0A.2? Optional'});
-    expect(sent[0]).toMatchObject({method: 'PUT', path: '/api/crexil/directions/d1/selection',
-      body: {revision: 4, node_ids: ['b1', 'a2'], reason: '', actor: {kind: 'human', name: 'Artist'}}});
-    expect(refresh).toHaveBeenCalled();
     expect(reason).toHaveFocus();
     expect(screen.getByText('Selected 0A.2')).toBeInTheDocument();
+    expect(sent).toEqual([]);                                      // nothing is recorded until the reason is settled
     fireEvent.change(reason, {target: {value: 'Warmest of the six.'}});
     fireEvent.submit(reason.closest('form')!);
     await screen.findByText('Reason kept with 0A.2.');
-    // with no choice named by the answer or the record, the reason is kept as an assessment of the take
-    expect(sent.find(item => item.method === 'POST')).toMatchObject({path: '/api/crexil/projects/p1/assessments',
-      body: {reason: 'Warmest of the six.', node_ids: ['a2'], direction_id: 'd1', turn_id: 't1'}});
+    expect(sent).toEqual([{method: 'PUT', path: '/api/crexil/directions/d1/selection',
+      body: {request_id: expect.any(String), revision: 4, node_ids: ['b1', 'a2'], reason: 'Warmest of the six.',
+        actor: {kind: 'human', name: 'Artist'}}}]);
+    expect(refresh).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(screen.getByRole('button', {name: 'Act on a2'})).toHaveFocus());
   });
-  it('takes a selected take off the section, and records nothing more when the reason is skipped', async () => {
+  it('takes a selected take off the section; Escape records the choice without a reason', async () => {
     mount(snapshot(['a1', 'b1']));
     screen.getByRole('button', {name: 'Act on a1'}).focus();
     press('s');
     const reason = await screen.findByRole('textbox', {name: 'Why 0A? Optional'});
-    expect(sent[0].body.node_ids).toEqual(['b1']);
     expect(screen.getByText('Removed 0A')).toBeInTheDocument();
+    fireEvent.change(reason, {target: {value: 'Too bright.'}});
     fireEvent.keyDown(reason, {key: 'Escape', code: 'Escape'});
-    await waitFor(() => expect(screen.queryByRole('textbox', {name: 'Why 0A? Optional'})).toBeNull());
-    expect(sent.filter(item => item.method !== 'GET')).toHaveLength(1);
+    await screen.findByText('Removed 0A.');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].body).toMatchObject({node_ids: ['b1'], reason: ''});
   });
-  it("keeps the reason with the choice itself, as a revision of the choice the answer names, and refreshes (law 23)", async () => {
-    answers['PUT /api/crexil/directions/d1/selection'] = () => Response.json({id: 'd1', latest_decision: {event_id: 'event-9'}});
-    const refresh = vi.fn();
-    mount(snapshot(), refresh);
+  it('keeps the choice with the words written so far when focus leaves the reason', async () => {
+    mount(snapshot());
     screen.getByRole('button', {name: 'Act on b1'}).focus();
     press('s');
     const reason = await screen.findByRole('textbox', {name: 'Why 0B? Optional'});
-    fireEvent.change(reason, {target: {value: 'Brightest of the three.'}});
-    fireEvent.submit(reason.closest('form')!);
+    fireEvent.change(reason, {target: {value: 'Brightest '}});
+    fireEvent.blur(reason, {relatedTarget: screen.getByRole('button', {name: 'Act on a1'})});
     await screen.findByText('Reason kept with 0B.');
-    expect(sent[1]).toMatchObject({method: 'POST', path: '/api/crexil/projects/p1/assessments',
-      body: {reason: 'Brightest of the three.', previous_id: 'event-9', actor: {kind: 'human', name: 'Artist'}}});
-    expect(sent[1].body).not.toHaveProperty('node_ids');
-    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].body).toMatchObject({node_ids: ['b1'], reason: 'Brightest'});
   });
-  it('finds the choice in the record when the selection answer does not name it', async () => {
-    // the record lists the direction's decisions newest first
-    answers['GET /api/crexil/projects/p1/record'] = () => Response.json({decisions: [
-      {event_id: 'assessed', kind: 'assessment', node_ids: ['a1'], revised_by: null},
-      {event_id: 'mine', kind: 'selection', node_ids: ['b1', 'a1'], revised_by: null},
-      {event_id: 'older', kind: 'selection', node_ids: ['b1'], revised_by: null}]});
-    mount(snapshot(['b1']));
-    screen.getByRole('button', {name: 'Act on a1'}).focus();
-    press('s');
-    const reason = await screen.findByRole('textbox', {name: 'Why 0A? Optional'});
-    expect(sent[1]).toMatchObject({method: 'GET', path: '/api/crexil/projects/p1/record'});
-    fireEvent.change(reason, {target: {value: 'Brightest.'}});
-    fireEvent.submit(reason.closest('form')!);
-    await screen.findByText('Reason kept with 0A.');
-    expect(sent.find(item => item.method === 'POST')?.body).toMatchObject({reason: 'Brightest.', previous_id: 'mine'});
-  });
-  it('holds Escape while the choice is on its way, so the room stays open for its reason', async () => {
+  it('holds Escape while the choice is on its way, so the room stays open', async () => {
     let answer!: () => void;
-    answers['PUT /api/crexil/directions/d1/selection'] = () => Response.json({});
     const room = createViewStore({room: 0});
     vi.stubGlobal('fetch', vi.fn(async (input: Request) => {
       sent.push({method: input.method, path: new URL(input.url).pathname, body: await input.json()});
@@ -126,11 +105,14 @@ describe('S selects the focused take (the row is the choice)', () => {
     render(<ViewContext.Provider value={room}><Base/><Room data={snapshot()}/></ViewContext.Provider>);
     screen.getByRole('button', {name: 'Act on a1'}).focus();
     press('s');
+    const reason = await screen.findByRole('textbox', {name: 'Why 0A? Optional'});
+    fireEvent.submit(reason.closest('form')!);
     await waitFor(() => expect(sent).toHaveLength(1));
     fireEvent.keyDown(document.body, {key: 'Escape', code: 'Escape'});
     expect(room.getState().room).toBe(0);
+    expect(sent).toHaveLength(1);
     act(() => answer());
-    expect(await screen.findByRole('textbox', {name: 'Why 0A? Optional'})).toBeInTheDocument();
+    await screen.findByText('Selected 0A.');
   });
   it('acts on nothing when no take of the room is focused or acted on', () => {
     mount(snapshot());
@@ -143,8 +125,10 @@ describe('S selects the focused take (the row is the choice)', () => {
     mount(snapshot());
     screen.getByRole('button', {name: 'Act on b1'}).focus();
     press('s');
+    fireEvent.submit((await screen.findByRole('textbox', {name: 'Why 0B? Optional'})).closest('form')!);
     expect(await screen.findByText('This direction changed in another view. Reload it before applying your changes.')).toBeInTheDocument();
-    expect(screen.queryByRole('textbox', {name: /Why/})).toBeNull();
+    // the reason stays open with the refusal, to try again once the direction is read again
+    expect(screen.getByRole('textbox', {name: 'Why 0B? Optional'})).toBeInTheDocument();
   });
 });
 

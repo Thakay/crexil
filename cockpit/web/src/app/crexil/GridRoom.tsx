@@ -1,14 +1,13 @@
 // The grid room's keyboard and its working line, the second line of its head. Digits play
 // the room's take positions, Space the focused take and X the two marked takes, at matched
-// levels; playing is inspection, never a verb (law 11). S selects the focused take: it
-// toggles the take in its direction's displayed selection through the shared selection
-// action ("the row is the choice"), and the reason asked for next becomes that choice's
-// own reason, a revision of the choice it was given with, since a pick carries a reason
-// (law 23). A blind run's reveal is asked for in line, never in a dialog (law 2), is an
-// authored event and follows the artist's choice, once its reason is settled. The line
-// says out loud that local work takes turns on the one GPU (law 13). It is one line high,
-// so nothing it says moves a cell (law 8), and it holds one status that every message
-// shares, the reveal included.
+// levels; playing is inspection, never a verb (law 11). S selects the focused take: it opens
+// the take's optional reason, and the choice is recorded once, with that reason, through the
+// shared selection action ("the row is the choice"), so the record and its export hold one
+// decision with its author and reason (law 23). A blind run's reveal is asked for in line,
+// never in a dialog (law 2), is an authored event and follows the artist's choice, once its
+// reason is settled. The line says out loud that local work takes turns on the one GPU (law
+// 13). It is one line high, so nothing it says moves a cell (law 8), and it holds one status
+// that every message shares, the reveal included.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchClient } from '../../api/client';
 import { isAudible, useAudition, usePlayer } from '../audio';
@@ -46,64 +45,43 @@ export function useRoomAudition(takes: readonly (Material | null)[]) {
   });
 }
 
-/** A take just selected or removed, waiting for its optional reason; `decision` is the
- *  choice the reason revises. */
-export type FastPick = {node: Material; direction: string; chosen: boolean; decision: string | null};
-
-/** The choice a fast pick just made, as the record names it: the selection answer's latest
- *  decision, else the newest display choice of the direction that holds the take where S
- *  put it (in the selection, or out of it). Null when neither names it. */
-async function choiceMade(wid: string, direction: string, node: string, chosen: boolean,
-  answer: {latest_decision?: {event_id: string} | null}): Promise<string | null> {
-  if (answer.latest_decision?.event_id) return answer.latest_decision.event_id;
-  try {
-    const record = await result(fetchClient.GET('/api/crexil/projects/{wid}/record',
-      {params: {path: {wid}, query: {direction_id: direction, limit: 10}}}));
-    return record.decisions.find(item => item.kind === 'selection' && !item.revised_by && item.node_ids.includes(node) === chosen)?.event_id ?? null;
-  } catch {
-    return null;
-  }
-}
+/** A take S selects or removes, waiting for its optional reason before the choice is recorded. */
+export type FastPick = {node: Material; direction: string; chosen: boolean};
 
 /** The S key: toggles the focused take, else the one take acted on, in its direction's
- *  displayed selection. Only a take shown in the open grid room can be selected. While the
- *  choice is on its way, Escape waits for it, so it never closes the room under the reason
- *  that follows. */
+ *  displayed selection, once its optional reason is settled. Only a take shown in the open
+ *  grid room can be selected. */
 export function useFastPick(data: Snapshot | undefined, takes: readonly (Material | null)[], refresh: () => void) {
   const store = useViewStore();
   const [pick, setPick] = useState<FastPick | null>(null);
   const [said, setSaid] = useState('');
-  const busy = useRef(false);
-  useEscapeLayer(() => busy.current);
+  const latest = useRef(data);
+  latest.current = data;
   const target = (): Material | null => {
     const {acting} = store.getState();
     const id = focusedTake() ?? (acting.length === 1 ? acting[0] : null);
     return takes.find(take => take !== null && take.id === id) ?? null;
   };
-  const select = async (node: Material) => {
+  const begin = (node: Material) => {
     const direction = data?.directions.find(item => item.node_ids.includes(node.id));
     if (!direction) return;
-    const chosen = !direction.selection.includes(node.id);
-    busy.current = true;
     setSaid('');
-    try {
-      const answer = await result(fetchClient.PUT('/api/crexil/directions/{did}/selection', {params: {path: {did: direction.id}},
-        body: {...command(), revision: direction.revision, reason: '',
-          node_ids: chosen ? [...direction.selection, node.id] : direction.selection.filter(id => id !== node.id)}}));
-      refresh();
-      setPick({node, direction: direction.id, chosen, decision: await choiceMade(data!.project.id, direction.id, node.id, chosen, answer)});
-    } catch (error) {
-      setPick(null);
-      setSaid(message(error));
-    } finally {
-      busy.current = false;
-    }
+    setPick({node, direction: direction.id, chosen: !direction.selection.includes(node.id)});
   };
-  useCommandKey('s', () => {const node = target(); if (node) void select(node);},
-    () => store.getState().room !== null && !covered(store.getState()) && !busy.current && target() !== null);
-  /** The reason form closed: with a line to say, or none when it was skipped. */
+  useCommandKey('s', () => {const node = target(); if (node) begin(node);},
+    () => store.getState().room !== null && !covered(store.getState()) && pick === null && target() !== null);
+  /** Records the choice with its reason, as one decision, against the direction as it now is. */
+  const choose = useCallback(async (chosen: FastPick, reason: string, request: ReturnType<typeof command>) => {
+    const direction = latest.current?.directions.find(item => item.id === chosen.direction);
+    if (!direction) throw new Error('This direction is no longer in the project. Its record remains.');
+    const others = direction.selection.filter(id => id !== chosen.node.id);
+    await result(fetchClient.PUT('/api/crexil/directions/{did}/selection', {params: {path: {did: direction.id}},
+      body: {...request, revision: direction.revision, reason, node_ids: chosen.chosen ? [...others, chosen.node.id] : others}}));
+    refresh();
+  }, [refresh]);
+  /** The reason form closed: with a line to say, or none. */
   const settle = useCallback((line: string | null) => {setPick(null); setSaid(line ?? '');}, []);
-  return {pick, said, settle, announce: setSaid};
+  return {pick, said, settle, choose, announce: setSaid};
 }
 
 /** The second line of the grid room's head. */
@@ -131,7 +109,7 @@ export function RoomLine({data, turns, takes, fastPick, refresh}: {
     || turn.slots.some(slot => ['queued', 'running'].includes(slot.status) && engineLane(slot.engine) !== 'hosted')));
   return <div className={s.roomLine}>
     <span className={s.keyHint}>{keyHint(audible)}</span>
-    {fastPick.pick && <PickReason key={fastPick.pick.node.id} wid={data.project.id} pick={fastPick.pick} settle={fastPick.settle} refresh={refresh}/>}
+    {fastPick.pick && <PickReason key={fastPick.pick.node.id} pick={fastPick.pick} choose={fastPick.choose} settle={fastPick.settle}/>}
     <span ref={status} tabIndex={-1} className={s.roomSaid} role="status">
       {fastPick.pick ? '' : fastPick.said || <Playing takes={takes}/>}</span>
     <span className={s.spacer}/>
@@ -162,27 +140,28 @@ function Playing({takes}: {takes: readonly (Material | null)[]}) {
   return error ? `${label(take)} · ${error}` : playingLine(take, playing, matched);
 }
 
-function PickReason({wid, pick, settle, refresh}: {wid: string; pick: FastPick; settle: (line: string | null) => void; refresh: () => void}) {
+/** The reason S asks for. Enter records the choice with the reason; Escape, an empty Enter or
+ *  leaving the field records it with the words written so far, or none: S has chosen, and
+ *  the reason stays optional. */
+function PickReason({pick, choose, settle}: {pick: FastPick; settle: (line: string | null) => void;
+  choose: ReturnType<typeof useFastPick>['choose']}) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const pending = useRef<ReturnType<typeof command> | null>(null);
+  const pending = useRef<{request: ReturnType<typeof command>; reason: string} | null>(null);
+  const done = useRef(false);
   const name = label(pick.node);
-  const close = (line: string | null) => {settle(line); requestAnimationFrame(() => focusTake(pick.node.id));};
-  useEscapeLayer(() => {if (!busy) close(null); return true;});
-  const keep = async () => {
+  const keep = async (words: string) => {
+    if (busy || done.current) return;
     setBusy(true);
     setError('');
-    pending.current ??= command();
-    // The reason is the choice's own: a revision of the choice it was given with, kept with
-    // the choice in the record and its export. A choice the answer did not name keeps the
-    // reason as an assessment of the take.
-    const body = pick.decision ? {...pending.current, reason: reason.trim(), previous_id: pick.decision}
-      : {...pending.current, reason: reason.trim(), node_ids: [pick.node.id], direction_id: pick.direction, turn_id: pick.node.turn_id};
+    // An unconfirmed choice is sent again as the same request; other words make a new one.
+    if (pending.current?.reason !== words) pending.current = {request: command(), reason: words};
     try {
-      await result(fetchClient.POST('/api/crexil/projects/{wid}/assessments', {params: {path: {wid}}, body}));
-      refresh();
-      close(`Reason kept with ${name}.`);
+      await choose(pick, words, pending.current.request);
+      done.current = true;
+      settle(words ? `Reason kept with ${name}.` : `${pick.chosen ? 'Selected' : 'Removed'} ${name}.`);
+      requestAnimationFrame(() => focusTake(pick.node.id));
     } catch (failure) {
       setError(message(failure));
       if (isDefiniteRefusal(failure)) pending.current = null;
@@ -190,13 +169,15 @@ function PickReason({wid, pick, settle, refresh}: {wid: string; pick: FastPick; 
       setBusy(false);
     }
   };
+  useEscapeLayer(() => {void keep(''); return true;});
   return <form className={s.pickReason} aria-label={`Reason for ${name}`}
-    onSubmit={event => {event.preventDefault(); if (reason.trim()) void keep(); else close(null);}}>
+    onSubmit={event => {event.preventDefault(); void keep(reason.trim());}}>
     <strong>{pick.chosen ? 'Selected' : 'Removed'} {name}</strong>
     <input autoFocus aria-label={`Why ${name}? Optional`} placeholder="Why? Optional, kept with your choice" maxLength={4000}
-      value={reason} disabled={busy} onChange={event => {setReason(event.target.value); pending.current = null;}}/>
-    <button disabled={busy || !reason.trim()}>{busy ? 'Keeping…' : pending.current ? 'Keep same reason' : 'Keep reason'}</button>
-    <span className={s.keyHint}>Enter keeps · Esc skips</span>
+      value={reason} disabled={busy} onChange={event => setReason(event.target.value)}
+      onBlur={event => {if (!event.currentTarget.form?.contains(event.relatedTarget)) void keep(reason.trim());}}/>
+    <button disabled={busy}>{busy ? 'Keeping…' : reason.trim() ? 'Keep reason' : 'Keep'}</button>
+    <span className={s.keyHint}>Enter keeps · Esc skips the reason</span>
     {error && <span className={s.error} role="alert">{error}</span>}
   </form>;
 }
