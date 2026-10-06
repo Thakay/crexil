@@ -427,13 +427,12 @@ def seed_range(item: dict, targets: list[dict]) -> tuple[int, int]:
 
 async def catalogue(stack, definitions: dict | None = None) -> list[dict]:
     results = []
-    benches = stack.scheduler.snapshot()['benches']
     for item in await OperationRegistry(stack.db).list(details=False):
         if definitions is not None:
             definitions['custom-' + item['id']] = item
         definition = OperationDefinition.model_validate(item['definition'])
         reasons = item['gaps'] + binding_gaps(item['binding'])
-        unavailable = config.CREXIL_PREVIEW or 'lane:local' in benches or 'engine:custom-' + item['id'] in benches
+        unavailable = config.CREXIL_PREVIEW or stack.scheduler.bench_holding('custom-' + item['id']) is not None
         if config.CREXIL_PREVIEW:
             reasons.append('Generation is disconnected in this isolated preview.')
         elif unavailable:

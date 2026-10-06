@@ -287,7 +287,7 @@ def test_audio_providers_bench_their_own_scope():
     assert bench_scope_for("dead_key", "external", "elevenlabs-v4", "elevenlabs") == "provider:elevenlabs"
     assert bench_scope_for("unreachable", "external", "elevenlabs-sfx", "elevenlabs") == "provider:elevenlabs"
     assert bench_scope_for("unreachable", "local", "qwen3-tts", "voice-runner") == "provider:voice-runner"
-    assert bench_scope_for("unreachable", "local", "klein", "comfy") == "lane:local"
+    assert bench_scope_for("unreachable", "local", "klein", "comfy") == "provider:comfy"
     assert bench_scope_for("unreachable", "local", "trellis2-4b", "mesh") == "engine:trellis2-4b"
     assert bench_scope_for("model_down", "external", "elevenlabs-v4", "elevenlabs") == "engine:elevenlabs-v4"
 

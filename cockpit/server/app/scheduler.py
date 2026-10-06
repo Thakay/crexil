@@ -257,27 +257,41 @@ def raw_detail(e: EngineFailure) -> str:
     return text[:1600]
 
 
+COMFY_EXECUTORS = frozenset({"comfy", "region"})   # the image and region executors share one ComfyUI
+COMFY_SCOPE = "provider:comfy"
+
+
+def runtime_scope(executor: str | None, lane: str) -> str:
+    """The bench scope an executor's own key or runtime covers (law 1): an
+    audio provider's, ComfyUI's (shared by the image and region executors),
+    else its lane's. OpenRouter's key and network are the external lane's.
+    The local lane's own bench is the one GPU (law 14), never a runtime's."""
+    if executor in audio.PROVIDERS:
+        return f"provider:{executor}"
+    if executor in COMFY_EXECUTORS:
+        return COMFY_SCOPE
+    return f"lane:{lane}"
+
+
 def bench_scope_for(kind: str, lane: str, engine: str,
                     provider: str | None = None) -> str | None:
     """Which scope an engine-level failure benches (law 1: nine slots killed
     by one cause produce one cause record). Content-specific and transient
     kinds never bench; an OOM is the slot's alone (A1: the artist chooses)
     unless the card is held, which the scheduler decides with the live
-    reading, not this table. An audio provider's key and runtime are its
-    own: their failures bench `provider:<name>`, every engine that provider
-    serves and nothing else."""
-    own = provider in audio.PROVIDERS
+    reading, not this table. A dead key or an unreachable runtime benches
+    the scope that key or runtime serves (`runtime_scope`) and nothing
+    else: a down ComfyUI never stops the voice or 3D runner, and a down
+    runner never stops ComfyUI."""
     if kind == "dead_key":
-        # one key kills every engine behind it: OpenRouter's is the
-        # external lane's, another provider's is that provider's alone
-        return f"provider:{provider}" if own else "lane:external"
+        # one key kills every engine behind it: an audio provider's key is
+        # its own, any other key is OpenRouter's, the external lane's
+        return f"provider:{provider}" if provider in audio.PROVIDERS else "lane:external"
     if kind == "unreachable":
-        # a down 3D runner is those two engines' problem, never the
-        # local lane's — benching the lane would stop the ComfyUI takes
-        # beside them (law 1); a down voice runner or provider likewise
+        # a down 3D runner is those two engines' problem alone
         if engine in MESH_ENGINES:
             return f"engine:{engine}"
-        return f"provider:{provider}" if own else f"lane:{lane}"
+        return runtime_scope(provider, lane)
     if kind in ("model_down", "timeout"):
         return f"engine:{engine}"
     return None     # moderation | rate_limit | interrupted | error | blank | charged_blank | oom
@@ -287,8 +301,9 @@ def lane_covers(ex: Executor, lane: str) -> bool:
     """Whether a lane's bench holds this executor's takes. The external
     lane's bench is OpenRouter's key and network: an audio provider has its
     own scope, so another provider's fault never holds it (law 1). The local
-    lane's bench holds every local executor, a voice runner included: one
-    GPU, one held card (law 14)."""
+    lane's bench is the one GPU, a held card or a pause of the whole lane,
+    so it holds every local executor (law 14); ComfyUI's own failures bench
+    `provider:comfy` instead (`runtime_scope`)."""
     return ex.lane == lane and not (lane == "external" and ex.name in audio.PROVIDERS)
 
 
@@ -379,6 +394,13 @@ class Scheduler:
         # without one, or a stack without ComfyUI) — an OOM is then A1/A11
         # on its own, never C2.
         self._gpu_probe = gpu_probe
+        # The card reads as held only when memory that is neither ComfyUI's
+        # nor free passes this threshold. Our own runners count in that
+        # remainder, since WSL2 cannot attribute memory to a process; an idle
+        # voice runner keeps only its CUDA context (0.6 to 1.1 GB measured),
+        # which the default 2.5 GB leaves room for beside the desktop's own
+        # slice. A runner that is generating never sits beside an image
+        # take: local jobs take turns (law 14).
         self._gpu_hold_bytes = (gpu_foreign_hold_bytes
                                 if gpu_foreign_hold_bytes is not None
                                 else config.GPU_FOREIGN_HOLD_BYTES)
@@ -524,6 +546,16 @@ class Scheduler:
         if b:
             return b
         return self._benches.get(f"lane:{ex.lane}") if lane_covers(ex, ex.lane) else None
+
+    def bench_holding(self, engine: str) -> BenchEntry | None:
+        """The bench a new take of this engine would wait behind now, by the
+        rule that holds takes (`bench_for`), so a catalogue's availability
+        never drifts from benching (law 12). None when nothing holds it, or
+        when no executor serves the engine."""
+        try:
+            return self.bench_for(engine)
+        except ValueError:
+            return None
 
     @property
     def started(self) -> bool:
@@ -1814,11 +1846,10 @@ class Scheduler:
                         req = self._collecting_request(req, slot) if req else None
                         rec = await ex.reconcile(slot, request=req)
                     except EngineFailure as e:
-                        # no truth available: bench the lane (an audio
-                        # provider only itself), leave the row running —
+                        # no truth available: bench the executor's own
+                        # runtime (runtime_scope), leave the row running;
                         # unbench retries recovery via requeue
-                        await self.bench(f"provider:{ex.name}" if ex.name in audio.PROVIDERS
-                                         else f"lane:{ex.lane}", kind=e.kind,
+                        await self.bench(runtime_scope(ex.name, ex.lane), kind=e.kind,
                                          cause=f"recovery: {e}")
                         counts["unreachable"] += 1
                         continue
