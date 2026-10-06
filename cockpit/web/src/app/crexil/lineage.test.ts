@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {ancestors,routeLineage,sourceBindings,type Binding} from './lineage';
 import type {Direction,Material,Snapshot} from './api';
 
-const binding=(id:string,parents:string[],outputs=[id]):Binding=>({id,direction:id,parents,outputs,title:id,mesh:false,draft:false});
+const binding=(id:string,parents:string[],outputs=[id]):Binding=>({id,direction:id,parents,outputs,title:id,payload:'image',draft:false});
 const rows=[{row:0,top:16,bottom:194,left:160},{row:1,top:220,bottom:398,left:160},{row:2,top:424,bottom:602,left:160}];
 const faces=[{id:'a',row:0,x:400,y:162},{id:'b',row:0,x:650,y:162}];
 
@@ -116,8 +116,8 @@ describe('Filmstrip source routing',()=>{
     const direction={id:'d',state:'submitted',node_ids:['image','mesh'],turn_ids:['run'],setup:{}} as unknown as Direction;
     const snapshot={nodes:[{id:'image',turn_id:'run',parents:['source'],payload:'image'},
       {id:'mesh',turn_id:'run',parents:['source'],payload:'3d'}],turns:[{id:'run',idx:0,dials:{}}]} as unknown as Snapshot;
-    expect(sourceBindings(direction,snapshot).map(set=>({mesh:set.mesh,outputs:set.outputs}))).toEqual([
-      {mesh:false,outputs:['image']},{mesh:true,outputs:['mesh']},
+    expect(sourceBindings(direction,snapshot).map(set=>({payload:set.payload,outputs:set.outputs}))).toEqual([
+      {payload:'image',outputs:['image']},{payload:'3d',outputs:['mesh']},
     ]);
   });
 

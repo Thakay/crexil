@@ -4,7 +4,7 @@ import {useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
 import {Browser as DestinationBrowser} from '../promote/PromotePlinth';
-import {ActionError,command,label,message,result,type Snapshot} from './api';
+import {command,isDefiniteRefusal,label,message,result,type Snapshot} from './api';
 import {MaterialThumbnail} from './MaterialThumbnail';
 import s from './Filmstrip.module.css';
 
@@ -39,7 +39,7 @@ export function DeliveryRoom({data,initial,close,refresh}:{data:Snapshot;initial
       clearPending();setReview(null);setSelected([]);update();
       await transfer(saved);
     }catch(err){
-      if(err instanceof ActionError&&[404,409,422].includes(err.status??0)){clearPending();setReview(null);}
+      if(isDefiniteRefusal(err)){clearPending();setReview(null);}
       setError(message(err));
     }finally{setBusy(false);update();}
   };

@@ -1,8 +1,9 @@
 // A Filmstrip connection describes one exact source set, not the current draft
 // substituted for old work. Each starter's source set travels on one bundled bus.
+import {producedBy,type Payload} from './actions';
 import {preparation,type Direction,type Material,type Snapshot} from './api';
 
-export type Binding={id:string;direction:string;parents:string[];outputs:string[];title:string;mesh:boolean;draft:boolean};
+export type Binding={id:string;direction:string;parents:string[];outputs:string[];title:string;payload:Payload;draft:boolean};
 export type Anchor={id:string;row:number;x:number;y:number;left?:number;right?:number;visible?:boolean};
 export type RowBox={row:number;top:number;bottom:number;left:number};
 export type Stroke={points:string;binding:string;parent?:string;arrival?:boolean;bus?:boolean;lit:boolean};
@@ -12,22 +13,22 @@ export function sourceBindings(direction:Direction,data:Snapshot):Binding[]{
   const aliases=(data.restoration?.identities as {nodes?:Record<string,string>}|undefined)?.nodes??{};
   const output=data.nodes.filter(n=>direction.node_ids.includes(n.id));
   const sets:Binding[]=[];
-  const add=(parents:string[],outputs:string[],title:string,draft:boolean,mesh:boolean)=>{
-    const same=sets.find(s=>s.draft===draft&&s.mesh===mesh&&JSON.stringify(s.parents)===JSON.stringify(parents));
+  const add=(parents:string[],outputs:string[],title:string,draft:boolean,payload:Payload)=>{
+    const same=sets.find(s=>s.draft===draft&&s.payload===payload&&JSON.stringify(s.parents)===JSON.stringify(parents));
     if(same){same.outputs.push(...outputs);return;}
-    sets.push({id:`${direction.id}:${sets.length}`,direction:direction.id,parents,outputs,title,mesh,draft});
+    sets.push({id:`${direction.id}:${sets.length}`,direction:direction.id,parents,outputs,title,payload,draft});
   };
   const prep=preparation(direction);
-  if(direction.state==='draft')add((prep.references??[]).map(ref=>ref.node_id),[], 'Saved preparation',true,['mesh','decimate','texture'].includes(prep.action));
+  if(direction.state==='draft')add((prep.references??[]).map(ref=>ref.node_id),[], 'Saved preparation',true,producedBy(prep.action));
   for(const turn of data.turns.filter(t=>direction.turn_ids.includes(t.id))){
     const nodes=output.filter(n=>n.turn_id===turn.id);
-    for(const node of nodes)add(node.parents,[node.id],`Run ${turn.idx} sources`,false,node.payload==='3d');
+    for(const node of nodes)add(node.parents,[node.id],`Run ${turn.idx} sources`,false,node.payload);
     if(!nodes.length){
       const frozen=turn.dials as {crexil?:{sources?:{node_id:string}[];setup?:{action?:string}}};
-      add(frozen.crexil?.sources?.map(s=>aliases[s.node_id]??s.node_id)??[],[],`Run ${turn.idx} sources`,false,['mesh','decimate','texture'].includes(frozen.crexil?.setup?.action??''));
+      add(frozen.crexil?.sources?.map(s=>aliases[s.node_id]??s.node_id)??[],[],`Run ${turn.idx} sources`,false,producedBy(frozen.crexil?.setup?.action));
     }
   }
-  for(const node of output.filter(n=>!n.turn_id))add(node.parents,[node.id],'Reported sources',false,node.payload==='3d');
+  for(const node of output.filter(n=>!n.turn_id))add(node.parents,[node.id],'Reported sources',false,node.payload);
   return sets;
 }
 

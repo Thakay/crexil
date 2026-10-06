@@ -5,8 +5,11 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 import { useEffect, useRef, useState } from 'react';
 import type { components } from '../../generated/openapi';
 import { fetchClient } from '../../api/client';
-import { ActionError, blankPreparation, command, label, message,
+import { ACTIONS, actionView } from './actions';
+import { ActionError, blankPreparation, command, isDefiniteRefusal, label, message,
   result, money, type Direction, type Material, type Operation, type Preparation } from './api';
+import { useEscapeLayer } from './keys';
+import { sourceRoles as rolesOf } from './media';
 import s from './Filmstrip.module.css';
 import { ImagePreparationFields, initialImagePreparation } from './ImagePreparationFields';
 import { RegionEditor } from './RegionEditor';
@@ -88,15 +91,15 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
     if(saved){if(closeRequested.current)finishClose();else onCopied(saved.id);}
   };
   const refs = setup.references ?? [];
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') {event.stopImmediatePropagation(); if(regionEditing){if(!maskPending)setRegionEditing(false);}else close();} };
-    window.addEventListener('keydown', key, true);
-    return () => window.removeEventListener('keydown', key, true);
+  // The drawer owns Escape while open: it leaves the region editor first, then closes.
+  useEscapeLayer(() => {
+    if(regionEditing){if(!maskPending)setRegionEditing(false);}else close();
+    return true;
   });
   const choices = setup.operations ?? [];
   const preparingImage = setup.action === 'prepare';
-  const meshAction = ['mesh','decimate','texture'].includes(setup.action??'');
-  const sourceRoles = setup.action==='texture'?['Shape · mesh','Appearance · image']:setup.action==='mesh'?['Image']:setup.action==='decimate'?['Shape · mesh']:[];
+  const meshAction = actionView(setup.action)?.recordedDescription ?? false;
+  const sourceRoles = rolesOf(setup.action);
   const count = choices.reduce((sum, choice) => sum + choice.count, 0);
   const reviewRun = async () => {
     if(submission)return;
@@ -123,9 +126,9 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
       sessionStorage.removeItem(submissionKey(direction.id));pendingSubmission.current=null;setSubmission(null);
       onSaved(); finishClose();
     } catch (err) {
-      if(err instanceof ActionError&&err.status&&err.status>=400&&err.status<500&&err.status!==408){
+      if(isDefiniteRefusal(err)){
         sessionStorage.removeItem(submissionKey(direction.id));pendingSubmission.current=null;setSubmission(null);setReview(null);
-        if(err.status===409)draft.requireComparison();
+        if(err instanceof ActionError&&err.status===409)draft.requireComparison();
       }
       setRunError(message(err));
     } finally {setRunning(false);}
@@ -198,10 +201,7 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
           const recipe=setup.image_preparation??initial;
           update({action:e.target.value as Preparation['action'], ...(e.target.value==='prepare'?{image_preparation:{...recipe,items:refs.map(ref=>recipe.items?.find(item=>item.node_id===ref.node_id)??initial.items?.find(item=>item.node_id===ref.node_id)??{node_id:ref.node_id})}}:{})});
         }}>
-          <option value="generate">Generate from words</option><option value="continue">Continue from one source</option>
-          <option value="combine">Combine sources</option><option value="region">Edit a region</option>
-          <option value="custom">Custom operation</option><option value="mesh">Generate 3D from image</option><option value="decimate">Reduce mesh</option><option value="texture">Texture mesh from image</option>
-          <option value="prepare">Crop, resize or arrange</option>
+          {Object.entries(ACTIONS).filter(([,action])=>action?.listed).map(([id,action])=><option key={id} value={id}>{action!.label}</option>)}
         </select></label>
         <label>{meshAction?'Recorded description':'Prompt'}<textarea aria-label={meshAction?'Recorded description':'Prompt'} placeholder={meshAction?'Describe this direction for the record…':'Describe the next result…'} value={setup.prompt} onChange={e => update({prompt:e.target.value})}/></label>
         <label>Instructions for the next participant<input value={setup.instructions} onChange={e => update({instructions:e.target.value})}/></label>

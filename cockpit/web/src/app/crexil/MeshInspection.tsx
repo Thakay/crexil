@@ -1,6 +1,7 @@
 // A project-scoped shell for the established GLB renderer and inspection modes.
 // Camera and surface changes never modify the retained file or its record.
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
+import { useHotkeys } from 'react-hotkeys-hook';
 import { INITIAL_VIEW, MODE_KEYS, StageBoundary, loadFraction, nextView, truthLine, type LoadStatus, type ModeId } from '../batch/Lightbox';
 import { meshFactsLine } from '../mesh/facts';
 import { imageUrl, type Material } from './api';
@@ -18,14 +19,10 @@ export function MeshInspection({node}: {node: Material}) {
   const [below,setBelow] = useState(false);
   const [attempt,setAttempt] = useState(0);
   const live = load.status==='ready';
-  useEffect(()=>{
-    const key=(event:KeyboardEvent)=>{
-      if(!live||event.altKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('input,textarea,select'))return;
-      const mode=controls.find(([id])=>MODE_KEYS[id].toLowerCase()===event.key.toLowerCase())?.[0];
-      if(mode){event.preventDefault();setView(value=>nextView(value,mode));}
-    };
-    window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
-  },[live]);
+  useHotkeys(controls.map(([id])=>MODE_KEYS[id]).join(','),event=>{
+    const mode=controls.find(([id])=>MODE_KEYS[id].toLowerCase()===event.key.toLowerCase())?.[0];
+    if(mode){event.preventDefault();setView(value=>nextView(value,mode));}
+  },{enabled:live},[live]);
   const fraction=load.status==='loading'?loadFraction(load.loaded,load.total,node.mesh?.file_mb):null;
   return <div className={s.meshInspection} aria-label="Mesh viewer">
     <div className={s.meshStage}>
