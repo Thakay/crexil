@@ -1,0 +1,31 @@
+/* Audio plates and inspection. The audio hue is the --medium-audio token; until a surface
+   defines it, the waveform wears the secondary ink. */
+
+.wave {display:block;width:100%;height:100%;}
+.unplayed {fill:var(--medium-audio, var(--secondary));opacity:.85;}
+.played {fill:var(--accent);}
+.loop {fill:var(--tint-accent);}
+
+.cell {position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--panel);}
+.cellWave {height:62%;padding:0 10px;box-sizing:border-box;}
+.placeholder {font-size:10px;color:var(--muted);}
+.duration {position:absolute;right:6px;bottom:3px;font:8px var(--font-mono);text-transform:uppercase;color:var(--secondary);}
+.playingMark {position:absolute;left:6px;bottom:4px;width:10px;height:10px;color:var(--accent);}
+
+.inspector {width:100%;max-width:960px;display:flex;flex-direction:column;gap:12px;color:var(--text);}
+.stage {position:relative;height:180px;background:var(--panel);border:1px solid var(--hairline);border-radius:var(--r-panel);padding:12px;box-sizing:border-box;}
+.stage:focus-within {outline:var(--focus-outline);outline-offset:var(--focus-offset);}
+.scrub {position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;}
+.scrub:disabled {cursor:default;}
+.transport {display:flex;align-items:center;gap:8px;font:10px var(--font-mono);text-transform:uppercase;}
+.clock {color:var(--secondary);font-variant-numeric:tabular-nums;}
+.spacer {flex:1;}
+.note {margin:0;font-size:11px;color:var(--secondary);}
+.error {margin:0;font-size:11px;color:var(--danger);}
+.transcript h3 {margin:0 0 4px;font:9px var(--font-mono);text-transform:uppercase;color:var(--muted);font-weight:400;}
+.transcript p {margin:0;font-size:13px;line-height:1.5;}
+.spoken {color:var(--text);}
+.rest {color:var(--muted);}
+.facts {display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0;font-size:11px;}
+.facts dt {font:9px var(--font-mono);text-transform:uppercase;color:var(--muted);align-self:center;}
+.facts dd {margin:0;color:var(--secondary);overflow-wrap:anywhere;}

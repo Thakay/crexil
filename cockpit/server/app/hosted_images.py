@@ -3,6 +3,8 @@
 Endpoint descriptions own capabilities and tariffs. Only explicitly understood
 controls and flat per-image billing can be compiled; all other saved values are
 refused in words. A tariff reserves expected spend but never promises a hard cap.
+Endpoint facts older than CATALOG_TTL_S never compile; the refusal states their
+observed age and why no fresher facts exist (laws 3 and 17).
 Dispatch must recheck the exact endpoint description before sending source bytes.
 """
 
@@ -18,14 +20,37 @@ from decimal import Decimal, InvalidOperation
 
 from PIL import Image
 
+from .providers import CATALOG_TTL_S
+
+# Observations that change without the model changing; a revision ignores them.
+VOLATILE = ('endpoints_fetched_at', 'endpoint_discovery_error', 'catalogue_state')
+
 
 def fingerprint(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
 def revision(model: dict) -> str:
-    return fingerprint({k: v for k, v in model.items()
-        if k not in ('endpoints_fetched_at', 'endpoint_discovery_error')})[:16]
+    return fingerprint({k: v for k, v in model.items() if k not in VOLATILE})[:16]
+
+
+def _elapsed(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    return f'{minutes} min' if minutes < 120 else f'{minutes // 60} h'
+
+
+def stale_reason(model: dict, age: float | None) -> str:
+    """One plain line: how old the confirmed endpoint facts are, and why nothing fresher exists."""
+    limit = f'{CATALOG_TTL_S // 3600} hours'
+    first = (f'Endpoint capabilities were last confirmed {_elapsed(age)} ago; hosted requests need '
+             f'them confirmed within {limit}.' if age is not None and age >= 0 else
+             f'Endpoint capabilities have not been confirmed; hosted requests need them confirmed within {limit}.')
+    state = model.get('catalogue_state') or {}
+    if state.get('refreshing'):
+        return first + ' A catalogue refresh is running. Review again when it finishes.'
+    if state.get('last_failure'):
+        return first + f" The latest catalogue refresh failed: {state['last_failure']}. Review again to retry."
+    return first + ' Review again to refresh the catalogue.'
 
 
 def inputs(model: dict) -> list[dict]:
@@ -83,14 +108,15 @@ def tariff(endpoint: dict, output_count: int, reference_count: int) -> Decimal:
 
 def compile_request(model: dict, setup, choice, source_blobs: list[bytes]) -> dict:
     if model.get('endpoint_discovery_error'):
-        raise ValueError('Endpoint discovery failed. Refresh the catalogue before preparing hosted work.')
+        raise ValueError('Endpoint discovery failed for this model at the last catalogue refresh. '
+                         'Review again in a minute to retry it.')
     try:
         fetched = datetime.fromisoformat(model['endpoints_fetched_at']).astimezone(timezone.utc)
         age = (datetime.now(timezone.utc) - fetched).total_seconds()
-        if not 0 <= age <= 6 * 3600:
-            raise ValueError()
     except (KeyError, TypeError, ValueError):
-        raise ValueError('Endpoint capabilities are stale or unavailable. Refresh the catalogue.') from None
+        age = None
+    if age is None or not 0 <= age <= CATALOG_TTL_S:
+        raise ValueError(stale_reason(model, age))
     given = {**setup.controls, **choice.controls}
     declared = inputs(model)
     tag = given.pop('provider', declared[0]['default'])

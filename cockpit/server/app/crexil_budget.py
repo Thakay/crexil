@@ -9,7 +9,8 @@ hard bounds, and reducing a limit only gates future dispatches.
 from __future__ import annotations
 
 import json
-from decimal import Decimal
+import math
+from decimal import ROUND_CEILING, Decimal
 
 
 class BudgetExceeded(ValueError):
@@ -21,19 +22,44 @@ class UnknownPrice(ValueError):
 
 
 MICRO_USD = Decimal(1_000_000)
+UNKNOWN = 'An unknown price counts as over the spending limit.'
+
+# A tariff unit, the measure it counts, the plain name of that measure, and how
+# many measured units the published price covers.
+TARIFF_UNITS = {'1k_characters': ('characters', 'billed characters', 1000),
+                'second': ('seconds', 'duration in seconds', 1),
+                'generation': ('generations', 'number of generations', 1),
+                'attempt': ('attempts', 'number of attempts', 1)}
 
 
-def audio_reservation(tariff: dict | None, measures: dict) -> int:  # noqa: ARG001
-    """The published-tariff reservation for one audio attempt, in integer
-    micro-dollars, from the engine's tariff and the attempt's measures:
-    `characters` (for `1k_characters`), `seconds` (for `second`), and one
-    `generation` or `attempt`. A reservation never guesses: an unpriceable
-    tariff refuses. An unmetered engine (0 micro-dollars) reserves nothing."""
+def audio_reservation(tariff: dict | None, measures: dict) -> int:
+    """The published-tariff price of one audio attempt, in integer micro-dollars,
+    from the engine's tariff and the attempt's measures: `characters` (for
+    `1k_characters`), `seconds` (for `second`), `generations` or `attempts`.
+
+    `micro_usd` is the list price. No other price a tariff may carry, such as a
+    temporary sale price, is read, so a reservation never comes in under the
+    charge. A fractional micro-dollar rounds up. An unmetered engine (0
+    micro-dollars) reserves nothing. A paid price never guesses: an unknown
+    unit, or a measure that is missing, not a positive number, or not a whole
+    count where one is billed, refuses (law 22).
+
+    The same arithmetic prices a reported usage, so an adapter turns the
+    characters or seconds a provider says it billed into the take's charge."""
     if not isinstance(tariff, dict) or type(tariff.get('micro_usd')) is not int or tariff['micro_usd'] < 0:
-        raise UnknownPrice('This engine has no published price. An unknown price counts as over the spending limit.')
+        raise UnknownPrice(f'This engine has no published price. {UNKNOWN}')
     if tariff['micro_usd'] == 0:
         return 0
-    raise UnknownPrice('Audio prices are not computed yet. An unknown price counts as over the spending limit.')
+    if tariff.get('unit') not in TARIFF_UNITS:
+        raise UnknownPrice(f"This price is quoted per {tariff.get('unit')!r}, which Crexil cannot count. {UNKNOWN}")
+    key, noun, per = TARIFF_UNITS[tariff['unit']]
+    value = (measures or {}).get(key)
+    whole = key != 'seconds'
+    if (isinstance(value, bool) or not isinstance(value, (int, float)) or (whole and not isinstance(value, int))
+            or (isinstance(value, float) and not math.isfinite(value)) or value <= 0):
+        raise UnknownPrice(f'The request does not state its {noun}, so its price is unknown. {UNKNOWN}')
+    exact = Decimal(str(value)) * tariff['micro_usd'] / per
+    return int(exact.to_integral_value(rounding=ROUND_CEILING))
 
 
 async def accounting(db, wid: str, *, turn_id: str | None = None,
