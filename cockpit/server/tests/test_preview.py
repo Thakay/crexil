@@ -70,8 +70,9 @@ async def test_preview_stays_offline_after_refresh_setup_and_unbench(tmp_path, m
             assert ws.status_code == 201
             wid = ws.json()["id"]
             for lane in ("local", "external"):
-                assert (await client.post("/api/unbench",
-                                          json={"scope": f"lane:{lane}"})).status_code == 200
+                kept = await client.post("/api/unbench", json={"scope": f"lane:{lane}"})
+                assert kept.status_code == 422 and kept.json()["detail"] == (
+                    "This isolated preview runs no engines, so its attempts stay held.")
             run = await client.post(f"/api/workspaces/{wid}/turns", json={
                 "prompt": "must remain unavailable",
                 "local": [{"preset_id": "testpreset", "takes": 1}],

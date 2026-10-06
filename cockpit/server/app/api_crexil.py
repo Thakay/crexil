@@ -357,10 +357,16 @@ async def execution_control_state(scope: Literal['project', 'run', 'sequence'], 
 
 @router.post('/execution/{scope}/{target_id}', response_model=ExecutionControlView)
 async def control_execution(scope: Literal['project', 'run', 'sequence'], target_id: str, body: ControlExecution):
-    from .execution_controls import record
+    """Pause, resume or cancel a project, run or sequence, for its participant
+    (law 23). Agents may pause and cancel; resuming work that may spend is the
+    artist's act (403)."""
+    from .execution_controls import ArtistsMove, record
     async def apply():
         return await record(store().db, scope, target_id, body)
-    saved = await command(body, f'execution.control:{scope}:{target_id}', apply)
+    try:
+        saved = await command(body, f'execution.control:{scope}:{target_id}', apply)
+    except ArtistsMove as exc:
+        raise HTTPException(403, str(exc)) from exc
     await wiring.current.scheduler.apply_execution_controls()
     wiring.current.sequences.wake.set()
     return saved
@@ -870,8 +876,10 @@ async def resume_attempt(sid: str, body: AttemptMove):
     runner answering, the card free). The attempts that bench holds go back
     to the queue, and each meets the run, project and sequence limits again
     before it is sent (law 22). An agent resumes free local work only:
-    sending held attempts that reserve money is the artist's act."""
-    from .execution_controls import PAID_RESUME, held_attempt, remaining_cause, reserves_money
+    sending held attempts that reserve money is the artist's act, and every
+    attempt of a hidden run answers an agent in one neutral line, whatever
+    its price."""
+    from .execution_controls import HIDDEN_RESUME, PAID_RESUME, held_attempt, remaining_cause, reserves_money
     from .execution_controls import resume_attempt as record
     creative = store()
     stack = wiring.current
@@ -881,6 +889,10 @@ async def resume_attempt(sid: str, body: AttemptMove):
     except Conflict as exc:
         raise refused(exc) from exc
     if saved is None:
+        if body.actor.kind != 'human':
+            current = await creative.db.get_slot(sid)
+            if current and await blind.is_hidden(creative.db, current['turn_id']):
+                raise HTTPException(403, HIDDEN_RESUME)
         try:
             slot, bench = await held_attempt(creative.db, stack.scheduler, sid, body.attempt)
         except (LookupError, ValueError) as exc:

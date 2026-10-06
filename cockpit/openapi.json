@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "Actor": {
+        "description": "The participant behind a change: the artist or a named agent (law 23).",
         "properties": {
           "kind": {
             "enum": [
@@ -2397,12 +2398,12 @@
             "anyOf": [
               {
                 "enum": [
-                  "enum",
                   "text",
                   "int",
                   "float",
-                  "bool",
-                  "seed"
+                  "enum",
+                  "seed",
+                  "bool"
                 ],
                 "type": "string"
               },
@@ -3826,7 +3827,8 @@
                   "int",
                   "float",
                   "enum",
-                  "seed"
+                  "seed",
+                  "bool"
                 ],
                 "type": "string"
               },
@@ -9906,7 +9908,11 @@
         "type": "object"
       },
       "Unbench": {
+        "description": "A bench lift from the legacy canvas, with its participant (law 23). The\nlegacy canvas names none, so an omitted actor is the artist.",
         "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
           "scope": {
             "title": "Scope",
             "type": "string"
@@ -10922,7 +10928,7 @@
     },
     "/api/crexil/attempts/{sid}/resume": {
       "post": {
-        "description": "Resume the engine that holds this attempt, for its participant (laws 4\nand 23): A9's TRY ONCE MORE for an engine held for one run, an engine's\nown bench, or a runtime's bench once its cause is gone (a key accepted, a\nrunner answering, the card free). The attempts that bench holds go back\nto the queue, and each meets the run, project and sequence limits again\nbefore it is sent (law 22). An agent resumes free local work only:\nsending held attempts that reserve money is the artist's act.",
+        "description": "Resume the engine that holds this attempt, for its participant (laws 4\nand 23): A9's TRY ONCE MORE for an engine held for one run, an engine's\nown bench, or a runtime's bench once its cause is gone (a key accepted, a\nrunner answering, the card free). The attempts that bench holds go back\nto the queue, and each meets the run, project and sequence limits again\nbefore it is sent (law 22). An agent resumes free local work only:\nsending held attempts that reserve money is the artist's act, and every\nattempt of a hidden run answers an agent in one neutral line, whatever\nits price.",
         "operationId": "resume_attempt_api_crexil_attempts__sid__resume_post",
         "parameters": [
           {
@@ -11340,6 +11346,7 @@
     },
     "/api/crexil/directions/{did}/selection": {
       "put": {
+        "description": "Change a direction's displayed selection: a choice with its author and\nreason (law 23). The answer carries the decision it recorded, so a later\nrevision of its reason can name it.",
         "operationId": "display_selection_api_crexil_directions__did__selection_put",
         "parameters": [
           {
@@ -11550,6 +11557,7 @@
         ]
       },
       "post": {
+        "description": "Pause, resume or cancel a project, run or sequence, for its participant\n(law 23). Agents may pause and cancel; resuming work that may spend is the\nartist's act (403).",
         "operationId": "control_execution_api_crexil_execution__scope___target_id__post",
         "parameters": [
           {
@@ -14863,6 +14871,7 @@
     },
     "/api/unbench": {
       "post": {
+        "description": "Lift a bench from the legacy canvas (UNBENCH, TRY ONCE MORE) by the\nproject surface's resume rules: the lift names its participant on its\nevent (law 23); a runtime's bench lifts only once a live check finds\nits cause gone, else 422 says what is still wrong (laws 3 and 4); and an\nagent never sends held work that reserves money, nor any attempt of a\nhidden run (403).",
         "operationId": "unbench_api_unbench_post",
         "requestBody": {
           "content": {

@@ -1314,10 +1314,30 @@ async def cancel_turn(turn_id: str):
 
 @router.post("/unbench", response_model=UnbenchResult)
 async def unbench(body: Unbench):
-    sched = _stack().scheduler
-    cleared = body.scope in sched.snapshot()["benches"]
-    await sched.unbench(body.scope)
-    return {"scope": body.scope, "cleared": cleared}
+    """Lift a bench from the legacy canvas (UNBENCH, TRY ONCE MORE) by the
+    project surface's resume rules: the lift names its participant on its
+    event (law 23); a runtime's bench lifts only once a live check finds
+    its cause gone, else 422 says what is still wrong (laws 3 and 4); and an
+    agent never sends held work that reserves money, nor any attempt of a
+    hidden run (403)."""
+    from .execution_controls import HIDDEN_RESUME, PAID_RESUME, remaining_cause, reserves_money
+    stack = _stack()
+    sched = stack.scheduler
+    bench = sched.standing(body.scope)
+    if bench is None:
+        return {"scope": body.scope, "cleared": False}
+    if body.actor.kind != "human":
+        held = await sched.held_by(body.scope)
+        hidden = await blind.hidden_turns(stack.db)
+        if any(slot["turn_id"] in hidden for slot in held):
+            raise HTTPException(403, HIDDEN_RESUME)
+        if reserves_money(held):
+            raise HTTPException(403, PAID_RESUME)
+    why = await remaining_cause(stack, bench)
+    if why:
+        raise HTTPException(422, why)
+    await sched.unbench(body.scope, actor=body.actor.model_dump())
+    return {"scope": body.scope, "cleared": True}
 
 
 @router.get("/events", response_model=Events)

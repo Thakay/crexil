@@ -40,6 +40,18 @@ class RegionAction(StrEnum):
     delete = "delete"
 
 
+# The kinds of one public control or preset input. Declared once, so every
+# model that names a control's type shares one schema, whatever order the
+# models are built in.
+ControlType = Literal["text", "int", "float", "enum", "seed", "bool"]
+
+
+class Actor(BaseModel):
+    """The participant behind a change: the artist or a named agent (law 23)."""
+    kind: Literal["human", "agent"]
+    name: str = Field(min_length=1, max_length=120)
+
+
 # --- requests ---
 
 
@@ -110,7 +122,7 @@ class InputSpec(BaseModel):
     key: str
     supported: bool                      # normalization always sets it
     label: str | None = None
-    type: Literal["text", "int", "float", "enum", "seed"] | None = None
+    type: ControlType | None = None
     required: bool | None = None
     default: Any = None
     placeholder: str | None = None
@@ -588,7 +600,7 @@ class EngineParam(BaseModel):
     control, which is why everything but `label` is optional here."""
     label: str
     effect: str | None = None
-    type: Literal["enum", "text", "int", "float", "bool", "seed"] | None = None
+    type: ControlType | None = None
     choices: list[Any] = []
     default: Any = None
     required: bool | None = None
@@ -970,7 +982,10 @@ class TurnCancelResult(BaseModel):
 
 
 class Unbench(BaseModel):
+    """A bench lift from the legacy canvas, with its participant (law 23). The
+    legacy canvas names none, so an omitted actor is the artist."""
     scope: str                           # "lane:local" | "lane:external" | "engine:<id>" | "provider:<name>"
+    actor: Actor = Field(default_factory=lambda: Actor(kind="human", name="Artist"))
 
 
 class UnbenchResult(BaseModel):
