@@ -260,6 +260,12 @@
 .drawerBody {padding:14px 16px;display:grid;grid-template-columns:230px minmax(320px,1fr) minmax(300px,1.4fr);gap:24px;overflow:auto;}
 .words {display:flex;flex-direction:column;gap:12px;}
 .words textarea {min-height:92px;}
+.carryWords {display:flex;flex-direction:column;gap:6px;margin-top:-4px;}
+.carryWords>div {display:flex;flex-wrap:wrap;gap:6px;}
+.carryWords button {display:flex;flex-direction:column;align-items:flex-start;gap:2px;max-width:100%;padding:6px 9px;text-align:left;}
+.carryWords strong {font-size:11px;font-weight:500;}
+.carryWords button span {max-width:34ch;font-size:10.5px;color:var(--secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.carryWords .hint {margin:0;}
 .sources {border-right:1px solid var(--hairline);padding-right:18px;}
 .source {display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
 .source img {width:70px;height:55px;object-fit:contain;border:1px solid var(--border);border-radius:3px;}

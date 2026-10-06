@@ -8,7 +8,7 @@
 // spends money: a paid path opens a preparation, and its price sits on the Run
 // button (law 6). A blind run's face never names its engine or its cost.
 import { benchWords, costLine, receipt, retryLine, waitingLine, type CellVM } from '../batch/grid';
-import { engineLabel, money, type Operation, type Snapshot } from './api';
+import { engineLabel, money, takeLabel, type Operation, type Snapshot } from './api';
 import type { Slot } from './cells';
 
 export type Turn = Snapshot['turns'][number];
@@ -32,7 +32,7 @@ export type AttemptTone = 'dead' | 'waiting' | 'info';
 
 export type AttemptFaceVM = {
   slotId: string;
-  /** "0A": the run's index and the slot's letter, as material labels spell them. */
+  /** "0A": the run's index and the slot's letters, as material labels spell them (`takeLabel`). */
   label: string;
   /** The face's first words, in caps: FAILED, HELD, OUTCOME UNCERTAIN… */
   title: string;
@@ -85,8 +85,6 @@ export function priced(op: Operation | undefined): boolean {
   return (op.maximum_usd_per_attempt ?? 0) > 0 || (op.price_usd ?? 0) > 0 || (op.tariff?.micro_usd ?? 0) > 0;
 }
 
-const slotLabel = (turn: Turn, slot: Slot) => `${turn.idx}${String.fromCharCode(65 + slot.pos)}`;
-
 function landing(op: Operation | undefined): string {
   return op?.output_payload === 'image' ? 'an image' : op?.output_payload === '3d' ? 'a mesh' : 'a take';
 }
@@ -97,7 +95,7 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
   const op = hidden ? undefined : operationFor(slot.engine, operations);
   const paid = !hidden && ((slot.committed_usd ?? 0) > 0 || (slot.charged_usd ?? 0) > 0 || priced(op));
   const engine = engineLabel(slot, 'face');
-  const label = slotLabel(turn, slot);
+  const label = takeLabel(turn.idx, slot.pos);
   const cell: CellVM = {
     slotId: slot.id, pos: slot.pos, engine, external: paid, status: slot.status, seed: slot.seed,
     attempt: slot.attempt, cause: slot.cause, detail: slot.detail, retryOf: slot.retry_of, kind: slot.kind,
@@ -190,7 +188,7 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
 export function blindFace(turn: Turn, slot: Slot): AttemptFaceVM {
   const done = turn.slots.filter(item => !['queued', 'running'].includes(item.status)).length;
   return {
-    slotId: slot.id, label: slotLabel(turn, slot), title: 'IN PROGRESS', tone: 'waiting', engine: 'Blind',
+    slotId: slot.id, label: takeLabel(turn.idx, slot.pos), title: 'IN PROGRESS', tone: 'waiting', engine: 'Blind',
     cause: null, detail: null, cost: null, retry: null, remedies: [], receipt: null,
     progress: `${done} of ${turn.slots.length} attempts done. Every take shows when the run settles.`,
   };

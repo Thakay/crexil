@@ -30,6 +30,11 @@ describe('attemptFace: what happened · what it cost · what to do next (laws 3,
       detail: 'Traceback…', cost: '12s of GPU time spent · 1 take still queued'});
     expect(face.remedies).toEqual([{id: 'reuse', label: 'REUSE SETUP', primary: true, gated: null}]);
   });
+  it('names an attempt past Z by the same letters as its takes', () => {
+    expect(attemptFace(slot({pos: 25}), ctx()).label).toBe('0Z');
+    expect(attemptFace(slot({pos: 26}), ctx()).label).toBe('0AA');
+    expect(attemptFace(slot({pos: 27, status: 'queued'}), ctx()).label).toBe('0AB');
+  });
   it('a paid failure says nothing was charged, or what was', () => {
     expect(attemptFace(slot({engine: 'openai/gpt-image-2', committed_usd: .04}), ctx()).cost).toBe('nothing was charged');
     expect(attemptFace(slot({engine: 'openai/gpt-image-2', charged_usd: .04}), ctx()).cost).toBe('$0.04 was charged');

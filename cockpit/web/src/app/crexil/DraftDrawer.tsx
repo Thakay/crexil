@@ -6,6 +6,8 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // chosen. A run can be blind: its engines stay hidden until the artist reveals them.
 // When spending moved since review, submitting reviews again once and shows the new
 // totals before Run is asked for again; any other conflict means the request changed.
+// Empty words can start from the words of a section in this preparation's family, its
+// row or its sources' rows: they are copied here to edit, and that section keeps its own.
 import { useEffect, useRef, useState } from 'react';
 import type { components } from '../../generated/openapi';
 import { fetchClient } from '../../api/client';
@@ -21,6 +23,7 @@ import s from './Filmstrip.module.css';
 import { ImagePreparationFields, initialImagePreparation } from './ImagePreparationFields';
 import { RegionEditor } from './RegionEditor';
 import {usePreparationDraft} from './usePreparationDraft';
+import { wordsToCarry } from './family';
 
 type Submission={body:components['schemas']['SubmitDirection'];image:boolean;title:string;setup:Preparation};
 const submissionKey=(id:string)=>`crexil-submission:${id}`;
@@ -29,8 +32,8 @@ function savedSubmission(id:string):Submission|null {
 }
 export const hasPendingSubmission=(id:string)=>Boolean(savedSubmission(id));
 
-export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, onCopied }: {
-  direction: Direction; nodes: Material[]; operations: Operation[];
+export function DraftDrawer({ direction, directions, nodes, operations, onSaved, onClose, onCopied }: {
+  direction: Direction; directions: readonly Direction[]; nodes: Material[]; operations: Operation[];
   onSaved: () => void; onClose: () => void; onCopied:(id:string)=>void;
 }) {
   const [maskPending,setMaskPending] = useState(false);
@@ -111,6 +114,8 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
   const tariffChosen = operations.filter(op => choices.some(choice => choice.operation_id === op.id) && tariffPriced(op));
   const sourceRoles = rolesOf(setup.action);
   const count = choices.reduce((sum, choice) => sum + choice.count, 0);
+  const carry = meshAction || setup.prompt.trim() ? []
+    : wordsToCarry({id: direction.id, row: direction.row_idx, sources: refs.map(ref => ref.node_id)}, directions);
   // `note` stays beside the new review, such as why the run was reviewed again.
   const reviewRun = async (note = '') => {
     if(pendingSubmission.current)return;
@@ -219,6 +224,13 @@ export function DraftDrawer({ direction, nodes, operations, onSaved, onClose, on
           {Object.entries(ACTIONS).filter(([,action])=>action?.listed).map(([id,action])=><option key={id} value={id}>{action!.label}</option>)}
         </select></label>
         <label>{wordsName}<textarea aria-label={wordsName} placeholder={meshAction?'Describe this direction for the record…':spoken?`Write the ${spoken.toLowerCase()}…`:'Describe the next result…'} value={setup.prompt} onChange={e => update({prompt:e.target.value})}/></label>
+        {carry.length > 0 && <div className={s.carryWords} role="group" aria-labelledby={`carry-head-${direction.id}`}>
+          <span className={s.mono} id={`carry-head-${direction.id}`}>Start from the words of</span>
+          <div>{carry.map(item => <button key={item.direction} type="button" aria-label={`Start from the words of ${item.title}`}
+            aria-describedby={`carry-words-${item.direction}`} onClick={() => update({prompt: item.words})}>
+            <strong>{item.title}</strong><span id={`carry-words-${item.direction}`}>{item.words}</span></button>)}</div>
+          <p className={s.hint}>Copies the words here to edit. The section they come from keeps its own.</p>
+        </div>}
         <label>Instructions for the next participant<input value={setup.instructions} onChange={e => update({instructions:e.target.value})}/></label>
         <label className={s.blindChoice}><input type="checkbox" checked={setup.blind===true} onChange={e=>update({blind:e.target.checked})}/>Blind run</label>
         <p className={s.hint}>{setup.blind?'Engines, prices and level figures stay hidden until you reveal the run. Takes are placed once at Run and never move.':'Each take names its engine and price as it lands.'}</p>

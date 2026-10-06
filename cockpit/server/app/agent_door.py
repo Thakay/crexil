@@ -62,8 +62,15 @@ class ProviderRefused(Exception):
 # --- the run view ---
 
 def label(turn_idx: int, pos: int, output_index: int = 0) -> str:
-    """The grid's own name for a cell or a take: "3B", or "3B.2" for a later output."""
-    return f"{turn_idx}{chr(65 + pos)}" + (f".{output_index + 1}" if output_index > 0 else '')
+    """The grid's own name for a cell or a take: the run's index, then the cell's
+    letters, "3B", or "3B.2" for a later output. Cells past Z continue as spreadsheet
+    columns do, "3AA", "3AB", so every position of a run has its own name. The
+    client's `takeLabel` spells the same names."""
+    letters, rest = '', pos + 1
+    while rest:
+        rest, digit = divmod(rest - 1, 26)
+        letters = chr(65 + digit) + letters
+    return f'{turn_idx}{letters}' + (f'.{output_index + 1}' if output_index > 0 else '')
 
 
 def _elapsed_ms(slot: dict, now: datetime) -> int | None:

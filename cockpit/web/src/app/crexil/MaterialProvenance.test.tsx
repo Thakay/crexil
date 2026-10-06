@@ -1,6 +1,6 @@
-import {render,screen,within} from '@testing-library/react';
-import {describe,expect,it,vi} from 'vitest';
-import {MaterialProvenance} from './MaterialProvenance';
+import {cleanup,render,screen,within} from '@testing-library/react';
+import {afterEach,describe,expect,it,vi} from 'vitest';
+import {MaterialProvenance,TakeWords} from './MaterialProvenance';
 import type {Material,Snapshot} from './api';
 
 const fixtures=vi.hoisted(()=>({record:{request:null,controls:{},submitted:null,regions:null} as Record<string,unknown>,refetch:vi.fn()}));
@@ -32,5 +32,30 @@ describe('frozen provenance facts',()=>{
     expect(screen.queryByText('Spending bound')).not.toBeInTheDocument();
     expect(screen.queryByText('saved-revision')).not.toBeInTheDocument();
     expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
+  });
+});
+
+describe('a take keeps its words as typed and as submitted',()=>{
+  afterEach(cleanup);
+  const line={...node,id:'line',payload:'audio',verb:'speak',prompt:'Bring me the ore.  '} as Material;
+  it('says the words once when they were submitted as typed',()=>{
+    fixtures.record={controls:{},regions:null,request:{setup:{prompt:'Bring me the ore.  '}},submitted:{text:'Bring me the ore.'}};
+    render(<TakeWords node={line}/>);
+    expect(screen.getByRole('heading',{name:'Line to speak'})).toBeInTheDocument();
+    expect(screen.getByText('As typed and as submitted.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading',{name:/as typed$/})).toBeNull();
+  });
+  it('shows both versions when the request sent more than was typed',()=>{
+    const image={...node,verb:'continue',prompt:'A stout dwarf blacksmith.\n\nKeep the silhouette.'} as Material;
+    fixtures.record={controls:{},regions:null,request:{setup:{prompt:'A stout dwarf blacksmith.'}},submitted:{}};
+    render(<TakeWords node={image}/>);
+    expect(screen.getByRole('heading',{name:'Prompt as typed'}).nextElementSibling).toHaveTextContent(/^A stout dwarf blacksmith\.$/);
+    expect(screen.getByRole('heading',{name:'Prompt as submitted'}).nextElementSibling).toHaveTextContent('Keep the silhouette.');
+  });
+  it("shows a blind take's own words and claims neither version while the record is withheld",()=>{
+    fixtures.record={controls:{},regions:null,request:null,submitted:null};
+    render(<TakeWords node={{...line,identity_hidden:true} as Material}/>);
+    expect(screen.getByRole('heading',{name:'Line to speak'}).nextElementSibling).toHaveTextContent('Bring me the ore.');
+    expect(screen.queryByText('As typed and as submitted.')).toBeNull();
   });
 });

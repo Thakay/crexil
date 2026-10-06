@@ -1,10 +1,13 @@
 // Inspection reads the accepted request and the take's actual controls. Current
 // operation definitions never substitute for missing historical evidence. A blind
-// take withholds its operation, seed, charge and landing time until the reveal.
+// take withholds its operation, seed, charge and landing time until the reveal. A
+// generated take's words show as typed and as submitted (`TakeWords`).
 import {useEffect} from 'react';
 import {$api} from '../../api/client';
 import {DecisionCard} from './RecordRoom';
+import {actionView} from './actions';
 import {isHidden,label,message,money,type Material,type Snapshot} from './api';
+import {recordedWords} from './family';
 import s from './Filmstrip.module.css';
 
 const WITHHELD='Withheld until the reveal';
@@ -45,7 +48,6 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
     </dl>}
     {operation?.cost_basis&&<p>{operation.cost_basis}</p>}
     {operation?.limitations?.length? <><h3>Operation limits</h3>{operation.limitations.map(note=><p key={note}>{note}</p>)}</>:null}
-    {request?.setup?.prompt&&<><h3>Instructions as prepared</h3><p className={s.recordPrompt}>{request.setup.prompt}</p></>}
     {request?.setup?.instructions&&<><h3>Additional instructions</h3><p>{request.setup.instructions}</p></>}
     {request?.setup?.references?.length? <><h3>Requested source contributions</h3>{request.setup.references.map((ref,index)=>{
       const id=aliases[ref.node_id]??ref.node_id,node=data.nodes.find(n=>n.id===id);
@@ -63,4 +65,20 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
     {decisions.data&&!decisions.data.decisions.length&&<p>No assessment or display choice is recorded for this material.</p>}
     <button onClick={openRecord}>Decisions and assessments ›</button>
   </>;
+}
+
+/** A generated take's words: as typed in the preparation its run accepted and as submitted
+ *  in its frozen request, said once when they match. Until the record is read, or while a
+ *  blind run withholds it, the take's own words show without either claim. */
+export function TakeWords({node}:{node:Material}) {
+  const query=$api.useQuery('get','/api/crexil/material/{nid}/record',{params:{path:{nid:node.id}}});
+  const name=actionView(node.verb)?.words??'Prompt';
+  const {typed,submitted}=recordedWords(node,query.data);
+  if(typed!==null&&submitted!==null&&typed.trim()===submitted.trim())
+    return <><h3>{name}</h3><p className={s.recordPrompt}>{submitted}</p><p className={s.hint}>As typed and as submitted.</p></>;
+  if(typed!==null||submitted!==null)return <>
+    {typed!==null&&<><h3>{name} as typed</h3><p className={s.recordPrompt}>{typed}</p></>}
+    {submitted!==null&&<><h3>{name} as submitted</h3><p className={s.recordPrompt}>{submitted}</p></>}
+  </>;
+  return node.prompt?<><h3>{name}</h3><p className={s.recordPrompt}>{node.prompt}</p></>:null;
 }
