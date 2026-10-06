@@ -1,11 +1,19 @@
 // The one audio player of the client. A single media element plays at most one take at a
 // time: starting a take replaces the one before it, so two takes never sound together. Every
-// take plays at its matched level (level.ts). Playback is inspection, not a verb: nothing here
-// changes server state (law 11 keeps the three input triggers for verbs).
+// take plays at its matched level (level.ts). Whoever starts a take, the player asks its
+// before-play listeners first, synchronously, so a listener acts before the first sound. A
+// loop wraps at its end on a timer due there, so it never sounds past its end. Playback is
+// inspection, not a verb: nothing here changes server state (law 11 keeps the three input
+// triggers for verbs).
 import { createStore, useStore, type StoreApi } from 'zustand';
 import { UNMATCHED, type Level } from './level';
 
 export type Loop = {start: number; end: number};
+
+/** Asked before any take starts, after the take is loaded and before the element plays: the
+ *  voice director mutes its microphone here. Returning a plain line refuses the take; the line
+ *  becomes the player's error and nothing plays. */
+export type BeforePlay = () => string | null | void;
 
 export type PlayerState = {
   /** The loaded take, playing or paused. */
@@ -49,19 +57,40 @@ export type Player = ReturnType<typeof createPlayer>;
 
 export function createPlayer(make: () => MediaLike = () => new Audio()) {
   const store: StoreApi<PlayerState> = createStore<PlayerState>(initial);
+  const listeners = new Set<BeforePlay>();
   let element: MediaLike | null = null;
+  let wrap: ReturnType<typeof setTimeout> | undefined;
+
+  /** While a loop plays, a timer due at its end wraps it back to its start; timeupdate fires
+   *  only every 15 to 250 ms, so it keeps the clock and never the loop. */
+  const watchLoop = () => {
+    clearTimeout(wrap);
+    const {loop, playing} = store.getState();
+    const made = element;
+    if (!loop || !playing || !made) return;
+    const left = loop.end - made.currentTime;
+    if (left > 0) {
+      wrap = setTimeout(watchLoop, left * 1000);
+      return;
+    }
+    made.currentTime = loop.start;
+    store.setState({position: loop.start});
+    wrap = setTimeout(watchLoop, (loop.end - loop.start) * 1000);
+  };
 
   const media = (): MediaLike => {
     if (element) return element;
     const made = make();
     made.preload = 'auto';
-    made.addEventListener('play', () => store.setState({playing: true, error: null}));
-    made.addEventListener('pause', () => store.setState({playing: false}));
-    made.addEventListener('timeupdate', () => {
-      const {loop} = store.getState();
-      if (loop && made.currentTime >= loop.end) made.currentTime = loop.start;
-      store.setState({position: made.currentTime});
+    made.addEventListener('play', () => {
+      store.setState({playing: true, error: null});
+      watchLoop();
     });
+    made.addEventListener('pause', () => {
+      clearTimeout(wrap);
+      store.setState({playing: false});
+    });
+    made.addEventListener('timeupdate', () => store.setState({position: made.currentTime}));
     made.addEventListener('ended', () => {
       const {loop} = store.getState();
       if (loop) {
@@ -80,8 +109,16 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
     return made;
   };
 
+  // Every start passes here, a loop's restart included: the listeners are asked first.
   const start = async (made: MediaLike) => {
     try {
+      for (const listener of listeners) {
+        const refusal = listener();
+        if (refusal) {
+          store.setState({playing: false, error: refusal});
+          return;
+        }
+      }
       await made.play();
     } catch (error) {
       const line = failure(error);
@@ -116,6 +153,11 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
   return {
     store,
     play,
+    /** Adds a listener the player asks before any take starts (see BeforePlay); returns its removal. */
+    beforePlay(listener: BeforePlay) {
+      listeners.add(listener);
+      return () => {listeners.delete(listener);};
+    },
     pause() {
       element?.pause();
     },
@@ -135,6 +177,7 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
       const limit = known > 0 ? known : Infinity;
       made.currentTime = Math.min(limit, Math.max(0, seconds));
       store.setState({position: made.currentTime});
+      watchLoop();
     },
     /** Repeats a span of the loaded take; null plays straight through. */
     setLoop(loop: Loop | null) {
@@ -145,6 +188,7 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
         made.currentTime = loop.start;
         store.setState({position: loop.start});
       }
+      watchLoop();
       return true;
     },
     /** The levels for the takes being auditioned together; the loaded take follows at once. */
@@ -160,6 +204,7 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
     },
     /** Stops playback and forgets the element and every take. */
     release() {
+      clearTimeout(wrap);
       element?.pause();
       element = null;
       store.setState(initial(), true);
