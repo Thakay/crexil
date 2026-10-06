@@ -64,7 +64,13 @@ def audio_reservation(tariff: dict | None, measures: dict) -> int:
 
 async def accounting(db, wid: str, *, turn_id: str | None = None,
                      turn_ids: list[str] | None = None) -> dict:
-    """Account for a project, one run or an exact set of runs within that project."""
+    """Account for a project, one run or an exact set of runs within that project.
+
+    `attempts` counts requested attempts: each dispatch and each queued or held
+    slot, except that an automatic retry (`slot.retrying`) is the same requested
+    attempt as the try it repeats, so a visible retry never counts as another
+    attempt against an attempt limit. A manual reroll is a new request. Money is
+    counted per dispatch either way: each send reserves until its charge is known."""
     if turn_id is not None and turn_ids is not None:
         raise ValueError('Choose one run or a set of runs, not both accounting scopes.')
     selected = [turn_id] if turn_id is not None else list(dict.fromkeys(turn_ids)) if turn_ids is not None else None
@@ -74,6 +80,8 @@ async def accounting(db, wid: str, *, turn_id: str | None = None,
                          'WHERE t.workspace_id=?' + clause, args)
     events = await db._all('SELECT * FROM events WHERE workspace_id=?' + clause + ' ORDER BY seq', args)
     records, latest = {}, {}
+    retrying = set()          # slots whose next dispatch repeats a refused try
+    requested = 0
     charged = Decimal(0)
     for event in events:
         payload = json.loads(event['payload_json'])
@@ -84,6 +92,13 @@ async def accounting(db, wid: str, *, turn_id: str | None = None,
             take = payload['attempt']
             latest[sid] = take
             records[(sid, take)] = {'amount': payload.get('committed_usd'), 'settled': False}
+            if sid not in retrying:
+                requested += 1
+            retrying.discard(sid)
+        elif event['type'] == 'slot.retrying':
+            retrying.add(sid)
+        elif event['type'] == 'slot.rerolled':
+            retrying.discard(sid)
         attempt = payload.get('attempt', payload.get('take', latest.get(sid)))
         key = (sid, attempt)
         if event['type'] in ('slot.charged', 'slot.charge_verified') and 'attempt' not in payload and latest.get(sid, 0) > 1:
@@ -94,12 +109,12 @@ async def accounting(db, wid: str, *, turn_id: str | None = None,
             records[key]['settled'] = True
     reserved = Decimal(0)
     unresolved = unbounded = tariff_attempts = 0
-    attempts = len(records)
+    attempts = requested
     for slot in slots:
         contract = json.loads(slot['dials_json']).get('crexil', {})
         policy = contract.get('spending_policy', 'published_tariff' if '/' in slot['engine'] else 'hard_cap')
         pending = [{'amount': slot['committed_usd'], 'settled': False}] if slot['status'] in ('queued', 'held') else []
-        attempts += len(pending)
+        attempts += len(pending) if slot['id'] not in retrying else 0
         pending += [record for (sid, _), record in records.items() if sid == slot['id'] and not record['settled']]
         for record in pending:
             amount = record['amount']
