@@ -455,7 +455,8 @@ async def node_image(nid: str):
     if not path.is_file():
         raise HTTPException(404, "artefact file is missing from staging")
     media = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    return FileResponse(path, media_type=media, headers=IMMUTABLE_CACHE)
+    return FileResponse(path, media_type=media, headers=IMMUTABLE_CACHE,
+                        stat_result=await blind.file_stat(_stack().db, node["turn_id"], path))
 
 
 @router.get("/nodes/{nid}/turntable",
@@ -468,7 +469,8 @@ async def node_turntable(nid: str):
     draw."""
     node = await _live_node(nid)
     path = await _turntable_file(node)
-    return FileResponse(path, media_type="image/webp", headers=IMMUTABLE_CACHE)
+    return FileResponse(path, media_type="image/webp", headers=IMMUTABLE_CACHE,
+                        stat_result=await blind.file_stat(_stack().db, node["turn_id"], path))
 
 
 @router.get("/nodes/{nid}/thumb",
@@ -499,7 +501,8 @@ async def node_thumb(nid: str):
             raise HTTPException(404, "artefact is not a readable image, so "
                                 "there is no thumbnail; the original may "
                                 "still open in the lightbox")
-    return FileResponse(dst, media_type="image/webp", headers=IMMUTABLE_CACHE)
+    return FileResponse(dst, media_type="image/webp", headers=IMMUTABLE_CACHE,
+                        stat_result=await blind.file_stat(_stack().db, node["turn_id"], dst))
 
 
 @router.post("/nodes/{nid}/position", response_model=NodePosition)

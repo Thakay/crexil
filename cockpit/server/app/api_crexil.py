@@ -242,7 +242,8 @@ async def material_audio(nid: str):
     if node['purged_at'] or not Path(node['output_path']).is_file():
         raise HTTPException(404, 'This audio is unavailable. Its record remains.')
     return FileResponse(node['output_path'], media_type=audio.MEDIA_TYPE,
-                        headers={'Cache-Control': 'public, max-age=31536000, immutable'})
+                        headers={'Cache-Control': 'public, max-age=31536000, immutable'},
+                        stat_result=await blind.file_stat(store().db, node['turn_id'], node['output_path']))
 
 
 @router.post('/turns/{tid}/reveal', response_model=BlindRunView)
@@ -833,7 +834,8 @@ async def output_file(oid: str):
         raise HTTPException(404, 'This file is withheld while its run is blind. Reveal the run to read it.')
     # A blind run's take downloads under the neutral name its group lists, never the engine's own.
     return FileResponse(member['output_path'], media_type=member['media_type'],
-                        filename=blind.output_name(dict(member)) if hidden else Path(member['filename']).name)
+                        filename=blind.output_name(dict(member)) if hidden else Path(member['filename']).name,
+                        stat_result=await blind.file_stat(store().db, turn and turn['turn_id'], member['output_path']))
 
 
 @router.post('/attempts/{sid}/collect', response_model=ExecutionGroupView)
