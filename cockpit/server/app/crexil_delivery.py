@@ -194,16 +194,20 @@ async def _bundle(db, workspace: dict, node: dict, asset_id: str, *, siblings: b
     not their bytes. `seen` gathers the stat fingerprint of every file hashed. A take
     that cannot travel comes back refused, with its reason in plain words."""
     nid = node['id']
-    info = await db._one('SELECT filename FROM material_info WHERE node_id=?', (nid,))
-    item = {'node_id': nid, 'filename': info['filename'] if info else Path(node['output_path']).name,
+    # A hidden take is refused before anything of it is read, and named as every
+    # read names it: the file name its engine gave it would tell the engine apart.
+    hidden = await blind.is_hidden(db, node['turn_id'])
+    info = None if hidden else await db._one('SELECT filename FROM material_info WHERE node_id=?', (nid,))
+    filename = info['filename'] if info else Path(node['output_path']).name
+    item = {'node_id': nid, 'filename': blind.take_name(filename) if hidden else filename,
             'asset_id': asset_id, 'state': 'prepared', 'error': None, 'missing': [], 'completed_at': None,
             'files': [], 'source_nodes': [nid], 'requires_review': False}
     try:
-        if node['purged_at'] or not Path(node['output_path']).is_file():
-            raise ValueError('The original file is unavailable. Its record remains in the project.')
-        if await blind.is_hidden(db, node['turn_id']):
+        if hidden:
             raise ValueError('This take belongs to a blind run. Reveal the run before delivering it, '
                              'so its manifest can name its engine.')
+        if node['purged_at'] or not Path(node['output_path']).is_file():
+            raise ValueError('The original file is unavailable. Its record remains in the project.')
         turn = await db.get_turn(node['turn_id']) if node['turn_id'] else None
         slot = await db.get_slot(node['slot_id']) if node['slot_id'] else None
         parents = [await db.get_node(pid) for pid in node['parents']]

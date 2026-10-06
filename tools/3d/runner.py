@@ -43,8 +43,10 @@ inside its child — both stages resident pinned the whole card. The child's
 host RSS is logged at load, per take and at eviction: WSL's RAM cap is the
 budget residency actually spends. `/health` shows the resident and the last
 eviction's words; a warm job's record carries `resident: {warm, load_s,
-rss_mb}`. Every warm path degrades to the cold spawn, in words, never to a
-wrong engine (the serve protocol's identity handshake).
+rss_mb}`, where `load_s` is how long that take waited for its engine to load,
+and its `elapsed_s` includes that wait. Every warm path degrades to the cold
+spawn, in words, never to a wrong engine (the serve protocol's identity
+handshake).
 
 **Job records outlive the cockpit.** Every state change writes
 `runs/.jobs/<id>.json` atomically, which is what makes the executor's
@@ -180,10 +182,10 @@ MAX_IMAGE_BYTES = 64 * 1024 * 1024
 # A 1M-triangle TRELLIS.2 GLB measures 35 MB with its 2048 texture; a 4096
 # bake is the ceiling this is generous against. Raw body, never base64.
 MAX_MESH_BYTES = 256 * 1024 * 1024
-# A TRELLIS.2 field set measured 21–92 MiB narrowed and compressed across two
-# 1024_cascade props (2026-08-29; the dense one is 245 MiB raw). It is sized by
-# occupied voxels, not triangles, so the spread is the prop's. The ceiling is
-# generous against a 1536 grid that this lane does not yet run.
+# A TRELLIS.2 field set measured 21–182 MiB narrowed and compressed across three
+# 1024_cascade props (the dense lantern is 245 MiB raw). It is sized by occupied
+# voxels, not triangles, so the spread is the prop's. The ceiling is generous
+# against a 1536 grid that this lane does not yet run.
 MAX_FIELDS_BYTES = 512 * 1024 * 1024
 GLB_MAGIC = b"glTF"
 NPZ_MAGIC = b"PK\x03\x04"                        # .npz is a zip container
@@ -885,19 +887,23 @@ class Worker:
             cmd += ["--seed", str(rec["seed"])]
         cmd += rec.get("engine_args") or []
 
-        # running from here: a warm load is part of the take's clock
+        # Running from here, and the take's clock with it: an engine load the
+        # take waits for is part of the time it took (law 17), so a first
+        # take never reads shorter than it ran.
         rec |= {"state": "running", "started_at": now()}
         write_record(rec)
         with self.lock:
             self.running = job_id
+        t0 = time.monotonic()
 
         # The warm door. ensure() hands back a resident child's socket
         # (evicting a different resident first, loading if needed) or None,
-        # and then the take runs cold.
+        # and then the take runs cold. The record says how long this take
+        # waited for its engine: 0 when the engine was already loaded.
         warm_sock = RESIDENT.ensure(kind, rec["engine"])
         if warm_sock is not None:
             cmd += ["--serve-socket", str(warm_sock)]
-            rec["resident"] = {"warm": True, "load_s": RESIDENT.load_s}
+            rec["resident"] = {"warm": True, "load_s": round(time.monotonic() - t0, 1)}
             with self.lock:
                 self.warm_key = (kind, rec["engine"])
         rec["cmd"] = cmd
@@ -913,7 +919,6 @@ class Worker:
             return
         log.info("job %s: %s", job_id, " ".join(cmd))
 
-        t0 = time.monotonic()
         # own process group: cancel must reach the engine's own children
         proc = subprocess.Popen(cmd, cwd=str(HERE), start_new_session=True,
                                 stdout=subprocess.PIPE,

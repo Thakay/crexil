@@ -153,7 +153,9 @@ export interface paths {
          *     runner answering, the card free). The attempts that bench holds go back
          *     to the queue, and each meets the run, project and sequence limits again
          *     before it is sent (law 22). An agent resumes free local work only:
-         *     sending held attempts that reserve money is the artist's act.
+         *     sending held attempts that reserve money is the artist's act, and every
+         *     attempt of a hidden run answers an agent in one neutral line, whatever
+         *     its price.
          */
         post: operations["resume_attempt_api_crexil_attempts__sid__resume_post"];
         delete?: never;
@@ -309,7 +311,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Display Selection */
+        /**
+         * Display Selection
+         * @description Change a direction's displayed selection: a choice with its author and
+         *     reason (law 23). The answer carries the decision it recorded, so a later
+         *     revision of its reason can name it.
+         */
         put: operations["display_selection_api_crexil_directions__did__selection_put"];
         post?: never;
         delete?: never;
@@ -362,7 +369,12 @@ export interface paths {
         /** Execution Control State */
         get: operations["execution_control_state_api_crexil_execution__scope___target_id__get"];
         put?: never;
-        /** Control Execution */
+        /**
+         * Control Execution
+         * @description Pause, resume or cancel a project, run or sequence, for its participant
+         *     (law 23). Agents may pause and cancel; resuming work that may spend is the
+         *     artist's act (403).
+         */
         post: operations["control_execution_api_crexil_execution__scope___target_id__post"];
         delete?: never;
         options?: never;
@@ -660,7 +672,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Direction */
+        /**
+         * Create Direction
+         * @description Create a preparation on `row_idx`. Without one, a preparation with sources
+         *     lands on the row after its sources' last row, beside its family's other
+         *     continuations, and words alone open a new row, whoever creates it.
+         */
         post: operations["create_direction_api_crexil_projects__wid__directions_post"];
         delete?: never;
         options?: never;
@@ -797,7 +814,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Sequence */
+        /**
+         * Create Sequence
+         * @description Create a sequence for its participant (law 23). An agent's sequence keeps
+         *     the default limits, as an agent's edit would: limits are the artist's (403).
+         */
         post: operations["create_sequence_api_crexil_projects__wid__sequences_post"];
         delete?: never;
         options?: never;
@@ -1663,7 +1684,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Unbench */
+        /**
+         * Unbench
+         * @description Lift a bench from the legacy canvas (UNBENCH, TRY ONCE MORE) by the
+         *     project surface's resume rules: the lift names its participant on its
+         *     event (law 23); a runtime's bench lifts only once a live check finds
+         *     its cause gone, else 422 says what is still wrong (laws 3 and 4); and an
+         *     agent never sends held work that reserves money, nor any attempt of a
+         *     hidden run (403).
+         */
         post: operations["unbench_api_unbench_post"];
         delete?: never;
         options?: never;
@@ -1883,7 +1912,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** Actor */
+        /**
+         * Actor
+         * @description The participant behind a change: the artist or a named agent (law 23).
+         */
         Actor: {
             /**
              * Kind
@@ -2745,7 +2777,7 @@ export interface components {
              */
             supported: boolean;
             /** Type */
-            type?: ("enum" | "text" | "int" | "float" | "bool" | "seed") | null;
+            type?: ("text" | "int" | "float" | "enum" | "seed" | "bool") | null;
             /** Why */
             why?: string | null;
         };
@@ -3271,7 +3303,7 @@ export interface components {
             /** Target */
             target?: components["schemas"]["InputTarget"][] | null;
             /** Type */
-            type?: ("text" | "int" | "float" | "enum" | "seed") | null;
+            type?: ("text" | "int" | "float" | "enum" | "seed" | "bool") | null;
         } & {
             [key: string]: unknown;
         };
@@ -5546,8 +5578,13 @@ export interface components {
             /** Skipped */
             skipped: number;
         };
-        /** Unbench */
+        /**
+         * Unbench
+         * @description A bench lift from the legacy canvas, with its participant (law 23). The
+         *     legacy canvas names none, so an omitted actor is the artist.
+         */
         Unbench: {
+            actor?: components["schemas"]["Actor"];
             /** Scope */
             scope: string;
         };

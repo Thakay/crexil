@@ -4,6 +4,7 @@ import asyncio
 import base64
 import copy
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,11 +30,15 @@ ENDPOINT = {'provider_tag': 'testvendor', 'provider_name': 'Test vendor',
 
 
 def discover():
+    """The test model in the live catalogue, fetched just now: a fresh catalogue
+    starts no background refresh, so no test's own transport replaces it
+    between a review and its submit."""
     catalog = wiring.current.provider_catalog
     catalog._live['testvendor/testmodel'] = {'id': 'testvendor/testmodel', 'provider': 'testvendor',
         'label': 'Test Model', 'name': 'Test Model', 'source': 'live', 'supports_seed': True,
         'endpoints': [copy.deepcopy(ENDPOINT)], 'endpoints_fetched_at': datetime.now(timezone.utc).isoformat(),
         'endpoint_discovery_error': None}
+    catalog._fetched_at = time.time()
 
 
 async def hosted(client, wid, **setup):

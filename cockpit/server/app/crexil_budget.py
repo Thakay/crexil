@@ -64,7 +64,13 @@ def audio_reservation(tariff: dict | None, measures: dict) -> int:
 
 async def accounting(db, wid: str, *, turn_id: str | None = None,
                      turn_ids: list[str] | None = None) -> dict:
-    """Account for a project, one run or an exact set of runs within that project."""
+    """Account for a project, one run or an exact set of runs within that project.
+
+    `attempts` counts requested attempts: each dispatch and each queued or held
+    slot, except that an automatic retry (`slot.retrying`) is the same requested
+    attempt as the try it repeats, so a visible retry never counts as another
+    attempt against an attempt limit. A manual reroll is a new request. Money is
+    counted per dispatch either way: each send reserves until its charge is known."""
     if turn_id is not None and turn_ids is not None:
         raise ValueError('Choose one run or a set of runs, not both accounting scopes.')
     selected = [turn_id] if turn_id is not None else list(dict.fromkeys(turn_ids)) if turn_ids is not None else None
@@ -74,6 +80,8 @@ async def accounting(db, wid: str, *, turn_id: str | None = None,
                          'WHERE t.workspace_id=?' + clause, args)
     events = await db._all('SELECT * FROM events WHERE workspace_id=?' + clause + ' ORDER BY seq', args)
     records, latest = {}, {}
+    retrying = set()          # slots whose next dispatch repeats a refused try
+    requested = 0
     charged = Decimal(0)
     for event in events:
         payload = json.loads(event['payload_json'])
@@ -84,6 +92,13 @@ async def accounting(db, wid: str, *, turn_id: str | None = None,
             take = payload['attempt']
             latest[sid] = take
             records[(sid, take)] = {'amount': payload.get('committed_usd'), 'settled': False}
+            if sid not in retrying:
+                requested += 1
+            retrying.discard(sid)
+        elif event['type'] == 'slot.retrying':
+            retrying.add(sid)
+        elif event['type'] == 'slot.rerolled':
+            retrying.discard(sid)
         attempt = payload.get('attempt', payload.get('take', latest.get(sid)))
         key = (sid, attempt)
         if event['type'] in ('slot.charged', 'slot.charge_verified') and 'attempt' not in payload and latest.get(sid, 0) > 1:
@@ -94,12 +109,12 @@ async def accounting(db, wid: str, *, turn_id: str | None = None,
             records[key]['settled'] = True
     reserved = Decimal(0)
     unresolved = unbounded = tariff_attempts = 0
-    attempts = len(records)
+    attempts = requested
     for slot in slots:
         contract = json.loads(slot['dials_json']).get('crexil', {})
         policy = contract.get('spending_policy', 'published_tariff' if '/' in slot['engine'] else 'hard_cap')
         pending = [{'amount': slot['committed_usd'], 'settled': False}] if slot['status'] in ('queued', 'held') else []
-        attempts += len(pending)
+        attempts += len(pending) if slot['id'] not in retrying else 0
         pending += [record for (sid, _), record in records.items() if sid == slot['id'] and not record['settled']]
         for record in pending:
             amount = record['amount']
@@ -132,21 +147,29 @@ def violations(limits: dict, current: dict, *, attempts: int = 0, reserved: floa
     return errors
 
 
-async def guard_dispatch(db, slot: dict) -> None:
+async def holding_limits(db, slot: dict) -> list[tuple[str, str]]:
+    """The limits that would hold this attempt at dispatch now, each as its
+    scope ('project', 'run' or 'sequence') and its plain line."""
     turn = await db.get_turn(slot['turn_id'])
     row = await db._one('SELECT limits_json FROM project_details WHERE workspace_id=?', (turn['workspace_id'],))
     limits = json.loads(row['limits_json']) if row else {}
-    errors = []
+    found = []
     if limits:
-        errors += violations(limits, await accounting(db, turn['workspace_id']))
+        found += [('project', line) for line in violations(limits, await accounting(db, turn['workspace_id']))]
     setup = turn['dials'].get('crexil', {}).get('setup')
     if setup:
-        errors += violations(setup, await accounting(db, turn['workspace_id'], turn_id=turn['id']), label='Run')
+        found += [('run', line) for line in violations(
+            setup, await accounting(db, turn['workspace_id'], turn_id=turn['id']), label='Run')]
     sequence = await db._one('SELECT s.id,s.limits_json FROM sequences s JOIN sequence_runs r ON r.sequence_id=s.id WHERE r.turn_id=?',
                              (turn['id'],))
     if sequence:
         turns = await db._all('SELECT turn_id FROM sequence_runs WHERE sequence_id=? AND turn_id IS NOT NULL', (sequence['id'],))
-        errors += violations(json.loads(sequence['limits_json']),
-            await accounting(db, turn['workspace_id'], turn_ids=[row['turn_id'] for row in turns]), label='Sequence')
-    if errors:
-        raise BudgetExceeded(' '.join(errors))
+        found += [('sequence', line) for line in violations(json.loads(sequence['limits_json']),
+            await accounting(db, turn['workspace_id'], turn_ids=[row['turn_id'] for row in turns]), label='Sequence')]
+    return found
+
+
+async def guard_dispatch(db, slot: dict) -> None:
+    found = await holding_limits(db, slot)
+    if found:
+        raise BudgetExceeded(' '.join(line for _, line in found))

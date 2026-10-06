@@ -178,6 +178,8 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 | `THREED_URL` | `http://127.0.0.1:8189` | 3D runner base URL |
 | `THREED_RUNNER_ALLOW_REMOTE` | unset | Read by the 3D runner: `1` lets it listen beyond this machine |
 | `THREED_RUNNER_ALLOWED_HOSTS` | empty | Read by the 3D runner: extra host names it answers (comma-separated) |
+| `THREED_RUNNER_HOST` | `127.0.0.1` | Read by the 3D runner: the address it listens on |
+| `THREED_RUNNER_PORT` | `8189` | Read by the 3D runner: the port it listens on. Point `THREED_URL` at it |
 | `COCKPIT_THREED_POLL_S` | `2` | Seconds between polls of a running 3D job |
 | `COCKPIT_PRESETS_DIR` | `<root>/presets` | Preset folder |
 | `COCKPIT_WORKFLOWS_DIR` | `<root>/workflows` | Graph folder |
@@ -238,7 +240,8 @@ They ship disabled; set `enabled` when an installation can reach them.
 
 The local voice engine (Qwen3-TTS) runs in its own environment behind `tools/tts/runner.py`;
 `tools/tts/README.md` covers install and start. Set `VOICE_RUNNER_URL` if it serves elsewhere than
-`http://127.0.0.1:8190`, and enable the `qwen3-tts` row.
+`http://127.0.0.1:8190`, and enable the `qwen3-tts` row. Each attempt's job carries the client reference
+`<slot>:<attempt>`; the runner keeps one job per reference and answers `GET /jobs?client_ref=<ref>`.
 
 ElevenLabs is reached directly over HTTP, never through its SDK, because the SDK retries on its own and
 could charge twice for one take. `LIVE_ELEVENLABS=1` with `ELEVENLABS_API_KEY` set runs one opt-in live
@@ -276,9 +279,29 @@ ElevenLabs account. A save refused because every slot is in use says so.
 
 ### 3D runner
 
-- `tools/3d/runner.py` is a small standard-library HTTP service on `127.0.0.1:8189`. Start it with
-  `scripts/3d-runner.sh` or the example unit `scripts/3d-runner.service`. Restart it after any
-  change in `tools/3d/`: a running runner and its loaded engine keep their old source.
+- `tools/3d/runner.py` is a small standard-library HTTP service, on `127.0.0.1:8189` unless
+  `THREED_RUNNER_HOST` and `THREED_RUNNER_PORT` say otherwise. A second installation on the same
+  machine takes another port and points its server's `THREED_URL` at it. Start it with
+  `scripts/3d-runner.sh`, or the example unit `scripts/3d-runner.service` under a unit name no
+  other installation on the machine uses. Restart it after any change in `tools/3d/`: a running
+  runner and its loaded engine keep their old source.
+- Once the weights are in the Hugging Face cache, start the runner with `HF_HUB_OFFLINE=1`: the
+  engines then read the cache and never download or write to it. `funnel.py` reads `PROMOTE_DIR`
+  from the environment, or else from the checkout's `.env`, only when a run resolves a promoted
+  asset or promotes; the runner never promotes, so it never opens `.env`.
+- Measured on one RTX 4090: a first TRELLIS.2 take loads the engine in about 65 s, generates in
+  about 73 s at `1024_cascade` and extracts the mesh in about 38 s at texture size 2048. The card
+  peaks about 14 GB above idle, and the resident engine holds about 25 GB of host memory. The GLB
+  of about 940,000 triangles weighs about 36 MB, and its kept voxel field can reach about 180 MB.
+  A take's `elapsed_s` includes the engine load it waited for, and `resident.load_s` says how long
+  that was (0 when the engine was already loaded).
+- The environments hold absolute paths: virtual-environment entry scripts and `activate` files,
+  the CUDA toolchain's gcc `specs` (which add an `-rpath` to every link), linker scripts,
+  `pkg-config` files and package metadata. A copy of the lane in another folder works once those
+  text files name the new folder; compiled files keep their build-time strings harmlessly. Check a
+  copy with GNU `grep -rlI <old folder>` (a search that honours `.gitignore` skips the
+  environments, which ignore themselves), `readelf -d` for `RPATH` and `RUNPATH`, and
+  `find -lname`.
 - A job has a kind: `generate` (image to mesh, TRELLIS.2 or Hunyuan3D 2.1), `decimate` (gltfpack on
   a GLB, or TRELLIS.2 re-extraction from a kept voxel field) or `texture` (Hunyuan3D paint with a
   reference image). `tools/3d/funnel.py` runs each kind.
@@ -321,7 +344,9 @@ ElevenLabs account. A save refused because every slot is in use says so.
 
 - **Platform.** Development happens on Linux under WSL2 with one NVIDIA GPU; other platforms are
   untested. The unit files assume systemd user services. The container reaches host engines through
-  `host.docker.internal`, which under WSL2 can die after the host sleeps.
+  `host.docker.internal`, which under WSL2 can die after the host sleeps. Under WSL2 the Linux monotonic clock can run a few percent fast
+  against the Windows clock (4.1% measured on one machine), so durations the runner and the server measure
+  read long there.
 - **No authentication.** The server trusts localhost: a Host allow-list, an Origin check, and a key
   setup route that refuses non-loopback clients unless `COCKPIT_LOOPBACK_PUBLISH=1` (set in
   `compose.yaml`, where clients arrive from a bridge address). Never expose the port.

@@ -9,8 +9,8 @@ Sequence authorization comes from the last matching event before acceptance,
 never a sequence's mutable current authorization. This is an asset record, not
 a project backup or permission to submit work. An audio take's manifest carries
 its measured format, length and loudness, the words it speaks, the voice that
-speaks them and its provider's terms on its use (law 20); every other
-manifest's `audio` is null.
+speaks them and its provider's terms on its use (law 20), with the block's
+`audio_version`; every other manifest's `audio` and `audio_version` are null.
 
 Model files are identified by name + size + sha256; hashes are computed once
 per file and cached in SQLite (an 8 GB checkpoint hashes in ~15 s the first
@@ -104,11 +104,15 @@ def extract_loras(graph: dict) -> list[dict]:
 #     is a record, not a recipe, because providers move weights behind
 #     stable version names
 #   - `audio` describes an audio take for an engine importer and a mixer;
-#     its `transport` and `provider` name the provider that made it
+#     its `transport` and `provider` name the provider that made it, and
+#     `audio_version` (AUDIO_VERSION) versions the block's shape, as each
+#     additive extension carries its own version; both are null on every
+#     other manifest
 # Dormant: `loras` and `carry_channels` wait for their features (LoRA use
 # at generation time, attribute carry channels).
 
 MANIFEST_VERSION = 4
+AUDIO_VERSION = 1
 
 # The promoted orbit's name, beside the mesh rather than under `.inputs/`.
 # One constant because three places say it: the manifest's own
@@ -547,6 +551,7 @@ async def build_v4_manifest(db, *, asset_id: str, workspace: dict,
                        else _png_resolution(Path(node["output_path"]))),
         "mesh": mesh,
         "audio": await _audio_blob(db, node, material_record) if is_audio else None,
+        "audio_version": AUDIO_VERSION if is_audio else None,
         # committed is what the run promised, charged is what the
         # provider said it took. Both, always — a divergence is a fact
         # about this asset, not a rounding error to hide.

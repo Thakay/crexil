@@ -20,10 +20,12 @@ from test_api_v4 import booted, settle_turn, store
 from test_audio_contract import PREVIEW, booted_audio, draft, free_design_row, operation
 from test_crexil import command, image_bytes, project
 from test_crexil_execution import attest, reviewed
+from test_crexil_execution import draft as image_draft
 
 pytestmark = pytest.mark.anyio
 
 LOCAL, HOSTED = 'qwen3-tts', 'test-elevenlabs-design'
+ARTIST_ACTOR = {'kind': 'human', 'name': 'Artist'}
 LOCAL_LABEL = 'Design voice · Qwen3-TTS 1.7B'
 PROMPT = 'A gruff dwarf blacksmith, low and warm'
 # What a hidden take's reads must never name, lower-cased: engine ids, providers, labels, models.
@@ -164,7 +166,7 @@ async def test_every_read_of_a_failing_blind_run_names_no_engine_and_no_time_of_
         # A failed attempt's group keeps its kind and a plain line, never the engine's words.
         (failed,) = [g for g in reads['execution groups'] if g['metadata'].get('failure_kind') == 'dead_key']
         assert failed['metadata']['cause'] == blind.plain_cause('dead_key')
-        # Every time a hidden take carries is its run's creation time (V1b S-4).
+        # Every time a hidden take carries is its run's creation time, so the clock never orders its takes.
         assert own_times(reads) == {await run_created(client, p['id'], turn['id'])}
         assert all(r['elapsed_ms'] is None for r in reads['queue'])
 
@@ -173,7 +175,7 @@ async def test_every_read_of_a_failing_blind_run_names_no_engine_and_no_time_of_
         assert any(leaks(after).values()) and len(own_times(after)) > 1    # the engines and real times return
 
 
-# --- continuing from a hidden take (V1b S-1) ---
+# --- continuing from a hidden take names no source engine ---
 
 async def test_a_hidden_take_cannot_be_continued_until_its_run_is_revealed(tmp_path, monkeypatch):
     async with casting(tmp_path, monkeypatch, **LONG) as (client, fakes):
@@ -228,7 +230,7 @@ async def test_a_hidden_image_take_cannot_be_continued_and_files_are_named_by_gr
         assert names and all('filename="output-' in name for name in names)
 
 
-# --- bench and hold events (V1b S-2) ---
+# --- bench and hold events name no hidden take ---
 
 async def test_a_mid_run_bench_names_no_hidden_take_and_its_events_return_at_the_reveal(tmp_path, monkeypatch):
     down = FakeAudioExecutor('voice-runner', 'local', failure=EngineFailure('unreachable', 'runner down'))
@@ -277,7 +279,7 @@ async def test_an_engine_benched_inside_a_blind_run_reads_masked_until_the_revea
         assert bench['payload']['scope'] == f"engine:{LOCAL}@turn:{turn['id']}" and len(bench['payload']['held']) == 1
 
 
-# --- a blind run compares at least two engines, sent whole (V1b S-3) ---
+# --- a blind run compares at least two engines, sent whole ---
 
 async def test_a_blind_run_needs_two_engines_ready_and_is_never_narrowed(tmp_path, monkeypatch):
     async with casting(tmp_path, monkeypatch) as (client, fakes):
@@ -303,7 +305,7 @@ async def test_a_blind_run_needs_two_engines_ready_and_is_never_narrowed(tmp_pat
         assert (await reviewed(client, pair))['ready']
 
 
-# --- failure records (V1b S-9) ---
+# --- a hidden take's failure record keeps only its kind and plain line ---
 
 async def test_a_hidden_takes_internal_failure_keeps_only_its_kind_and_plain_line(tmp_path, monkeypatch):
     crash = FakeAudioExecutor('elevenlabs', 'external',
@@ -326,7 +328,7 @@ async def test_a_hidden_takes_internal_failure_keeps_only_its_kind_and_plain_lin
         assert 'eleven_multilingual_ttv_v2' in record['payload']['traceback']      # kept, shown after the reveal
 
 
-# --- reuse (V1b S-10 and S-5) ---
+# --- reuse refuses a hidden take in its own words, and a reused take keeps its terms ---
 
 async def test_reuse_review_and_reuse_refuse_a_hidden_take_in_the_same_words(tmp_path, monkeypatch):
     async with casting(tmp_path, monkeypatch) as (client, _):
@@ -459,6 +461,64 @@ async def test_agents_cannot_change_a_sequences_spending_limits(tmp_path, monkey
         assert artist.status_code == 200 and artist.json()['limits']['attempt_limit'] == 32
 
 
+async def test_an_agents_new_sequence_keeps_the_default_limits(tmp_path, monkeypatch):
+    agent = {'kind': 'agent', 'name': 'Scout'}
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        attest()
+        p = await project(client)
+
+        async def create(actor, **limits):
+            first = await image_draft(client, p['id'])
+            body = command(title='Explore', steps=[{'key': 'explore', 'direction_id': first['id'],
+                                                    'revision': first['revision']}], actor=actor,
+                           **({'limits': limits} if limits else {}))
+            return await client.post(f"/api/crexil/projects/{p['id']}/sequences", json=body)
+
+        for limits in ({'attempt_limit': 64, 'spending_limit_usd': 25, 'spending_policy': 'published_tariff'},
+                       {'attempt_limit': 4, 'spending_limit_usd': 0}):
+            refused = await create(agent, **limits)
+            assert refused.status_code == 403 and refused.json()['detail'].startswith(
+                "Changing a new sequence's spending limits is the artist's act")
+        assert (await client.get(f"/api/crexil/projects/{p['id']}")).json()['sequences'] == []
+        kept = await create(agent)
+        assert kept.status_code == 201 and kept.json()['limits'] == {
+            'attempt_limit': 16, 'spending_limit_usd': 0, 'spending_policy': 'hard_cap'}
+        assert (await create(ARTIST_ACTOR, attempt_limit=64, spending_limit_usd=25,
+                             spending_policy='published_tariff')).status_code == 201
+
+
+async def test_an_agent_sends_paid_work_only_inside_a_spending_limit_the_artist_set(tmp_path, monkeypatch):
+    from app.crexil_execution import UNBOUNDED_AGENT
+    from test_audio_guardrails import ELEVEN_DESIGN, SPOKEN
+    from test_audio_guardrails import prepare as prepare_audio
+    from test_crexil_hosted import limits
+    agent = {'kind': 'agent', 'name': 'Scout'}
+    paid = FakeAudioExecutor('elevenlabs', 'external')
+    async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': paid}) as (client, _):
+        p = await project(client)
+        assert p['limits'] == {}                                          # a new project has none
+
+        async def agent_submits(wid, action, cast):
+            direction = await prepare_audio(client, wid, action, 'A gruff smith', cast)
+            check = await reviewed(client, direction)
+            assert check['ready'], check['errors']
+            return await client.post(f"/api/crexil/directions/{direction['id']}/submit", json=command(
+                revision=check['revision'], review_token=check['token'], actor=agent))
+
+        refused = await agent_submits(p['id'], 'voice-design', [(ELEVEN_DESIGN, 2, SPOKEN)])
+        assert (refused.status_code, refused.json()['detail']) == (403, UNBOUNDED_AGENT)
+        assert paid.requests == [] and await store().list_turns(p['id']) == []
+        free = await agent_submits(p['id'], 'voice-design', [(f'audio:voice-design:{LOCAL}', 1, SPOKEN)])
+        assert free.status_code == 201, free.text                        # free work stays open to agents
+
+        bounded = await limits(client, (await client.get(f"/api/crexil/projects/{p['id']}")).json()['project'],
+                               spending_limit_usd=1.0, spending_policy='published_tariff')
+        sent = await agent_submits(bounded['id'], 'voice-design', [(ELEVEN_DESIGN, 2, SPOKEN)])
+        assert sent.status_code == 201, sent.text
+        await settle_turn(sent.json()['turn_id'], until={'landed'})
+        assert len(paid.requests) == 2
+
+
 # --- reads that the first blind pass left out ---
 
 async def test_the_queue_lists_no_bench_of_a_hidden_run_until_the_reveal(tmp_path, monkeypatch):
@@ -488,6 +548,97 @@ async def test_set_aside_and_restore_answer_a_hidden_take_with_its_runs_time(tmp
         await reveal(client, turn['id'])
         landed = (await client.post(f'/api/nodes/{some}/set-aside')).json()
         assert landed['created_at'] == takes[0]['created_at'] != created
+
+
+async def test_every_list_keeps_a_blind_runs_grid_order_whatever_order_its_takes_land_in(tmp_path, monkeypatch):
+    # The local engine's attempts sit first in the grid and land last: the
+    # hosted takes land while the local engine is held at a gate.
+    monkeypatch.setattr(blind, 'arrange', lambda specs: sorted(specs, key=lambda spec: spec['engine'] != LOCAL))
+    gate = asyncio.Event()
+    local = FakeAudioExecutor('voice-runner', 'local', data=tone_wav(seconds=3.5), gate=gate)
+    async with casting(tmp_path, monkeypatch, **{**LONG, 'voice-runner': local}) as (client, _):
+        p = await project(client)
+        direction = await prepared(client, p['id'], (LOCAL, 2), (HOSTED, 2))
+        check, answer = await submitted(client, direction)
+        assert check['ready'] and answer.status_code == 201, (check['errors'], answer.text)
+        turn_id = answer.json()['turn_id']
+
+        async def hosted_landed():
+            slots = (await store().get_turn(turn_id))['slots']
+            return [s['status'] for s in slots] == ['running', 'queued', 'landed', 'landed']
+
+        await until(hosted_landed)
+        gate.set()
+        turn = await settle_turn(turn_id, until={'landed'})
+        stored = await store()._all('SELECT * FROM nodes WHERE turn_id=? ORDER BY created_at', (turn_id,))
+        positions = {slot['id']: slot['pos'] for slot in turn['slots']}
+        landing = [positions[n['slot_id']] for n in stored]
+        assert set(landing[:6]) == {2, 3} and set(landing[6:]) == {0, 1}      # the hosted takes landed first
+        grid = [n['id'] for n in sorted(stored, key=lambda n: (positions[n['slot_id']], n['output_index']))]
+        aside = grid[3:]                       # the tray lists the second local attempt's takes and the hosted ones
+
+        async def lists():
+            for nid in aside:
+                assert (await client.post(f'/api/nodes/{nid}/set-aside')).status_code == 200
+            snapshot = (await client.get(f"/api/crexil/projects/{p['id']}")).json()
+            record = (await client.get(f"/api/crexil/projects/{p['id']}/record")).json()
+            tray = (await client.get(f"/api/workspaces/{p['id']}/tray")).json()
+            for nid in aside:
+                assert (await client.post(f'/api/nodes/{nid}/restore')).status_code == 200
+            ours = set(grid)
+            return {
+                'snapshot': [n['id'] for n in snapshot['nodes'] if n['id'] in ours],
+                'workspace': [n['id'] for n in (await client.get(f"/api/workspaces/{p['id']}/nodes")).json()
+                              if n['id'] in ours],
+                'record': [nid for nid in record['material_ids'] if nid in ours],
+                'tray': [n['id'] for n in tray['nodes'] if n['id'] in ours],
+                'groups': [positions[g['slot_id']] for g in snapshot['execution_groups'] if g['slot_id'] in positions],
+                'run view': [t['node_id'] for c in (await client.get(
+                    f"/api/crexil/directions/{direction['id']}/run")).json()['cells'] for t in c['takes']],
+                'candidates': [c['node_id'] for c in (await client.get(
+                    f"/api/crexil/projects/{p['id']}/decisions")).json()['records'][-1]['candidates']],
+            }
+
+        picked = await client.put(f"/api/crexil/directions/{direction['id']}/selection", json=command(
+            revision=next(d for d in (await client.get(f"/api/crexil/projects/{p['id']}")).json()['directions']
+                          if d['id'] == direction['id'])['revision'], node_ids=[grid[4]], reason='Warmest'))
+        assert picked.status_code == 200, picked.text
+        expected = {'snapshot': grid, 'workspace': grid, 'record': grid, 'tray': aside, 'groups': [0, 1, 2, 3],
+                    'run view': grid, 'candidates': grid}
+        assert await lists() == expected
+        await reveal(client, turn_id)
+        assert await lists() == expected                 # revealed or not
+
+
+async def test_a_delivery_review_refuses_a_hidden_take_without_naming_its_engines_file(tmp_path, monkeypatch):
+    # ComfyUI names a take by its save prefix and the hosted lane by its output
+    # index, so the original file names would tell the lanes apart.
+    from app import config
+    from test_crexil_hosted import discover
+    target = tmp_path / 'handoff'
+    target.mkdir()
+    monkeypatch.setattr(config, 'PROMOTE_DIR', target)
+    monkeypatch.setattr(config, 'PROMOTE_ROOTS', [target])
+    async with booted(tmp_path, monkeypatch) as (client, fakes):
+        attest()
+        discover()
+        fakes['comfy'].default = Step(data=image_bytes(), filename='s0_00001_.png')
+        fakes['openrouter'].default = Step(data=image_bytes(), filename='image-0.png')
+        p = await project(client)
+        ops = {o['id']: o for o in (await client.get('/api/crexil/operations')).json()}
+        made = await client.post(f"/api/crexil/projects/{p['id']}/directions", json=command(title='Lamps', setup={
+            'prompt': 'brass lamp', 'blind': True, 'spending_limit_usd': 1, 'spending_policy': 'published_tariff',
+            'operations': [{'operation_id': key, 'revision': ops[key]['revision'], 'count': 2}
+                           for key in ('testpreset', 'testvendor/testmodel')]}))
+        assert made.status_code == 201, made.text
+        _, takes = await ran(client, made.json())
+        review = await client.post(f"/api/crexil/projects/{p['id']}/deliveries/review",
+                                   json={'node_ids': [t['id'] for t in takes], 'destination': str(target)})
+        answer = review.json()
+    assert review.status_code == 200 and not answer['ready'] and len(answer['items']) == 4
+    assert {item['filename'] for item in answer['items']} == {'hidden-take.png'}
+    assert all('blind run' in error for error in answer['errors'])
+    assert not {'s0_00001_.png', 'image-0.png'} & set(json.dumps(answer).split('"'))
 
 
 async def test_a_hosted_engine_with_an_unknown_tariff_refuses_the_whole_run(tmp_path, monkeypatch):

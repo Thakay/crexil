@@ -6,7 +6,7 @@ the same rule that holds takes, so a catalogue never drifts from benching
 
 import pytest
 
-from app import wiring
+from app import config, wiring
 from app.executors import EngineFailure
 from app.scheduler import COMFY_SCOPE, bench_scope_for, runtime_scope
 from fakes import FakeExecutor, Step, fail
@@ -146,7 +146,9 @@ async def test_comfyui_down_at_boot_benches_comfyui_alone(quiet_neighbours):
     await wiring.startup_checks(sched, Comfy(up=False), NoKey())
     comfy = [b for b in sched.benched if b[0] == COMFY_SCOPE]
     assert len(comfy) == 1 and comfy[0][1] == "unreachable"
-    assert "ComfyUI unreachable" in comfy[0][2] and f'"{COMFY_SCOPE}"' in comfy[0][2]
+    # The address and this installation's start script, never a service unit or a raw route.
+    assert comfy[0][2] == (f"Startup check: ComfyUI is not answering at {config.COMFYUI_URL}. Start this "
+                           "installation's ComfyUI there (scripts/comfyui.sh), then resume it.")
     assert "lane:local" not in sched.benches
 
 
@@ -210,3 +212,27 @@ async def test_an_idle_voice_runner_never_reads_as_a_held_card(tmp_path):
             done = await settle(db, turn["id"])
             assert s.snapshot()["benches"] == {}
     assert done["slots"][0]["status"] == "failed" and done["slots"][0]["kind"] == "oom"
+
+
+class Rejected:
+    key_present = True
+
+    async def probe(self):
+        return {"ok": False, "error": "key rejected (401)"}
+
+
+@pytest.mark.parametrize("openrouter", [NoKey(), Rejected()], ids=["no key", "a rejected key"])
+async def test_every_startup_bench_names_its_address_and_move_never_a_unit_or_a_route(monkeypatch, openrouter):
+    # On a shared machine a service unit's name can start another installation's runtime.
+    async def down(*_args, **_kw):
+        return False
+    monkeypatch.setattr(wiring, "probe_mesh_runner", down)
+    monkeypatch.setattr(wiring.audio_executors, "adapter", lambda provider: None)
+    sched = BootScheduler()
+    await wiring.startup_checks(sched, Comfy(up=False), openrouter)
+    causes = {scope: cause for scope, _, cause in sched.benched}
+    assert all("systemctl" not in cause and "/api/" not in cause for cause in causes.values()), causes
+    assert causes["engine:trellis2-4b"] == (
+        f"Startup check: the 3D engine runner is not answering at {config.THREED_URL}. "
+        "Start this checkout's runner there (scripts/3d-runner.sh), then resume it.")
+    assert "Connections" in causes["lane:external"]

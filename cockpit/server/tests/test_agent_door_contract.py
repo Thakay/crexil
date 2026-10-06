@@ -3,7 +3,9 @@ key stays on the server and whose minutes are capped before ElevenLabs is asked;
 delivery kept a human act; and the host and origin guard on every route that
 changes state or spends."""
 
+import asyncio
 import json
+from datetime import datetime, timedelta
 
 import httpx
 import pytest
@@ -11,9 +13,12 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app import agent_door, config, main
 from app.executors import EngineFailure
-from fakes import FakeAudioExecutor
-from test_api_v4 import booted, store
+from fakes import FakeAudioExecutor, tone_wav
+from test_api_v4 import booted, settle_turn, store
 from test_audio_contract import PREVIEW, booted_audio, draft, submit
+from test_blind_everywhere import prepared as blind_cast
+from test_blind_everywhere import submitted as blind_submit
+from test_blind_everywhere import until
 from test_blind_runs import LOCAL, HOSTED, cast, casting, identity_terms, leaks, revision_of
 from test_crexil import command, project
 
@@ -54,6 +59,9 @@ async def test_a_blind_run_view_names_no_engine_until_its_reveal_and_keeps_its_t
         assert view['cap_usd'] == 0 and view['charged_usd'] == 0 and view['reserved_usd'] == 0   # totals stay (law 22)
         assert view['summary'] == '2 landed.'
 
+        # A hidden take's loudness would group takes by engine, so it waits for the reveal too.
+        assert all(t['audio']['loudness_lufs'] is None for c in view['cells'] for t in c['takes'])
+
         revealed = await client.post(f"/api/crexil/turns/{turn['id']}/reveal", json=command(reason='Decided'))
         assert revealed.status_code == 200, revealed.text
         seen = await run_of(client, direction['id'])
@@ -61,6 +69,40 @@ async def test_a_blind_run_view_names_no_engine_until_its_reveal_and_keeps_its_t
         assert {c['engine'] for c in seen['cells']} == {LOCAL, HOSTED}
         assert all(c['identity_hidden'] is None for c in seen['cells'])
         assert all(t['audio']['voice'] for c in seen['cells'] for t in c['takes'])
+        assert all(t['audio']['loudness_lufs'] is not None for c in seen['cells'] for t in c['takes'])
+
+
+async def test_a_hidden_run_in_flight_reads_as_one_neutral_face_until_it_settles(tmp_path, monkeypatch):
+    # Two local attempts land while two hosted ones are held at a gate: which
+    # cells land first, and their takes, would tell the lanes apart.
+    gate = asyncio.Event()
+    executors = {'elevenlabs': FakeAudioExecutor('elevenlabs', 'external', data=tone_wav(seconds=3.5), gate=gate),
+                 'voice-runner': FakeAudioExecutor('voice-runner', 'local', data=tone_wav(seconds=3.5))}
+    async with casting(tmp_path, monkeypatch, executors=executors) as (client, _):
+        p = await project(client)
+        direction = await blind_cast(client, p['id'], (LOCAL, 2), (HOSTED, 2))
+        check, answer = await blind_submit(client, direction)
+        assert check['ready'] and answer.status_code == 201, (check['errors'], answer.text)
+        turn_id = answer.json()['turn_id']
+
+        async def locals_landed():
+            slots = (await store().get_turn(turn_id))['slots']
+            return [s['status'] for s in slots].count('landed') == 2 and slots
+
+        await until(locals_landed)
+        view = await run_of(client, direction['id'])
+        idx = view['submissions'][0]['idx']
+        for cell in view['cells']:
+            assert (cell['state'], cell['takes'], cell['retrying'], cell['kind'], cell['cause'],
+                    cell['collectable'], cell['engine']) == ('running', [], False, None, None, False, 'hidden')
+        assert view['summary'] == f'Run {idx} is in progress: 2 of 4 attempts done. Its takes show when it settles.'
+        assert not leaks(view, await identity_terms(await store().get_turn(turn_id)))
+
+        gate.set()
+        await settle_turn(turn_id, until={'landed'})
+        settled = await run_of(client, direction['id'])
+        assert [c['state'] for c in settled['cells']] == ['landed'] * 4 and settled['summary'] == '4 landed.'
+        assert sum(len(c['takes']) for c in settled['cells']) == 12
 
 
 async def test_the_run_view_holds_only_its_own_run_and_shows_picks_and_decisions(tmp_path, monkeypatch):
@@ -231,7 +273,9 @@ async def test_a_voice_session_hands_over_a_token_never_the_key_and_stores_no_to
         stored, events = await receipts_and_events()
     first, second = started.json(), again.json()
     assert first['conversation_token'] == 'tok-1' and first['signed_url'] is None
-    assert second['session']['session_id'] == first['session']['session_id'] and second['conversation_token'] == 'tok-2'
+    # A replay answers the same session and asks ElevenLabs for nothing: one session, one conversation.
+    assert second['session']['session_id'] == first['session']['session_id']
+    assert second['conversation_token'] is second['signed_url'] is None and len(provider.calls) == 1
     assert first['session']['actor'] == body['actor'] and first['session']['project_id'] == p['id']
     assert first['session']['max_seconds'] == 300 and first['session']['conversation_id'] == 'conv-1'
     assert first['usage']['reserved_seconds'] == 300 and first['usage']['left_seconds'] == 0
@@ -266,6 +310,40 @@ async def test_minutes_are_capped_before_elevenlabs_is_asked(tmp_path, monkeypat
         _, events = await receipts_and_events()
     assert unknown.status_code == 404
     assert [e['actor']['kind'] for e in events] == ['human', 'human', 'human']   # start, end, start
+
+
+async def test_a_session_ends_by_its_starter_and_counts_at_least_the_servers_own_time(tmp_path, monkeypatch):
+    class Later(datetime):
+        """The server's clock, `ahead` seconds after a session started."""
+        ahead = 0.0
+
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(tz) + timedelta(seconds=cls.ahead)
+
+    monkeypatch.setattr(agent_door, 'datetime', Later)
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        voice(monkeypatch, cap_minutes=20)
+
+        async def started(seconds_ago):
+            Later.ahead = seconds_ago
+            return (await client.post('/api/crexil/voice-sessions', json=command())).json()['session']['session_id']
+
+        sid = await started(120)
+        agent = await client.post(f'/api/crexil/voice-sessions/{sid}/end', json=command(elapsed_s=0, actor=AGENT))
+        assert (agent.status_code, agent.json()['detail']) == (403, agent_door.ENDED_BY_STARTER)
+        # The panel's account of 0 s never lowers the meter below the server's own clock.
+        ended = (await client.post(f'/api/crexil/voice-sessions/{sid}/end', json=command(elapsed_s=0))).json()
+        assert 120 <= ended['elapsed_s'] < 125
+        longer = await started(30)
+        assert (await client.post(f'/api/crexil/voice-sessions/{longer}/end',
+                                  json=command(elapsed_s=61.5))).json()['elapsed_s'] == 61.5
+        stale = await started(1000)                  # never more than the session's maximum
+        assert (await client.post(f'/api/crexil/voice-sessions/{stale}/end',
+                                  json=command(elapsed_s=5))).json()['elapsed_s'] == 300
+        _, events = await receipts_and_events()
+    reported = [e['reported_s'] for e in events if 'reported_s' in e]
+    assert reported == [0, 61.5, 5]                  # the panel's own figure stays on the record
 
 
 async def test_an_agent_never_starts_a_voice_session(tmp_path, monkeypatch):

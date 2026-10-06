@@ -541,7 +541,7 @@ async def test_a_runner_that_is_down_is_unreachable_with_the_fix(tmp_path):
     with pytest.raises(EngineFailure) as e:
         await ex.start(request(tmp_path))
     assert e.value.kind == "unreachable"
-    assert "systemctl --user start 3d-runner" in str(e.value)
+    assert "scripts/3d-runner.sh" in str(e.value) and "systemctl" not in str(e.value)
     await ex.close()
 
 

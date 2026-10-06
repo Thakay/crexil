@@ -40,11 +40,17 @@ names any further host clients use.
 field is refused by name. Seeds are honored and recorded: a job without one
 gets a drawn seed, so every take can be reproduced on this installation.
 
+**One job per client reference.** The cockpit names each attempt's job by its
+`client_ref`. A second request with a reference the runner already holds
+answers that job and queues nothing, and the job can be looked up by its
+reference, so an answer lost on its way back never makes a take run twice.
+
 Routes:
     GET    /health                -> {ok, engine, version, busy, running, queued, models}
     POST   /jobs                  -> 202 {job_id}   body: kind, text, instruct
                                      (voice-design), voice {wav_b64, text}
                                      (speak), language, n, seed, client_ref
+    GET    /jobs?client_ref=<ref> -> the job record with that client reference
     GET    /jobs/<id>             -> the job record
     GET    /jobs/<id>/audio/<i>   -> take i (from 0) as 16-bit PCM WAV
     DELETE /jobs/<id>             -> cancel
@@ -75,7 +81,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 VERSION = "1"
 ENGINE = "qwen3-tts"
@@ -429,6 +435,12 @@ class Runner:
             found = self._records.get(job_id)
             return dict(found) if found else None
 
+    def find(self, client_ref: str) -> dict | None:
+        """The job a client named by this reference, if the runner holds one."""
+        with self._lock:
+            found = next((r for r in self._records.values() if r.get("client_ref") == client_ref), None)
+            return dict(found) if found else None
+
     def health(self) -> dict:
         with self._lock:
             queued = sum(1 for r in self._records.values() if r["state"] == "queued")
@@ -444,6 +456,8 @@ class Runner:
     # --- requests ---
 
     def submit(self, spec: Spec) -> dict:
+        """Queue one job, or answer the job this client reference already
+        names: one reference never queues a second job."""
         job_id = uuid.uuid4().hex
         record = {"id": job_id, "engine": ENGINE, "kind": spec.kind, "state": "queued", "created": _now(),
                   "client_ref": spec.client_ref, "language": spec.language, "n": spec.n, "seed": spec.seed,
@@ -451,6 +465,11 @@ class Runner:
                   "model": MODELS[spec.kind][0],
                   "reference_seconds": round(spec.reference.seconds, 3) if spec.reference else None}
         with self._lock:
+            if spec.client_ref is not None:
+                known = next((r for r in self._records.values() if r.get("client_ref") == spec.client_ref), None)
+                if known is not None:
+                    log.info("job %s answers client reference %s again; nothing queued", known["id"], spec.client_ref)
+                    return dict(known)
             self._records[job_id] = record
             self._specs[job_id] = spec
             self._write(record)
@@ -577,6 +596,12 @@ class Handler(BaseHTTPRequestHandler):
         parts = self._parts()
         if parts == ["health"]:
             return self._json(200, self.runner.health())
+        if parts == ["jobs"]:
+            refs = parse_qs(urlsplit(self.path).query).get("client_ref") or []
+            if len(refs) != 1:
+                return self._json(400, {"detail": "Name one job by its client_ref."})
+            record = self.runner.find(refs[0])
+            return self._json(200, record) if record else self._json(404, {"detail": "No job has this client_ref."})
         if len(parts) == 2 and parts[0] == "jobs":
             record = self.runner.get(parts[1])
             return self._json(200, record) if record else self._json(404, {"detail": "No such job."})

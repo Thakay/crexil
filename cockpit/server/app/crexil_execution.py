@@ -19,6 +19,10 @@ its facts is read, so no review line and no frozen request names its engine.
 Each take's runtime files are named by its frozen grid position, after a blind
 run is arranged. The review says, for each operation, whether its attempts will
 retry on their own.
+
+An agent sends paid work only inside a project spending limit, which only the
+artist sets (laws 22 and 23): an agent's submission that reserves money in a
+project without one is refused, while free work stays open to agents.
 """
 
 from __future__ import annotations
@@ -47,6 +51,11 @@ class SpendingChanged(Conflict):
     Answered as a 409 whose `X-Crexil-Conflict` header says `spending`, so a
     client reviews again and shows the current totals."""
     code = 'spending'
+
+
+UNBOUNDED_AGENT = ("Sending paid work in a project without a spending limit is the artist's act: a limit "
+                   'decides how much money may move. An agent may propose a limit; the artist sets it, or runs '
+                   'this work.')
 
 
 # A review token stays 64 hex characters: the request, then the limits, then the
@@ -508,6 +517,10 @@ async def freeze(stack, did: str, body, *, staged_directories: list | None = Non
                               + ' Review again to see the current totals.')
     if not reviewed['ready']:
         raise ValueError(' '.join(reviewed['errors']))
+    if (body.actor.kind != 'human' and reviewed['reserved_micro_usd']
+            and reviewed['snapshot']['project_limits'].get('spending_limit_usd') is None):
+        from .execution_controls import ArtistsMove
+        raise ArtistsMove(UNBOUNDED_AGENT)
     snapshot = reviewed['snapshot']
     setup = Preparation.model_validate(snapshot['setup'])
     direction = await creative.direction(did)

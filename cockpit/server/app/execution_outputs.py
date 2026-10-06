@@ -292,8 +292,12 @@ async def collect(db: Database, staging: Path, slot: dict, req: DispatchRequest,
 
 
 async def inventory(db: Database, wid: str) -> list[dict]:
+    """A project's execution groups, oldest first. A blind run's groups keep its
+    grid order, by cell and attempt, never the order its takes landed in."""
     groups = await db._all('SELECT g.* FROM execution_groups g JOIN slots s ON s.id=g.slot_id '
-        'JOIN turns t ON t.id=s.turn_id WHERE t.workspace_id=? ORDER BY g.created_at,g.id', (wid,))
+        'JOIN turns t ON t.id=s.turn_id LEFT JOIN blind_runs b ON b.turn_id=s.turn_id WHERE t.workspace_id=? '
+        'ORDER BY COALESCE(b.created_at, g.created_at), CASE WHEN b.turn_id IS NULL THEN NULL ELSE s.pos END, '
+        'g.take, g.id', (wid,))
     result = []
     for row in groups:
         item = dict(row)

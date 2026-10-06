@@ -8,14 +8,9 @@ control values retain unsupported inputs until the participant resolves them.
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-from .schemas import HealthComfy, Node, SetupStatus, Turn
+from .schemas import Actor, ControlType, HealthComfy, Node, SetupStatus, Turn
 
 Payload = Literal['image', '3d', 'audio']
-
-
-class Actor(BaseModel):
-    kind: Literal['human', 'agent']
-    name: str = Field(min_length=1, max_length=120)
 
 
 class Command(BaseModel):
@@ -633,7 +628,7 @@ class OperationInput(BaseModel):
     model_config = ConfigDict(extra='allow')
     key: str
     label: str | None = None
-    type: Literal['text', 'int', 'float', 'enum', 'seed', 'bool'] | None = None
+    type: ControlType | None = None
     default: Any = None
     required: bool | None = None
     min: float | None = None
@@ -907,7 +902,7 @@ class PublicControl(BaseModel):
     model_config = ConfigDict(extra='forbid')
     key: str = ''
     label: str = ''
-    type: Literal['text', 'int', 'float', 'enum', 'seed', 'bool'] = 'text'
+    type: ControlType = 'text'
     default: Any = None
     required: bool = False
     min: float | None = None

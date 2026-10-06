@@ -1114,6 +1114,13 @@ class Database:
         "  WHERE type='node.promoted' AND node_id IS NOT NULL"
         "  GROUP BY node_id) pr ON pr.node_id = n.id")
 
+    # A blind run's takes keep its frozen, shuffled grid order on every list,
+    # revealed or not, never the order they landed in, which tells its engines
+    # apart: they sort at the run's creation time, by cell, then output. Lists
+    # that use it join `slots s` and `blind_runs b`.
+    _BLIND_JOIN = " LEFT JOIN blind_runs b ON b.turn_id = n.turn_id"
+    _IN_RUN_ORDER = "CASE WHEN b.turn_id IS NULL THEN NULL ELSE s.pos END, n.output_index"
+
     async def get_node(self, nid: str) -> dict | None:
         """Purged nodes are returned too — lineage outlives purge (law 7)."""
         row = await self._one(
@@ -1129,16 +1136,17 @@ class Database:
         """The canvas feed: node rows plus the two label keys the card
         footer needs: `turn_idx` and `slot_pos` (the card's letters are SLOT
         letters: `12b` = turn 12, slot b). Imported nodes LEFT-JOIN to NULLs.
-        Other node readers stay unjoined."""
+        Other node readers stay unjoined. Oldest first; a blind run's takes
+        in its grid order."""
         q = ("SELECT n.*, t.idx AS turn_idx, s.pos AS slot_pos,"
              " pr.promoted_at FROM nodes n"
              " LEFT JOIN turns t ON t.id = n.turn_id"
              " LEFT JOIN slots s ON s.id = n.slot_id"
-             + self._PROMOTED_JOIN +
+             + self._BLIND_JOIN + self._PROMOTED_JOIN +
              " WHERE n.workspace_id=?")
         if not include_purged:
             q += " AND n.purged_at IS NULL"
-        rows = await self._all(q + " ORDER BY n.created_at", (wid,))
+        rows = await self._all(q + " ORDER BY COALESCE(b.created_at, n.created_at), " + self._IN_RUN_ORDER, (wid,))
         nodes = [self._node_row(r) for r in rows]
         await self._attach_parents(nodes)
         return nodes
@@ -1223,19 +1231,22 @@ class Database:
         every request and history item id another attempt's receipt records;
         `unsettled`, every other attempt sent to this provider that no receipt
         records and whose charge no event settles (in flight, stopped late, or
-        lost), with its frozen request and send time; and `sent_at`, when this
+        lost), with its frozen request and send time; `receipted`, every other
+        attempt sent whose receipt records its answer, with its frozen request,
+        send time and the `ids` that receipt holds; and `sent_at`, when this
         attempt was sent. Times are Unix seconds."""
         bound: set[str] = set()
-        receipted: set[tuple] = set()
+        receipts: dict[tuple, set[str]] = {}
         for row in await self._all(
                 "SELECT g.slot_id, g.take, o.descriptor_json FROM execution_outputs o "
                 "JOIN execution_groups g ON g.id=o.group_id WHERE o.role='provider receipt'"):
             external = (json.loads(row["descriptor_json"]).get("receipt") or {}).get("external") or {}
             if external.get("provider") != provider:
                 continue
-            receipted.add((row["slot_id"], row["take"]))
+            ids = {v for v in (external.get("request_id"), external.get("history_item_id")) if v}
+            receipts.setdefault((row["slot_id"], row["take"]), set()).update(ids)
             if (row["slot_id"], row["take"]) != (slot_id, attempt):
-                bound.update(v for v in (external.get("request_id"), external.get("history_item_id")) if v)
+                bound.update(ids)
         sent = await self._all(
             "SELECT e.slot_id, e.ts, json_extract(e.payload_json,'$.attempt') AS attempt, s.external_json "
             "FROM events e JOIN slots s ON s.id=e.slot_id WHERE e.type='slot.provider_sending' "
@@ -1248,15 +1259,18 @@ class Database:
                     (json.dumps(sorted({r["slot_id"] for r in sent})),)):
                 payload = json.loads(row["payload_json"])
                 settled.add((row["slot_id"], payload.get("attempt", payload.get("take"))))
-        unsettled, sent_at = [], None
+        unsettled, receipted, sent_at = [], [], None
         for row in sent:
             key, when = (row["slot_id"], row["attempt"]), datetime.fromisoformat(row["ts"]).timestamp()
+            other = {"slot_id": row["slot_id"], "attempt": row["attempt"], "sent_at": when,
+                     "external": json.loads(row["external_json"])}
             if key == (slot_id, attempt):
                 sent_at = when
-            elif key not in settled and key not in receipted:
-                unsettled.append({"slot_id": row["slot_id"], "attempt": row["attempt"], "sent_at": when,
-                                  "external": json.loads(row["external_json"])})
-        return {"bound": bound, "unsettled": unsettled, "sent_at": sent_at}
+            elif key in receipts:
+                receipted.append({**other, "ids": sorted(receipts[key])})
+            elif key not in settled:
+                unsettled.append(other)
+        return {"bound": bound, "unsettled": unsettled, "receipted": receipted, "sent_at": sent_at}
 
     async def mark_blind_run(self, turn_id: str, workspace_id: str, actor: dict) -> None:
         """Record, inside the caller's transaction, that a run is blind."""
@@ -1353,13 +1367,15 @@ class Database:
     async def tray_nodes(self, wid: str) -> list[dict]:
         """The set-aside tray: live set-aside nodes,
         newest first, carrying the same two label keys as the canvas feed
-        (`turn_idx`, `slot_pos`) — a tray entry is named like its card."""
+        (`turn_idx`, `slot_pos`), so a tray entry is named like its card. A
+        blind run's takes keep its grid order."""
         rows = await self._all(
             "SELECT n.*, t.idx AS turn_idx, s.pos AS slot_pos FROM nodes n"
             " LEFT JOIN turns t ON t.id = n.turn_id"
-            " LEFT JOIN slots s ON s.id = n.slot_id"
+            " LEFT JOIN slots s ON s.id = n.slot_id" + self._BLIND_JOIN +
             " WHERE n.workspace_id=? AND n.set_aside=1"
-            " AND n.purged_at IS NULL ORDER BY n.created_at DESC", (wid,))
+            " AND n.purged_at IS NULL ORDER BY COALESCE(b.created_at, n.created_at) DESC, "
+            + self._IN_RUN_ORDER, (wid,))
         nodes = [self._node_row(r) for r in rows]
         await self._attach_parents(nodes)
         return nodes

@@ -57,12 +57,16 @@ DEFECTS = (KeyError, IndexError, ValidationError, json.JSONDecodeError, UnicodeE
 
 def refused(exc: Exception) -> HTTPException:
     """The one translation of a refusal into a plain-language response.
-    Raises a defect unchanged; maps unfinished features to 501, conflicts to
-    409, missing records to 404 and other refusals to 422. A conflict that names
+    Raises a defect unchanged; maps the artist's own moves asked by an agent to
+    403, unfinished features to 501, conflicts to 409, missing records to 404
+    and other refusals to 422. A conflict that names
     its kind, such as spending that moved since review, also carries that kind
     in the `X-Crexil-Conflict` header so a client or agent can act on it."""
     if isinstance(exc, DEFECTS):
         raise exc
+    from .execution_controls import ArtistsMove
+    if isinstance(exc, ArtistsMove):
+        return HTTPException(403, str(exc))
     if isinstance(exc, (blind.NotBuilt, decisions.NotBuilt)):
         return HTTPException(501, str(exc))
     if isinstance(exc, Conflict):
@@ -238,7 +242,8 @@ async def material_audio(nid: str):
     if node['purged_at'] or not Path(node['output_path']).is_file():
         raise HTTPException(404, 'This audio is unavailable. Its record remains.')
     return FileResponse(node['output_path'], media_type=audio.MEDIA_TYPE,
-                        headers={'Cache-Control': 'public, max-age=31536000, immutable'})
+                        headers={'Cache-Control': 'public, max-age=31536000, immutable'},
+                        stat_result=await blind.file_stat(store().db, node['turn_id'], node['output_path']))
 
 
 @router.post('/turns/{tid}/reveal', response_model=BlindRunView)
@@ -357,6 +362,9 @@ async def execution_control_state(scope: Literal['project', 'run', 'sequence'], 
 
 @router.post('/execution/{scope}/{target_id}', response_model=ExecutionControlView)
 async def control_execution(scope: Literal['project', 'run', 'sequence'], target_id: str, body: ControlExecution):
+    """Pause, resume or cancel a project, run or sequence, for its participant
+    (law 23). Agents may pause and cancel; resuming work that may spend is the
+    artist's act (403)."""
     from .execution_controls import record
     async def apply():
         return await record(store().db, scope, target_id, body)
@@ -368,7 +376,11 @@ async def control_execution(scope: Literal['project', 'run', 'sequence'], target
 
 @router.post('/projects/{wid}/sequences', response_model=SequenceView, status_code=201)
 async def create_sequence(wid: str, body: CreateSequence):
+    """Create a sequence for its participant (law 23). An agent's sequence keeps
+    the default limits, as an agent's edit would: limits are the artist's (403)."""
     from .crexil_sequences import create
+    artist_sets_limits(body.actor, CreateSequence.model_fields['limits'].default_factory().model_dump(),
+                       body.limits, "a new sequence's")
     return await command(body, 'sequences.create:' + wid, lambda: create(store().db, wid, body))
 
 
@@ -445,10 +457,14 @@ async def reuse_sequence(sid: str, body: Command):
 
 @router.post('/projects/{wid}/directions', response_model=DirectionView, status_code=201)
 async def create_direction(wid: str, body: CreateDirection):
+    """Create a preparation on `row_idx`. Without one, a preparation with sources
+    lands on the row after its sources' last row, beside its family's other
+    continuations, and words alone open a new row, whoever creates it."""
     async def apply():
-        await check_references(wid, [r.node_id for r in body.setup.references])
-        return await store().new_direction(wid, body.title, body.setup.model_dump(),
-                                           body.actor.model_dump(), body.row_idx)
+        sources = [r.node_id for r in body.setup.references]
+        await check_references(wid, sources)
+        row = body.row_idx if body.row_idx is not None else await store().continuation_row(wid, sources)
+        return await store().new_direction(wid, body.title, body.setup.model_dump(), body.actor.model_dump(), row)
     return await command(body, 'directions.create:' + wid, apply)
 
 
@@ -470,8 +486,11 @@ async def direction_state(did: str, body: DirectionState):
         if before['revision'] != body.revision:
             raise Conflict('This direction changed in another view. Reload it first.')
         if body.action == 'reuse':
+            # A reused continuation lands with its family, as a new one does.
+            sources = [ref['node_id'] for ref in before['setup'].get('references') or []]
             return await creative.new_direction(before['workspace_id'], before['title'] + ' copy',
-                                                 before['setup'], body.actor.model_dump())
+                                                 before['setup'], body.actor.model_dump(),
+                                                 await creative.continuation_row(before['workspace_id'], sources))
         if body.action == 'discard':
             if before['state'] != 'draft':
                 raise ValueError('Only unfinished preparation can be discarded. Set this direction aside instead.')
@@ -484,14 +503,23 @@ async def direction_state(did: str, body: DirectionState):
 
 @router.put('/directions/{did}/selection', response_model=DirectionView)
 async def display_selection(did: str, body: DisplaySelection):
+    """Change a direction's displayed selection: a choice with its author and
+    reason (law 23). The answer carries the decision it recorded, so a later
+    revision of its reason can name it."""
+    from .crexil_record import concerns_direction
+    from .crexil_record import decisions as history
+
     async def apply():
         before = await store().direction(did)
         if not set(body.node_ids).issubset(before['node_ids']):
             raise ValueError('Choose outputs from this direction. Acting on sources across directions is a separate action.')
         await check_references(before['workspace_id'], body.node_ids, require_available=True)
-        return await store().revise_direction(did, body.revision, {'selection': body.node_ids},
-                                               body.actor.model_dump(), body.reason,
-                                               facts=await blind.selection_facts(store().db, did, body.node_ids))
+        view = await store().revise_direction(did, body.revision, {'selection': body.node_ids},
+                                              body.actor.model_dump(), body.reason,
+                                              facts=await blind.selection_facts(store().db, did, body.node_ids))
+        view['latest_decision'] = next((item for item in reversed(await history(store().db, view['workspace_id']))
+                                        if concerns_direction(item, view)), None)
+        return view
     return await command(body, 'directions.selection:' + did, apply)
 
 
@@ -806,7 +834,8 @@ async def output_file(oid: str):
         raise HTTPException(404, 'This file is withheld while its run is blind. Reveal the run to read it.')
     # A blind run's take downloads under the neutral name its group lists, never the engine's own.
     return FileResponse(member['output_path'], media_type=member['media_type'],
-                        filename=blind.output_name(dict(member)) if hidden else Path(member['filename']).name)
+                        filename=blind.output_name(dict(member)) if hidden else Path(member['filename']).name,
+                        stat_result=await blind.file_stat(store().db, turn and turn['turn_id'], member['output_path']))
 
 
 @router.post('/attempts/{sid}/collect', response_model=ExecutionGroupView)
@@ -861,8 +890,10 @@ async def resume_attempt(sid: str, body: AttemptMove):
     runner answering, the card free). The attempts that bench holds go back
     to the queue, and each meets the run, project and sequence limits again
     before it is sent (law 22). An agent resumes free local work only:
-    sending held attempts that reserve money is the artist's act."""
-    from .execution_controls import PAID_RESUME, held_attempt, remaining_cause, reserves_money
+    sending held attempts that reserve money is the artist's act, and every
+    attempt of a hidden run answers an agent in one neutral line, whatever
+    its price."""
+    from .execution_controls import HIDDEN_RESUME, PAID_RESUME, held_attempt, remaining_cause, reserves_money
     from .execution_controls import resume_attempt as record
     creative = store()
     stack = wiring.current
@@ -872,6 +903,10 @@ async def resume_attempt(sid: str, body: AttemptMove):
     except Conflict as exc:
         raise refused(exc) from exc
     if saved is None:
+        if body.actor.kind != 'human':
+            current = await creative.db.get_slot(sid)
+            if current and await blind.is_hidden(creative.db, current['turn_id']):
+                raise HTTPException(403, HIDDEN_RESUME)
         try:
             slot, bench = await held_attempt(creative.db, stack.scheduler, sid, body.attempt)
         except (LookupError, ValueError) as exc:
