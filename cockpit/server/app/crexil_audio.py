@@ -208,6 +208,10 @@ async def compile_request(db, op: dict, setup, choice, nodes: list[dict]) -> dic
         if why:
             raise ValueError(f'{why} Choose a take this engine may use. All sources are kept.')
         facts = await db.audio_fact(node['id']) or {}
+        shortest = row.get('voice_reference_min_seconds')
+        if shortest and (facts.get('duration_s') or 0) < shortest:
+            raise ValueError(f"{row['name']} needs a voice take of at least {shortest:g} seconds; this one is "
+                             f"{facts.get('duration_s') or 0:.1f} seconds. Choose a longer take. All sources are kept.")
         recorded = dict(facts.get('voice') or {})
         if row.get('voice_providers') and recorded.get('provider') not in row['voice_providers']:
             raise ValueError(f"{row['name']} speaks only with voices designed or saved at "

@@ -50,3 +50,20 @@ async def test_one_misconfigured_audio_row_never_hides_the_other_operations(tmp_
         assert response.status_code == 200, response.text
         listed = [o for o in response.json() if o['id'].endswith(f":{broken['id']}")]
         assert listed and all(o['cost_basis'].startswith('No published price') for o in listed)
+
+
+async def test_review_refuses_a_voice_take_shorter_than_the_engine_needs(tmp_path, monkeypatch):
+    import json
+
+    from test_audio_contract import REPO, booted_audio, designed, draft
+    matrix = json.loads((REPO / 'configs' / 'engines.json').read_text())
+    strict = dict(next(r for r in matrix['engines'] if r['id'] == 'qwen3-tts'),
+                  id='qwen3-tts-strict', voice_reference_min_seconds=3)
+    async with booted_audio(tmp_path, monkeypatch, rows=[strict]) as (client, _fakes):
+        p = await project(client)
+        _turn, takes = await designed(client, p['id'])          # the fake runner's takes last 0.5 s
+        direction = await draft(client, p['id'], 'audio:speak:qwen3-tts-strict', 'Bring me the ore.',
+                                refs=[takes[0]['id']])
+        check = await reviewed(client, direction)
+    assert not check['ready']
+    assert any('at least 3 seconds' in error and '0.5 seconds' in error for error in check['errors'])

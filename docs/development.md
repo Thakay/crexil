@@ -200,6 +200,10 @@ records a licence note per entry; nothing enforces it.
 Audio engines are rows of `configs/engines.json` with payload `audio`, each naming its provider.
 They ship disabled; set `enabled` when an installation can reach them.
 
+The local voice engine (Qwen3-TTS) runs in its own environment behind `tools/tts/runner.py`;
+`tools/tts/README.md` covers install and start. Set `VOICE_RUNNER_URL` if it serves elsewhere than
+`http://127.0.0.1:8190`, and enable the `qwen3-tts` row.
+
 ### Local ComfyUI lane
 
 - ComfyUI is a separate checkout with its own virtual environment, reached at `COMFYUI_URL`.
