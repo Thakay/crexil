@@ -2,14 +2,22 @@
 
 Assessments and reason revisions append events, without changing display choices,
 execution success or older authorship. A revision names the exact version it saw.
+An assessment made while its run is blind records it, like a selection.
 Search includes unavailable and set-aside work. Restored identities are resolved
 only for navigation; participant text and frozen requests remain historical.
+
+Search matches words, never JSON key names or nulls: every query word must
+appear in a result's own text. Prompts are read through the full-text index
+(word prefixes); a purged take's prompt, names and reasons match as substrings.
+While a run is blind, its takes are never matched by engine or file name, so a
+search cannot tell its takes apart by engine (law 23 keeps authorship readable).
 """
 
 from __future__ import annotations
 
-import json
+import sqlite3
 
+from . import blind
 from .crexil_store import Conflict, CreativeStore
 
 
@@ -59,6 +67,42 @@ async def decisions(db, wid: str) -> list[dict]:
     return results
 
 
+def words(*values) -> str:
+    """The searchable text of values: their strings and numbers only, never the
+    key names, booleans or nulls of a structured record."""
+    found = []
+
+    def walk(value):
+        if isinstance(value, str):
+            found.append(value)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            found.append(str(value))
+        elif isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item)
+
+    for value in values:
+        walk(value)
+    return ' '.join(found).casefold()
+
+
+async def prompt_hits(db, wid: str, tokens: list[str]) -> list[set[str]]:
+    """Per query word, the takes whose indexed prompt holds a word starting with it."""
+    hits = []
+    for token in tokens:
+        try:
+            rows = await db._all('SELECT f.node_id FROM node_fts f JOIN nodes n ON n.id=f.node_id '
+                                 'WHERE node_fts MATCH ? AND n.workspace_id=?',
+                                 ('"' + token.replace('"', '""') + '"*', wid))
+        except sqlite3.OperationalError:     # a word the index cannot tokenize matches by substring only
+            rows = []
+        hits.append({row['node_id'] for row in rows})
+    return hits
+
+
 async def record(db, wid: str, *, q='', node_id=None, direction_id=None, turn_id=None, before=None, limit=50):
     async with db._locked():
         await CreativeStore(db).project(wid)
@@ -69,11 +113,31 @@ async def record(db, wid: str, *, q='', node_id=None, direction_id=None, turn_id
         turns = await db.list_turns(wid)
         files = {row['node_id']: dict(row) for row in await db._all(
             'SELECT m.* FROM material_info m JOIN nodes n ON n.id=m.node_id WHERE n.workspace_id=?', (wid,))}
-        needle = q.casefold().strip()
-        def matches(value):
-            return not needle or needle in json.dumps(value, ensure_ascii=False).casefold()
-        node_text = {n['id']: [n['prompt'], n['engine'], files.get(n['id'], {}).get('filename')] for n in nodes}
-        direction_text = {d['id']: [d['title'], d['setup']] for d in directions}
+        hidden = await blind.hidden_turns(db, wid)
+        tokens = q.casefold().split()
+        hits = await prompt_hits(db, wid, tokens)
+
+        def node_text(n):
+            named = [] if n['turn_id'] in hidden else [n['engine'], files.get(n['id'], {}).get('filename')]
+            return words(*named, n['prompt'] if n['purged_at'] else None)
+
+        texts = {n['id']: node_text(n) for n in nodes}
+
+        def node_has(nid, index, token):
+            return nid in hits[index] or token in texts.get(nid, '')
+
+        direction_text = {d['id']: words(d['title'], d['setup']) for d in directions}
+
+        def turn_text(t):
+            slots = [s['status'] for s in t['slots']] if t['id'] in hidden else [
+                {'engine': s['engine'], 'status': s['status'], 'cause': s['cause']} for s in t['slots']]
+            return words(t['prompt'], t['dials'], slots)
+
+        def decision_matches(item):
+            own = words(item['reason'], (item['actor'] or {}).get('name'), direction_text.get(item['direction_id']))
+            return all(token in own or any(node_has(n, i, token) for n in item['node_ids'])
+                       for i, token in enumerate(tokens))
+
         direction = next((d for d in directions if d['id'] == direction_id), None)
         run_nodes = {n['id'] for n in nodes if n['turn_id'] == turn_id} if turn_id else set()
         filtered = [item for item in reversed(history)
@@ -81,14 +145,14 @@ async def record(db, wid: str, *, q='', node_id=None, direction_id=None, turn_id
                     and (node_id is None or node_id in item['node_ids'])
                     and (direction_id is None or direction is not None and concerns_direction(item, direction))
                     and (turn_id is None or turn_id == item['turn_id'] or run_nodes.intersection(item['node_ids']))
-                    and matches([item, direction_text.get(item['direction_id']),
-                                 *[node_text.get(n) for n in item['node_ids']]])]
+                    and decision_matches(item)]
         return {'decisions': filtered[:limit],
                 'next_before': filtered[limit - 1]['seq'] if len(filtered) > limit else None,
-                'material_ids': [n['id'] for n in nodes if matches(node_text[n['id']])],
-                'direction_ids': [d['id'] for d in directions if matches(direction_text[d['id']])],
-                'turn_ids': [t['id'] for t in turns if matches([t['prompt'], t['dials'],
-                    [{'engine': s['engine'], 'status': s['status'], 'cause': s['cause']} for s in t['slots']]])]}
+                'material_ids': [n['id'] for n in nodes
+                                 if all(node_has(n['id'], i, token) for i, token in enumerate(tokens))],
+                'direction_ids': [d['id'] for d in directions
+                                  if all(token in direction_text[d['id']] for token in tokens)],
+                'turn_ids': [t['id'] for t in turns if all(token in turn_text(t) for token in tokens)]}
 
 
 async def assess(db, wid: str, body):
@@ -118,7 +182,8 @@ async def assess(db, wid: str, body):
                     raise ValueError('Every assessed item must belong to this project.')
         payload = {'kind': 'assessment', 'node_ids': body.node_ids, 'direction_id': body.direction_id,
                    'turn_id': body.turn_id, 'sequence_id': None}
-    payload.update(actor=body.actor.model_dump(), reason=body.reason)
+    payload.update(await blind.facts_for(db, payload['node_ids'], [payload['turn_id']]),
+                   actor=body.actor.model_dump(), reason=body.reason)
     event = await db.append_event('decision.recorded', workspace_id=wid, turn_id=payload['turn_id'], payload=payload)
     await db.touch_workspace(wid)
     return next(item for item in await decisions(db, wid) if item['seq'] == event['seq'])

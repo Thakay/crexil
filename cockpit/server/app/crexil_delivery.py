@@ -21,7 +21,7 @@ import shutil
 from pathlib import Path
 from weakref import WeakKeyDictionary
 
-from . import manifests, promote
+from . import blind, manifests, promote
 from .api_v4_promote import _folder_for, _root
 from .crexil_store import Conflict, CreativeStore
 from .db import new_id, now_iso
@@ -72,6 +72,9 @@ async def _plans(db, wid: str, body) -> tuple[str, list[dict]]:
         try:
             if node['purged_at'] or not Path(node['output_path']).is_file():
                 raise ValueError('The original file is unavailable. Its record remains in the project.')
+            if await blind.is_hidden(db, node['turn_id']):
+                raise ValueError('This take belongs to a blind run. Reveal the run before delivering it, '
+                                 'so its manifest can name its engine.')
             turn = await db.get_turn(node['turn_id']) if node['turn_id'] else None
             slot = await db.get_slot(node['slot_id']) if node['slot_id'] else None
             parents = [await db.get_node(pid) for pid in node['parents']]

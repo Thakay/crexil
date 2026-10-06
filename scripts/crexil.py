@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """A thin artist/agent client of the shared Crexil HTTP actions.
 
-Reads print JSON or the requested CSV summary. Mutations identify the participant and print a delivery ID;
-reuse that ID when retrying the same request after a connection failure. Input
-JSON describes the same values the artist interface sends. No database or
-staging writes happen here. The default target is the isolated preview (scripts/preview.sh).
+Reads print JSON or the requested CSV summary. Mutations name their participant
+(--actor or CREXIL_ACTOR, as human:NAME or agent:NAME; there is no default) and
+print a delivery ID; reuse that ID when retrying the same request after a
+connection failure. Input JSON describes the same values the artist interface
+sends. No database or staging writes happen here. The target is --url or
+CREXIL_URL, a loopback address; without either it is the source server on :8000.
+A blind run's reads come back masked by the server until its authored reveal.
 
 Examples:
   crexil.py get setup
@@ -24,6 +27,8 @@ Examples:
   crexil.py get projects/PROJECT/deliveries.csv
   crexil.py backup PROJECT project.crexil.zip
   crexil.py restore project.crexil.zip --name "Restored project"
+  crexil.py export PROJECT                      # the decision record, one JSON line per decision
+  crexil.py --actor human:Kay reveal RUN --reason "Done listening"
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ import argparse
 import base64
 import json
 import hashlib
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -85,8 +91,10 @@ def archive_action(args, actor) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--url', default='http://127.0.0.1:8010')
-    parser.add_argument('--actor', default='human:Artist', help='human:NAME or agent:NAME')
+    parser.add_argument('--url', default=os.environ.get('CREXIL_URL') or 'http://127.0.0.1:8000',
+                        help='The local Crexil address (CREXIL_URL)')
+    parser.add_argument('--actor', default=os.environ.get('CREXIL_ACTOR'),
+                        help='human:NAME or agent:NAME (CREXIL_ACTOR); required for every change')
     parser.add_argument('--request-id', help='Reuse only for identical delivery after a connection failure')
     actions = parser.add_subparsers(dest='action', required=True)
     for action in ('get', 'post', 'patch', 'put'):
@@ -106,18 +114,34 @@ def main() -> int:
     restore = actions.add_parser('restore')
     restore.add_argument('file', type=Path)
     restore.add_argument('--name')
+    exporter = actions.add_parser('export', help="Print the project's decision record")
+    exporter.add_argument('project')
+    exporter.add_argument('--json', action='store_true', help='One JSON document instead of JSON lines')
+    revealer = actions.add_parser('reveal', help="Reveal a blind run's engines to every reader")
+    revealer.add_argument('run')
+    revealer.add_argument('--reason', default='')
     args = parser.parse_args()
     url = urlparse(args.url)
     if url.scheme != 'http' or url.hostname not in ('localhost', '127.0.0.1', '::1') or url.username:
         parser.error('Use the local Crexil HTTP address.')
-    kind, separator, name = args.actor.partition(':')
-    if not separator or kind not in ('human', 'agent') or not name.strip():
-        parser.error('Identify the participant as human:NAME or agent:NAME.')
+    # Reads and side-effect-free reviews need no participant; every change names one (law 23).
+    reads = args.action in ('get', 'export') or (args.action == 'post' and urlparse(args.path).path.endswith('/review'))
+    kind, separator, name = (args.actor or '').partition(':')
+    if not reads and (not separator or kind not in ('human', 'agent') or not name.strip()):
+        parser.error('Name the participant with --actor or CREXIL_ACTOR as human:NAME or agent:NAME.')
     body = None
     try:
         if args.action in ('backup', 'restore'):
             return archive_action(args, {'kind': kind, 'name': name})
-        if args.action == 'import':
+        if args.action == 'export':
+            if not args.project.isalnum():
+                parser.error('Use the project identity from its URL.')
+            path, method = f"projects/{args.project}/preferences{'' if args.json else '.jsonl'}", 'GET'
+        elif args.action == 'reveal':
+            if not args.run.isalnum():
+                parser.error('Use the run identity from the project.')
+            path, method, body = f'turns/{args.run}/reveal', 'POST', {'reason': args.reason}
+        elif args.action == 'import':
             path = f'projects/{args.project}/material'
             method = 'POST'
             body = {'filename': args.file.name,
@@ -143,7 +167,7 @@ def main() -> int:
             data=json.dumps(body).encode() if body is not None else None,
             headers={'Content-Type': 'application/json'}, method=method)
         with urllib.request.urlopen(request, timeout=60) as response:
-            if response.headers.get_content_type() == 'text/csv':
+            if response.headers.get_content_type() in ('text/csv', 'application/x-ndjson'):
                 sys.stdout.write(response.read().decode('utf-8'))
             else:
                 print(json.dumps(json.load(response), indent=2))
