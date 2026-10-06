@@ -90,6 +90,18 @@ image, runs `docker compose up -d` and polls `/api/health`. A plain `docker comp
 stamps the build `unknown`, and the UI footer shows `BUILD DRIFT` when the client and server ids
 differ.
 
+### Browser tests
+
+`scripts/e2e.sh [normal|preview|all]` runs the Playwright suites offline, each in a fresh folder
+from `mktemp`. `normal` runs every spec against the harness server: scripted executors, the normal
+build, and a hosted catalogue from `providers.json` alone. `preview` runs the crexil journeys
+against the isolated preview build. `all`, the default, runs both. `CREXIL_E2E_PORT` picks the port
+(default 8123), and `CREXIL_E2E_KEEP=1` keeps a passing run's folder. Where unprivileged user
+namespaces exist, the suites run in a network namespace with only loopback. A test that holds in
+one mode only skips itself in the other, with its reason. `npm run e2e` runs the harness suite in
+place, with state in `.staging/e2e`. Specs take store, promote and screenshot paths from
+`cockpit/web/e2e/paths.ts`.
+
 ## 4. Running an isolated instance
 
 An instance is its store, its staging folder, its promote folder and its port. By default the store

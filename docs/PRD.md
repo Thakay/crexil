@@ -61,6 +61,9 @@ artefact: node ids, lineage, engine, seed, the prompt as typed and as submitted,
 hash, cost, the submitted graph. **v4 is the public format, frozen; changes are versioned,
 additive and documented.**
 
+A take whose creation left no submitted graph claims a record-only replay tier; only a verbatim
+graph earns `exact:`.
+
 Three additive manifest extensions exist, each with its own version:
 
 - `shared_request` (version 1) keeps the accepted preparation, its source contributions, the
