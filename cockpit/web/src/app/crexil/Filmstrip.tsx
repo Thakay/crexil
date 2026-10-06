@@ -439,7 +439,7 @@ function RowStrip({count, gutter, children}: {count: number; gutter: (more: Reac
     element.addEventListener('scroll', measure);
     return () => {observer.disconnect(); element.removeEventListener('scroll', measure);};
   }, [count]);
-  const more = beyond > 0 ? <button className={s.door} aria-label={`Show ${beyond} more ${beyond === 1 ? 'section' : 'sections'} of this row`}
+  const more = beyond > 0 ? <button className={`${s.door} ${s.moreDoor}`} aria-label={`Show ${beyond} more ${beyond === 1 ? 'section' : 'sections'} of this row`}
     onClick={() => strip.current?.scrollBy({left: strip.current.clientWidth * .8, behavior: 'smooth'})}>{beyond} more ›</button> : null;
   return <>{gutter(more)}<div ref={strip} className={`${s.sections} ${beyond ? s.moreBeyond : ''}`} data-lineage-strip>{children}</div></>;
 }
