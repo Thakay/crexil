@@ -270,9 +270,13 @@ async def test_the_record_names_bound_ids_unsettled_sends_and_this_attempts_send
         assert found['bound'] == {'req-landed', 'hist-landed'}                         # never this attempt's own
         assert sorted(u['slot_id'] for u in found['unsettled']) == sorted([lost['id'], running['id']])
         assert all(u['external'] == envelope and u['sent_at'] > 0 for u in found['unsettled'])
+        # A landed attempt is listed with the ids its receipt holds, never this attempt's own.
+        (other,) = found['receipted']
+        assert (other['slot_id'], other['ids'], other['external']) == (landed_['id'], ['hist-landed', 'req-landed'],
+                                                                     envelope)
         assert found['sent_at'] is not None
         assert (await db.provider_attempts('voice-runner', slot_id=mine['id'], attempt=1)) == {
-            'bound': set(), 'unsettled': [], 'sent_at': None}
+            'bound': set(), 'unsettled': [], 'receipted': [], 'sent_at': None}
         slot = await db.get_slot(mine['id'])
         await db.record_saved_voice(slot, 'elevenlabs', 'gen-0', 'voice-1', found=False)
         await db.record_saved_voice(slot, 'elevenlabs', 'gen-0', 'voice-1', found=True)   # kept once
