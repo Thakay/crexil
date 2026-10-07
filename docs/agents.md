@@ -149,7 +149,10 @@ Door errors give the server's plain line, then the next move, then a stable kind
 
 The voice director is the second agent door: an ElevenLabs Agents conversation in a column at the right of
 the project surface, opened from `VOICE DIRECTOR ›` in the top bar and configured in `tools/voice-director/`. Its tools call the same shared actions as
-`agent:voice-director`; a paid run and a pick wait for the artist's click. During a session the microphone
+`agent:voice-director`; a run starts on its request only when it is free and every engine it chose runs on
+this machine, and any other run, and a pick, wait for the artist's click. Under Docker, `compose.yaml` points the
+runtimes at `host.docker.internal`, which counts as off this machine, so the director's local runs wait for the click
+there too. During a session the microphone
 audio and what the director reads about the project (the brief, run prompts, take labels and reasons) go to
 ElevenLabs and the agent's language model, and ElevenLabs keeps each conversation for 7 days. Take audio never
 does: the microphone mutes before any take plays.
@@ -252,7 +255,9 @@ Two exports summarize a project:
   committed. An attempt is charged once however many takes it returns, so a line states that cost on
   the first of the attempt's takes among its candidates; its other takes, such as a Voice Design call's
   second and third previews, read `null`, so summing a line's candidates counts each attempt once. A
-  hidden run's candidates state no cost until the reveal.
+  hidden run's candidates state no cost and name no attempt until the reveal. Each candidate names its attempt (`attempt_id`),
+  shared by the takes one call returned; null for material from no run and while the run is hidden. The MCP
+  door's `crexil_get_decisions` candidates carry it too.
   It is the artist's account of decisions, never a dataset, and it holds no media.
 
 ## Pipelines

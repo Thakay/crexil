@@ -66,8 +66,10 @@ browser or a network could reach. Read this before you expose it anywhere.
   compares money, not where an engine runs. It offers no pick, reveal, delivery, limit or voice
   session tool, and its answers carry facts, ids, labels and reasons, never a take's bytes or a file
   address.
-- **The voice director** writes as `agent:voice-director`. It submits free local runs only; a paid run
-  it prepares waits for the artist's click, with the price on the button. Its tools never hand take
+- **The voice director** writes as `agent:voice-director`. It submits only free runs whose engines all
+  run on this machine (Crexil sends each request to a loopback address); any other run it prepares, paid
+  or free, waits for the artist's click, with the price on the button and what leaves the machine on the
+  card. Its tools never hand take
   audio, an address or a file name to the agent.
 
 ### Voice sessions

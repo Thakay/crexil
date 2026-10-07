@@ -61,13 +61,24 @@ python3 tools/voice-director/apply.py --dry-run       # the voice director's age
 scripts/deploy.sh                            # optional local Docker build and start
 ```
 
-**Baseline.** On a clean checkout ruff passes, pytest reports 1401 passed and 2 skipped in about
-160 seconds, vitest reports 819 passed in 68 files, and `tsc -b`, the specs' type-check and
-`vite build` pass; `scripts/check.sh` takes about 170 seconds. The skipped tests are the live
+**Baseline.** On a clean checkout ruff passes, pytest reports 1424 passed and 2 skipped in about
+155 seconds, vitest reports 868 passed in 71 files, and `tsc -b`, the specs' type-check and
+`vite build` pass; `scripts/check.sh` takes about 165 seconds. The skipped tests are the live
 checks: `LIVE_CATALOG=1` compares the provider catalogue with the live OpenRouter API (network, no
-key, no cost), and `LIVE_ELEVENLABS=1` with a key makes one live ElevenLabs sound effect (about
-$0.001). Ruff's rules live in `cockpit/server/pyproject.toml`; `scripts/check.sh` applies them to
-`cockpit/server`, `scripts` and `tools`.
+key, no cost), and `LIVE_ELEVENLABS=1` with `ELEVENLABS_API_KEY` exported in the shell makes one live
+ElevenLabs sound effect (about $0.001; a test session never reads `.env`). Ruff's rules live in
+`cockpit/server/pyproject.toml`; `scripts/check.sh` applies them to `cockpit/server`, `scripts` and
+`tools`.
+
+**Hermetic tests.** Every pytest session is sealed before any test module imports the app:
+`tests/conftest.py` and `tools/agent-door/tests/conftest.py` apply `cockpit/server/tests/hermetic.py`. It
+switches python-dotenv off (`PYTHON_DOTENV_DISABLED=1`) for the session and every process a test starts,
+points `COMFYUI_URL`, `THREED_URL`, `VOICE_RUNNER_URL`, `OPENROUTER_URL` and `ELEVENLABS_URL` at the closed
+port 9, and blanks `OPENROUTER_API_KEY`, `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_AGENT_ID`, whatever the
+shell or a checkout's `.env` holds. A test that needs an engine or a key points `config` at its own fake.
+`tests/test_hermetic.py` proves the seal with a planted `.env` and shell, and fails when `config.py` gains a
+runtime address or secret the seal does not cover. The harness suite's server reads no `.env` either; a
+preview never does.
 
 **End-to-end tests.** They need a fresh `npm run build`, `uv` on the `PATH`, Playwright's Chromium
 (`npx playwright install chromium`) and a free port 8123. They need no engine: Playwright boots the
@@ -116,7 +127,8 @@ scripted audio takes are four-second tones. The harness suite sets a placeholder
 `ELEVENLABS_API_KEY`, with `ELEVENLABS_URL` on a closed port, so the ElevenLabs operations are
 ready; the scripted executors never call ElevenLabs. It also checks that the digits reach the voices of a
 row whose images come first, that an attempt returning three takes shows its one charge once, and that a
-local voice marks ElevenLabs v4 before it is chosen.
+local voice marks ElevenLabs v4 before it is chosen, and that after the reveal each face names its engine's
+model ("Voice Design"), the take carrying the charge whole at 1440 and 1920.
 
 Playwright runs specs without type-checking them. `scripts/check.sh` type-checks the specs,
 `paths.ts` and both Playwright configs through `cockpit/web/tsconfig.e2e.json`: the app's strict
@@ -157,8 +169,8 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
   `scripts/preview.sh` defaults to 8010.
 - `COMFYUI_URL` and `THREED_URL` choose the engines. Two instances that share one ComfyUI share one
   GPU queue. Point both at a closed port to keep an instance away from real engines.
-- `.env` at the checkout root is read by every instance started from that checkout. A process
-  environment value wins, even an empty one. `OPENROUTER_API_KEY=` above, with a fresh store folder,
+- `.env` at the checkout root is read by every instance started from that checkout, except a preview,
+  the harness suite's server and a test session. A process environment value wins, even an empty one. `OPENROUTER_API_KEY=` above, with a fresh store folder,
   leaves the instance without a key, so it cannot spend money.
 
 `GET /api/health` reports the store (`db`), the build (`build.id`, `build.time`; `dev` is a run from
@@ -252,8 +264,8 @@ The local voice engine (Qwen3-TTS) runs in its own environment behind `tools/tts
 `<slot>:<attempt>`; the runner keeps one job per reference and answers `GET /jobs?client_ref=<ref>`.
 
 ElevenLabs is reached directly over HTTP, never through its SDK, because the SDK retries on its own and
-could charge twice for one take. `LIVE_ELEVENLABS=1` with `ELEVENLABS_API_KEY` set runs one opt-in live
-sound-effect test that costs about $0.001; `scripts/check.sh` never runs it.
+could charge twice for one take. `LIVE_ELEVENLABS=1` with `ELEVENLABS_API_KEY` exported in the shell runs
+one opt-in live sound-effect test that costs about $0.001; `scripts/check.sh` never runs it.
 
 A designed ElevenLabs voice becomes a saved voice, which takes one of the account's voice slots, the
 first time it speaks. Crexil saves each designed voice at most once: the save is kept in the record

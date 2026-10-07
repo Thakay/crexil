@@ -239,9 +239,9 @@ A `late` slot keeps its cell. If the call still delivers, the take lands into th
 
 ### B6 · Provider changed pricing mid-session
 **Status: partly implemented.**
-- **System does:** committed and charged are kept per take. The cell's badge shows the charged amount once it is known, with both numbers in its tooltip. The promote face states both when they differ by half a cent or more. A reroll quotes the current price again.
+- **System does:** committed and charged are kept per take. The cell's badge shows the charged amount once it is known, with both numbers in its tooltip. The promote face states both, exactly (`crexil_budget.money`), whenever they differ. A reroll quotes the current price again.
 - **Missing:** no one-time notice that a price changed, and no statement of the old and new price.
-- **Lives in:** `batch/SlotCell.tsx`, `api_v4_promote.py` (`_cost_line`), `manifests.py`. Tests: `test_committed_flows_to_the_node_and_charged_to_the_ledger` in `test_scheduler.py`.
+- **Lives in:** `batch/SlotCell.tsx`, `api_v4_promote.py` (`_cost_line`), `manifests.py`. Tests: `test_committed_flows_to_the_node_and_charged_to_the_ledger` in `test_scheduler.py`, `test_the_cost_line_states_exact_money_in_plain_words` in `test_api_v4_promote.py`.
 
 ### B7 · Slow external take, or a take that arrives after cancel
 **Status: implemented.**
@@ -377,7 +377,7 @@ A check disarms or warns. It never produces a red cell.
 **Status: not implemented.** The corner shows today's and this month's charged totals. No notice fires at any amount.
 
 ### F3 · Clock skew makes ordering look wrong
-**Status: partly implemented.** Turns are ordered by a per-workspace index, slots by position, and events by a sequence number that is never reused (`test_event_seq_is_strictly_monotonic_across_writers` in `test_db.py`). Missing: the queue view lists slots, and restart recovery re-queues them, by creation timestamp.
+**Status: partly implemented.** Turns are ordered by a per-workspace index, slots by position, and events by a sequence number that is never reused (`test_event_seq_is_strictly_monotonic_across_writers` in `test_db.py`). A row's sections follow their creation events' sequence numbers, so a clock that steps back never reorders a row (`CreativeStore.direction_ids`, `test_section_order.py`). Missing: the queue view lists slots, and restart recovery re-queues them, by creation timestamp.
 
 ### F4 · Copy to clipboard fails
 **Status: partly implemented.** The only copy action is B4's receipt. If the clipboard refuses, the button reads SELECT IT BELOW and DETAILS opens with the receipt selectable (`batch/SlotCell.tsx`). Missing: a test for the refusal path.

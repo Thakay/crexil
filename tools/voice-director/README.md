@@ -10,7 +10,7 @@ holds the agent's configuration and the one command that applies it to an Eleven
 | May | Never |
 |---|---|
 | List engines, read the project and a run | Hear or receive take audio: its tools return facts, labels and reasons only |
-| Prepare a run; a run that reserves nothing starts at once | Submit a paid run: the artist confirms it with a click, and the price is on the button (laws 6 and 22) |
+| Prepare a run; a free run whose engines all run on this machine starts at once | Submit a paid run, or any run that sends something off this machine: the artist confirms it with a click, with the price on the button and what leaves the machine on the card (laws 6, 15 and 22) |
 | Play a take for the artist through the speakers | Pick, reveal a blind run, deliver or change limits (law 23) |
 | Propose a pick with a reason, recorded as its own decision | Act unasked: it acts only on the artist's spoken request (law 15) |
 
@@ -77,7 +77,8 @@ Minutes are capped in three places (law 22):
 - **The agent's own limit:** `conversation.max_duration_seconds` ends a session ElevenLabs-side.
 - **The provider's call limits:** `agent.json`'s `call_limits` allow 10 conversations a day
   (`daily_limit`), one at a time (`agent_concurrency_limit`), and no burst calls past that limit at the
-  higher rate (`bursting_enabled` false). Apply the file again after changing them.
+  higher rate (`bursting_enabled` false). Apply the file again after changing them. `apply.py` refuses a
+  file that leaves `bursting_enabled` true or unset.
 
 ElevenLabs lists agent minutes at $0.08 each beyond a plan's included minutes, with the
 language model billed on top. The panel shows this as an estimate, never as a promise (law 17).
