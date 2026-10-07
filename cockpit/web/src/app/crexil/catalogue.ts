@@ -3,9 +3,10 @@
 // Every surface names an engine through engineLabel (api.ts), which reads this table, so a
 // face, an attempt, inspection and the record say "Qwen3-TTS 1.7B" where the store keeps
 // `qwen3-tts`; and a take or an attempt is told local from hosted by its engine's lane,
-// never by its price. Until the catalogue loads, or for an engine it does not list, an
-// engine reads as its id and its lane is unknown. A blind run's engine never reaches this
-// table: engineIdentity withholds it before any name is read.
+// never by its price. A face names a hosted model without its vendor (engineFaceName), while
+// inspection and the record keep the full name. Until the catalogue loads, or for an engine
+// it does not list, an engine reads as its id and its lane is unknown. A blind run's engine
+// never reaches this table: engineIdentity withholds it before any name is read.
 import { useEffect } from 'react';
 import { createStore, useStore } from 'zustand';
 import { $api } from '../../api/client';
@@ -33,6 +34,19 @@ export const setCatalogue = (entries: ReadonlyMap<string, CatalogueEntry>) => st
 
 /** An engine's display name, or its id when the catalogue does not list it. */
 export const engineName = (id: string): string => store.getState().entries.get(id)?.name ?? id;
+
+/** The vendor that leads a hosted model's name: OpenRouter names its models "Vendor: Model". */
+const VENDOR = /^[^:]+:\s+(?=\S)/;
+
+/** An engine's name on a face, whose line holds about twenty characters: a hosted model's
+ *  name after its vendor ("ByteDance Seed: Seedream 4.5" reads "Seedream 4.5"), so models of
+ *  one vendor read apart; any other engine's display name, as its owner named it; its id
+ *  when the catalogue does not list it. */
+export function engineFaceName(id: string): string {
+  const entry = store.getState().entries.get(id);
+  if (!entry) return id;
+  return entry.lane === 'hosted' ? entry.name.replace(VENDOR, '') : entry.name;
+}
 
 /** An engine's lane, or null when the catalogue does not list it. */
 export const engineLane = (id: string | null | undefined): Lane | null => (id && store.getState().entries.get(id)?.lane) || null;

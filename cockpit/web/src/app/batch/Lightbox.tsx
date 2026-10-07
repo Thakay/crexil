@@ -165,13 +165,13 @@ export function viewerHeader(
   return { take: targetLabel([node]), facts: parts.join(" · ") };
 }
 
-const NOT_DECIMATED =
-  "This is the artefact that promotes; nothing here is decimated.";
+const FULL_DETAIL = "This is the original file, drawn at full detail.";
 
 /** The line under the facts: what this view shows, in plain words. The last
  *  mode touched is the one explained while it is on; the camera's actual
  *  side decides the underside lines, so a chip lit by a drag is never
- *  claimed. A record that doesn't say watertight is not judged (law 12). */
+ *  claimed. A record that doesn't say watertight is not judged (law 12).
+ *  Shared by the project's inspection (crexil/MeshInspection.tsx). */
 export function truthLine(node: Node, v: View, below: boolean): string {
   const open = node.mesh?.watertight;
   switch (v.last) {
@@ -189,24 +189,24 @@ export function truthLine(node: Node, v: View, below: boolean): string {
       break;
     case "clay":
       if (v.surface === "clay")
-        return "Clay drops the baked texture. What is left is form — the lumps and the flat spots the texture was covering.";
+        return "Clay drops the baked texture. What is left is form: the lumps and the flat spots the texture was covering.";
       break;
     default:
       break;
   }
   if (below && v.cull)
     return open === false
-      ? "From underneath with backfaces culled: the hole is where the shell never closed. A turntable at one elevation could not have told you, and PROMOTE cannot be un-happened."
+      ? "From underneath with backfaces culled: the hole is where the shell never closed. A turntable at one elevation could not have told you."
       : "From underneath with backfaces culled: an open surface would show as a hole here. A turntable at one elevation could not tell you either way.";
   if (below)
     return "Underneath with backfaces drawn: a shell looks closed even where it isn't. BACKFACE CULL (B) shows the holes.";
   if (v.cull)
     return "Backfaces culled: a face seen from behind is not drawn, so an open surface reads as a hole. FROM BELOW (U) is where they hide.";
   if (open === false)
-    return `Open surfaces — cull backfaces and orbit underneath to see where they are. ${NOT_DECIMATED}`;
+    return `Open surfaces: cull backfaces and orbit underneath to see where they are. ${FULL_DETAIL}`;
   if (open === true)
-    return `Watertight — the funnel found no open surface. ${NOT_DECIMATED}`;
-  return NOT_DECIMATED;
+    return `Watertight: the mesh has no open surface. ${FULL_DETAIL}`;
+  return FULL_DETAIL;
 }
 
 // ── the surface ──────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ const POSTER_LINE =
 const TURNTABLE_LINE =
   "The engine's own render: one elevation, thirty frames.";
 const NO_WEBGL2_LINE =
-  "This browser has no WebGL2, so the viewer can't draw — the engine's own orbit stands in. Nothing about the take changed.";
+  "This browser has no WebGL2, so the viewer can't draw; the engine's own orbit stands in. Nothing about the take changed.";
 const NO_WEBGL2_KEY = "cockpit.mesh.noWebgl2Said";
 
 // Asked once, kept for the session: a context that can't be made is the

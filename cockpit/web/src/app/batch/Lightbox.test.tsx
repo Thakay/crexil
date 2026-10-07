@@ -11,9 +11,11 @@ import {
   INITIAL_VIEW,
   loadFraction,
   loadingLine,
+  MODE_KEYS,
   nextView,
   truthLine,
   viewerHeader,
+  type ModeId,
 } from "./Lightbox";
 // a mesh fact lives with the mesh (mesh/facts.ts)
 import { meshFactsLine } from "../mesh/facts";
@@ -112,15 +114,15 @@ test("the modes are view state: toggles, an exclusive surface, presets that re-f
 
 test("the truth line explains the last mode touched, and the underside honestly", () => {
   const m = mesh();
-  expect(truthLine(m, INITIAL_VIEW, false)).toMatch(
-    /^Open surfaces — cull backfaces and orbit underneath/,
+  expect(truthLine(m, INITIAL_VIEW, false)).toBe(
+    "Open surfaces: cull backfaces and orbit underneath to see where they are. This is the original file, drawn at full detail.",
   );
-  expect(truthLine(mesh({ watertight: true }), INITIAL_VIEW, false)).toMatch(
-    /^Watertight/,
+  expect(truthLine(mesh({ watertight: true }), INITIAL_VIEW, false)).toBe(
+    "Watertight: the mesh has no open surface. This is the original file, drawn at full detail.",
   );
   // a record that doesn't say is not judged (law 12)
   expect(truthLine(mesh({ watertight: null }), INITIAL_VIEW, false)).toBe(
-    "This is the artefact that promotes; nothing here is decimated.",
+    "This is the original file, drawn at full detail.",
   );
   expect(truthLine(m, nextView(INITIAL_VIEW, "clay"), false)).toMatch(
     /^Clay drops the baked texture/,
@@ -151,6 +153,22 @@ test("the truth line explains the last mode touched, and the underside honestly"
   // underneath with backfaces drawn: the shell looks closed — said, so it
   // isn't believed
   expect(truthLine(m, INITIAL_VIEW, true)).toMatch(/looks closed/);
+});
+
+test("every line the truth line can say is plain words: no em dash, no promote wording", () => {
+  const modes = Object.keys(MODE_KEYS) as ModeId[];
+  // every mode pressed once, then every pair, so each branch is reached
+  const views = [INITIAL_VIEW, ...modes.flatMap((a) => [
+    nextView(INITIAL_VIEW, a),
+    ...modes.map((b) => nextView(nextView(INITIAL_VIEW, a), b)),
+  ])];
+  const lines = new Set<string>();
+  for (const watertight of [true, false, null])
+    for (const view of views)
+      for (const below of [false, true])
+        lines.add(truthLine(mesh({ watertight }), view, below));
+  expect(lines.size).toBe(11);
+  for (const line of lines) expect(line).not.toMatch(/\u2014|promot/i);
 });
 
 test("the poster's line and bar come from the record and the bytes", () => {
