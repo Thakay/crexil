@@ -10,7 +10,7 @@ holds the agent's configuration and the one command that applies it to an Eleven
 | May | Never |
 |---|---|
 | List engines, read the project and a run | Hear or receive take audio: its tools return facts, labels and reasons only |
-| Prepare a run; a run on free local engines starts at once | Submit a paid run: the artist confirms it with a click, and the price is on the button (laws 6 and 22) |
+| Prepare a run; a run that reserves nothing starts at once | Submit a paid run: the artist confirms it with a click, and the price is on the button (laws 6 and 22) |
 | Play a take for the artist through the speakers | Pick, reveal a blind run, deliver or change limits (law 23) |
 | Propose a pick with a reason, recorded as its own decision | Act unasked: it acts only on the artist's spoken request (law 15) |
 
@@ -26,7 +26,7 @@ microphone stays muted 400 ms after the take stops, and no take plays while a se
 
 | File | Holds |
 |---|---|
-| `agent.json` | The agent: name, tag, prompt, language model, voice model, the session's longest duration, privacy, and the six client tools. No key, no account id |
+| `agent.json` | The agent: name, tag, prompt, language model, voice model, the session's longest duration, privacy, the provider's call limits, and the six client tools. No key, no account id |
 | `apply.py` | Validates `agent.json` and creates or updates the agent and its tools |
 
 The six tool names in `agent.json` must match the panel's handlers in
@@ -75,15 +75,19 @@ Minutes are capped in three places (law 22):
 - **Crexil's budget:** the server refuses a session when the minutes left cover less than one
   session, and the panel ends a session at its maximum.
 - **The agent's own limit:** `conversation.max_duration_seconds` ends a session ElevenLabs-side.
-- **The provider's call limits:** `call_limits.daily_limit` and `agent_concurrency_limit`.
+- **The provider's call limits:** `agent.json`'s `call_limits` allow 10 conversations a day
+  (`daily_limit`), one at a time (`agent_concurrency_limit`), and no burst calls past that limit at the
+  higher rate (`bursting_enabled` false). Apply the file again after changing them.
 
 ElevenLabs lists agent minutes at $0.08 each beyond a plan's included minutes, with the
 language model billed on top. The panel shows this as an estimate, never as a promise (law 17).
 
-## Confirm on the first live run
+## Confirmed on the first live run
 
-- That `claude-haiku-4-5` is offered on the account; otherwise choose another tool-capable model.
-- The privacy fields ElevenLabs accepts (`record_voice`, `retention_days`), and whether the
-  account's data-use setting keeps conversations from improving models.
-- The tool and agent response shapes (`id`, `agent_id`, `tool_config`) and the token's lifetime.
-- Whether minutes are billed per second.
+- `claude-haiku-4-5` is offered.
+- ElevenLabs accepts `record_voice` and `retention_days`: a conversation keeps no audio and is deleted 7 days
+  after it starts. Whether the account's data-use setting keeps conversations from improving models is a
+  dashboard setting the account's owner checks.
+- A conversation token lasts 15 minutes.
+- Minutes are billed per second, at about 182 credits a minute for the call plus the model's charge, so a
+  5-minute session costs about 1,500 credits all in.

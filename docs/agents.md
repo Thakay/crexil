@@ -125,7 +125,10 @@ claude mcp add --transport stdio crexil -- uv run --script "$PWD/tools/agent-doo
 money, not where an engine runs: at `0` the agent can run only work whose review reserves nothing.
 Today that is the local engines, but a hosted model that the live catalogue prices at $0 would pass
 the ceiling and send its prompt off the machine. A paid submission must also restate the amount its
-review reserves. The [door's README](../tools/agent-door/README.md) lists the tools, flags and tests.
+review reserves. A refusal over the ceiling names the flag. Without a `payload` or an `action`,
+`crexil_list_engines` names each engine by its id, label, actions, payload, price with its unit and
+readiness, small enough for any client's tool output; with one, it adds where each engine runs, what
+leaves the machine, how it is charged, its sources and its controls. The [door's README](../tools/agent-door/README.md) lists the tools, flags and tests.
 
 Door errors give the server's plain line, then the next move, then a stable kind:
 
@@ -138,7 +141,7 @@ Door errors give the server's plain line, then the next move, then a stable kind
 | `refused` | The server refused the request; nothing was recorded or sent | Fix what the line names |
 | `not_allowed` | The act is the artist's | Propose instead |
 | `not_built` | The feature is not in this version | |
-| `over_door_ceiling` | The run would spend more than this door allows | Ask the artist |
+| `over_door_ceiling` | The run would spend more than this door allows | Ask the artist, who can raise `--max-run-usd` |
 | `invalid_input` | The arguments do not describe a request | Fix the arguments |
 | `server_error` | Crexil failed on its side and recorded it | Try again, or ask the artist |
 
@@ -201,10 +204,14 @@ Original bytes are copied exactly. Where an engine cannot import an image's form
 pixels lands beside the original: Unity and Unreal Engine import no WebP, and Godot imports no
 TIFF. Nothing else is converted: PNG, JPEG, 16-bit PCM WAV and GLB import in all three, Unity
 reading GLB through Unity's glTFast package. A source or another take of the same attempt that
-the package also delivers is referenced at its package path, never copied twice. Another take of
-that attempt that the package leaves out keeps its record in the manifest, without its bytes.
-Sources outside the package are copied into `<name>_inputs/`, and a take's other output files
-into `<name>_outputs/`.
+the package also delivers is referenced at its package path, never copied twice. What no game engine
+imports stays in the store and keeps its record in the manifest, its SHA-256 and size with `file` null,
+without its bytes: another take of that attempt that the package leaves out, the take's provider
+receipt, and a mesh's voxel field, which the 3D engine keeps for re-extraction. A base64 copy of media
+inside a manifest, such as a hosted image in its provider's answer or a source in the request, reads as
+`{"omitted": "base64", "sha256": ..., "size_bytes": ...}` (with `media_type` for a `data:` URL), so each
+file travels once. Sources outside the package are copied into `<name>_inputs/`, and a take's other output
+files into `<name>_outputs/`. The store and its backups keep every file and record whole.
 
 Once every take is in place, three files land at the package's root, `package.json` last, so a
 package with `package.json` is whole:
@@ -216,7 +223,7 @@ package with `package.json` is whole:
 - `package.json`, every other file with its role, path, SHA-256 and size. A take's own file also
   names its label, asset id, payload, verb, media type and manifest; a conversion names its
   original and the engines that need it; `not_delivered` lists the takes the review refused,
-  with the reason.
+  with the reason. Its `package_version` is 2; it changes whenever what a package holds changes.
 
 Each take succeeds or fails on its own. A retry reconciles the same names and never copies a
 file twice, and a file already in place with other bytes is left untouched. A take of a blind run
@@ -241,6 +248,11 @@ Two exports summarize a project:
 - `GET projects/{id}/decisions`, or `decisions.jsonl` for one JSON line per decision, is the
   decision record. Each line says what was chosen or assessed, among which takes (with engine,
   provider, model, seed and cost), the reason, the author, whether the run was blind, and when.
+  A candidate's `cost_micro_usd` is its attempt's cost: the charge when known, else what the attempt
+  committed. An attempt is charged once however many takes it returns, so a line states that cost on
+  the first of the attempt's takes among its candidates; its other takes, such as a Voice Design call's
+  second and third previews, read `null`, so summing a line's candidates counts each attempt once. A
+  hidden run's candidates state no cost until the reveal.
   It is the artist's account of decisions, never a dataset, and it holds no media.
 
 ## Pipelines
