@@ -27,6 +27,12 @@ if (existsSync(shim)) {
     .join(":");
 }
 
+// No process this suite starts reads a checkout's .env (python-dotenv's own
+// switch): the server and the seed scripts the specs run all inherit this
+// environment, so a checkout's keys, agent, store and folders never reach
+// them, whatever its .env holds; the server's settings are set below.
+process.env.PYTHON_DOTENV_DISABLED = "1";
+
 // The harness suite: every spec, against scripted executors. The crexil
 // journeys also run against the isolated preview (playwright.preview.config.ts);
 // a test that holds in only one of the two declares it by reading
@@ -63,10 +69,6 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 30_000,
     env: {
-      // The server reads no .env (python-dotenv's own switch), so a
-      // checkout's keys, agent, store and folders never reach the harness,
-      // whatever its .env holds; everything it needs is set here.
-      PYTHON_DOTENV_DISABLED: "1",
       COCKPIT_DB: DB,
       COCKPIT_STAGING_DIR: STAGING,
       COCKPIT_STATIC_DIR: "../web/dist",
