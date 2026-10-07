@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app import config, manifests
+from app import api_v4_promote, config, manifests
 from fakes import FakeExecutor, Step
 from test_api_v4 import booted, make_ws, run, settle_turn, store
 
@@ -156,12 +156,29 @@ async def test_the_preview_names_every_file_and_writes_nothing(
                          f"{p['folder']}/{p['asset_id']}.json"]
         assert all(f["what"] for f in p["files"])
         assert p["facts"].startswith("0a · TESTPRESET · S ")
-        assert p["cost"] == "This take cost no money — it ran on your own card."
+        assert p["cost"] == "This take cost no money: it ran on your own card."
         assert p["replayable"].startswith("exact:")
         assert p["target"]["ok"] is True
         assert p["already"] == []
         # asking is not doing
         assert list(root.iterdir()) == []
+
+
+def test_the_cost_line_states_exact_money_in_plain_words():
+    """Law 5 in exact amounts, as every money line says them: a fraction of
+    a cent is never rounded into another amount, and a charge that differs
+    from its commitment at all says both."""
+    line = api_v4_promote._cost_line
+    assert line({"charged_usd": None, "committed_usd": None}) == \
+        "This take cost no money: it ran on your own card."
+    assert line({"charged_usd": None, "committed_usd": 0.035}) == \
+        "$0.035 was committed for this take; the provider hasn't reported a charge."
+    assert line({"charged_usd": 0.0084, "committed_usd": 0.0084}) == \
+        "$0.0084 was charged for this take."
+    assert line({"charged_usd": 0.0084, "committed_usd": 0.009}) == \
+        "$0.0084 was charged for this take ($0.009 was committed)."
+    assert line({"charged_usd": 0.6, "committed_usd": None}) == \
+        "$0.60 was charged for this take."
 
 
 async def test_the_preview_states_a_broken_target_without_refusing_to_answer(

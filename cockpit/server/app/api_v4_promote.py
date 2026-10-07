@@ -51,6 +51,7 @@ from fastapi.responses import JSONResponse
 
 from . import blind, config, manifests, promote
 from .api_v4 import _live_node, _stack, _turntable_file
+from .crexil_budget import money
 from .db import new_id
 from .schemas import (PromoteBrowse, PromotePreview, PromoteRepoint,
                       PromoteTarget, Promotion)
@@ -145,18 +146,19 @@ def _facts_line(node: dict, turn: dict | None, slot: dict | None) -> str:
 
 def _cost_line(node: dict) -> str:
     """Law 5: money is always stated, including when the answer is
-    "nothing". Committed and charged are separate values, so a divergence
-    is visible rather than averaged away."""
+    "nothing", and exactly, as every money line Crexil writes says it
+    (`crexil_budget.money`). Committed and charged are separate values, so
+    any difference between them is visible rather than averaged away."""
     charged, committed = node.get("charged_usd"), node.get("committed_usd")
     if charged is None and committed is None:
-        return "This take cost no money — it ran on your own card."
+        return "This take cost no money: it ran on your own card."
     if charged is None:
-        return (f"About ${committed:.2f} was committed for this take; the "
+        return (f"{money(committed)} was committed for this take; the "
                 "provider hasn't reported a charge.")
-    if committed is not None and abs(charged - committed) >= 0.005:
-        return (f"${charged:.2f} was charged for this take "
-                f"(${committed:.2f} was committed).")
-    return f"${charged:.2f} was charged for this take."
+    if committed is not None and money(charged) != money(committed):
+        return (f"{money(charged)} was charged for this take "
+                f"({money(committed)} was committed).")
+    return f"{money(charged)} was charged for this take."
 
 
 async def _context(nid: str) -> tuple:
