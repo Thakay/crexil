@@ -70,6 +70,21 @@ def test_the_providers_call_limits_back_the_installations_minutes_cap():
     assert apply.agent_body(config(), ['tool'] * len(apply.TOOLS))['platform_settings']['call_limits'] == limits
 
 
+def test_the_director_states_a_prepared_run_as_prepare_run_returns_it():
+    # It once said "one attempt for two takes at zero point zero zero four dollars" before
+    # prepare_run answered with two attempts reserving $0.008: a price is prepare_run's to state,
+    # for the whole run, never per attempt and never worked out by the director.
+    agent = config()
+    prompt = agent['conversation_config']['agent']['prompt']['prompt']
+    assert ('Before preparing a run, say which engines and how many takes, and the cap you will set, '
+            'but no price until prepare_run returns one.') in prompt
+    assert ("When prepare_run returns, say the run's attempts and its reserved_usd exactly as returned, as the price "
+            'of the whole run; never a price per attempt, per take or per second, and never one you worked out.') in prompt
+    prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
+    assert prepare['description'].endswith("It returns the run's attempts and reserved_usd, the whole run's price: "
+                                           'say those as returned.')
+
+
 def test_the_file_holds_no_secret_and_no_account_id():
     text = (REPO / 'tools/voice-director/agent.json').read_text(encoding='utf-8')
     assert 'xi-api-key' not in text and 'agent_id' not in text and 'tool_ids' not in text
