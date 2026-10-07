@@ -44,11 +44,22 @@ test('source buses preserve combined and long ancestry through selection, scroll
   for(let i=0;i<5;i++)await material(`Extra source ${i+1}`,0);
   await page.setViewportSize({width:1440,height:900});await page.reload();
   await expect.poll(()=>row.evaluate(element=>element.scrollWidth>element.clientWidth)).toBe(true);
+  // The canvas has measured the loaded rows: every connection is drawn again.
+  await expect(svg).toHaveAttribute('data-connection-count','4');
   await expect(svg.locator(`polyline[data-source="${b.node.id}"]`)).not.toHaveCount(0);
-  await row.evaluate(element=>{element.scrollLeft=element.scrollWidth;});
+  /** Scrolls the row's strip to its start or its end, and waits for the frame after its scroll
+   *  event, in which the lineage canvas measures its anchors again. */
+  const scrollRow=(to:'start'|'end')=>row.evaluate((element,to)=>new Promise<void>(resolve=>{
+    const left=to==='end'?element.scrollWidth-element.clientWidth:0;
+    const measured=()=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()));
+    if(Math.abs(element.scrollLeft-left)<1){measured();return;}
+    element.addEventListener('scroll',measured,{once:true});
+    element.scrollLeft=left;
+  }),to);
+  await scrollRow('end');
   await expect(svg.locator(`polyline[data-source="${b.node.id}"]`)).toHaveCount(0);
   await expect(svg.locator(`polyline[data-binding^="${combined.direction.id}:"][data-arrival]`)).toHaveCount(0);
-  await row.evaluate(element=>{element.scrollLeft=0;});
+  await scrollRow('start');
   await expect(svg.locator(`polyline[data-binding^="${combined.direction.id}:"][data-arrival]`)).toHaveCount(1);
   await page.screenshot({path:artifact('lineage-overflow-1440.png')});
   expect(errors).toEqual([]);
