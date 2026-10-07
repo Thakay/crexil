@@ -153,7 +153,7 @@
       "lane": "local",
       "payload": "image",
       "price": "free — local GPU time; cost reads in seconds and takes (law 5)",
-      "note": "The region rails: cross-family presets route img2img and region turns here.",
+      "note": "The region rails: cross-family presets route img2img and region turns here. Its checkpoint's model card says CC BY-NC-ND 4.0: treat it as non-commercial (docs/third-party.md).",
       "capabilities": {
         "mask": {
           "value": true,

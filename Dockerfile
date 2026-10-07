@@ -36,7 +36,6 @@ ENV COCKPIT_REPO_ROOT=/repo \
     COCKPIT_DB=/data/cockpit-v4.sqlite \
     COCKPIT_STAGING_DIR=/data/staging \
     MODELS_ROOT=/models \
-    PROMOTE_DIR=/mnt/d/PROMOTED \
     COCKPIT_BUILD_ID=$GIT_REV \
     COCKPIT_BUILD_TIME=$BUILD_TIME
 
