@@ -4,9 +4,11 @@
 // counted from the moment the conversation connects and the session ends at its maximum (laws
 // 17 and 22). The agent's tools prepare and propose; a run that costs money or leaves this
 // machine, and a pick, wait for the artist's click, with the price on the paid button's face and
-// what leaves the machine on the card (laws 6, 15 and 23). Before a session starts the panel
-// says what leaves the machine. Take audio never does: the microphone mutes before any take
-// plays (microphone.ts), and no take starts while a session connects.
+// what leaves the machine on the card (laws 6, 15 and 23). A card shows its run as the director
+// prepared it, so a run that changed since goes to the drawer, which shows it as it is now.
+// Before a session starts the panel says what leaves the machine. Take audio never does: the
+// microphone mutes before any take plays (microphone.ts), and no take starts while a session
+// connects.
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { player, usePlayer } from '../audio';
@@ -25,12 +27,17 @@ export type DirectorProps = {
   door?: Door;
   /** Told whether a session is live, so the column's close and Escape follow it. */
   onLive?(live: boolean): void;
+  /** Opens a prepared run in the project's drawer. */
+  openRun?(runId: string): void;
 };
 
 /** What leaves the machine during a session, said once before it starts. */
 export const DISCLOSURE = 'While a session runs, your microphone audio goes to ElevenLabs and the director\'s language '
   + 'model, and so does what the director reads about this project: the brief, run prompts, take labels and reasons. '
   + 'ElevenLabs keeps each conversation for 7 days. Take audio never goes: the microphone mutes before any take plays.';
+
+/** What a card says when its run changed since the director prepared it. */
+export const CHANGED = 'This run changed since the director prepared it. Open it in the drawer, which shows its price and what it sends as they are now.';
 
 /** Why a take waits while a session connects. */
 export const CONNECTING = 'The voice director is connecting. Play the take once it is listening.';
@@ -46,7 +53,7 @@ export const shownWords = (text: string) => text.replace(AUDIO_TAG, ' ').replace
 type Line = {id: number; role: 'artist' | 'director' | 'note'; text: string};
 type Waiting = {state: 'waiting' | 'busy' | 'done'; note?: string};
 type Card =
-  | ({kind: 'run'} & RunCard & Waiting)
+  | ({kind: 'run'; changed?: boolean} & RunCard & Waiting)
   | ({kind: 'proposal'; draft: string} & ProposalCard & Waiting)
   | {kind: 'free'; id: string; runId: string; title: string; attempts: number; state: 'done'};
 type Unrecorded = {sessionId: string; elapsed: number; conversationId: string | null};
@@ -54,15 +61,15 @@ type Unrecorded = {sessionId: string; elapsed: number; conversationId: string | 
 const POLL_MS = 4000;    // how often a queued run's progress is read for the agent
 const VERB_WORDS = {'voice-design': 'Voice design', speak: 'Speech', sfx: 'Sound effect'} as const;
 const short = (text: string, limit = 90) => text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
-/** A run card whose engines have no price and whose review reserves nothing: its Run is free,
- *  and wears no money gold (law 6). */
+/** A run card whose engines have no price and whose review reserves nothing: its Run is free and
+ *  wears the primary frame, as the drawer's free Run does; any other wears money gold (law 6). */
 const freeRun = (card: RunCard) => !card.published && card.reservedUsd === 0;
 
 export default function Director(props: DirectorProps) {
   return <ConversationProvider><Session {...props}/></ConversationProvider>;
 }
 
-function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}: DirectorProps) {
+function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, openRun}: DirectorProps) {
   const [usage, setUsage] = useState<VoiceUsage | null>(null);
   const [session, setSession] = useState<VoiceSession | null>(null);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
@@ -298,10 +305,11 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
         update(card.id, {state: 'waiting', ready: false, errors: review.errors.map(plain), note: 'This run is no longer ready. Nothing was sent.'});
         return;
       }
+      // The token binds the run's request, sources, engines and bounds: when it or the price
+      // moved, this card's words describe another run, so the drawer shows it instead.
       if (review.token !== card.token || review.reserved_usd !== card.reservedUsd) {
-        update(card.id, {state: 'waiting', token: review.token, revision: review.revision, reservedUsd: review.reserved_usd,
-          maximumUsd: review.maximum_usd, attempts: review.ready_attempts, errors: review.errors.map(plain),
-          note: 'The run or its price changed since the director prepared it. Check the amount, then run.'});
+        update(card.id, {state: 'waiting', changed: true, note: CHANGED});
+        say(`The run "${card.title}" (${card.runId}) changed since you prepared it; the artist reviews it in the drawer.`);
         return;
       }
       const sent = await door.submit(card.runId, review.revision, review.token, artist);
@@ -395,14 +403,16 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
         <p className={css.eyebrow}>Prepared by the voice director</p>
         <p className={css.what}>{VERB_WORDS[card.action]}: “{short(card.prompt)}”</p>
         <p className={css.facts}>{card.engines.map(engine => `${engine.label} ×${engine.count}`).join(' · ')}</p>
-        <p className={css.facts}>Cap {money(card.capUsd)} · {freeRun(card) ? 'free' : `reserves up to ${money(card.reservedUsd)}`}
-          {card.published ? ' · by the published price; the final provider charge is not capped' : ''}</p>
-        {card.leaves.map(line => <p key={line} className={css.facts}>{line}</p>)}
+        {!card.changed && <p className={css.facts}>Cap {money(card.capUsd)} · {freeRun(card) ? 'free' : `reserves up to ${money(card.reservedUsd)}`}
+          {card.published ? ' · by the published price; the final provider charge is not capped' : ''}</p>}
+        {!card.changed && card.leaves.map(line => <p key={line} className={css.facts}>{line}</p>)}
         {card.errors.length > 0 && <ul className={css.reasons}>{card.errors.map(item => <li key={item}>{item}</li>)}</ul>}
         {card.note && <p className={css.cardNote}>{card.note}</p>}
         {card.state !== 'done' && <div className={css.actions}>
           <button type="button" disabled={card.state === 'busy'} onClick={() => discard(card)}>Discard</button>
-          {card.ready && <button type="button" className={freeRun(card) ? undefined : css.paid} disabled={card.state === 'busy'} onClick={() => void confirmRun(card)}>
+          {card.changed ? openRun && <button type="button" onClick={() => {update(card.id, {state: 'done', note: 'Opened in the drawer.'}); openRun(card.runId);}}>
+            Open in the drawer
+          </button> : card.ready && <button type="button" className={freeRun(card) ? css.primary : css.paid} disabled={card.state === 'busy'} onClick={() => void confirmRun(card)}>
             {freeRun(card) ? 'Run · free' : `Run · up to ${money(card.reservedUsd)}`}
           </button>}
         </div>}

@@ -160,6 +160,8 @@ describe('the GRID › door Run focuses opens the room with the run just sent in
         blocked_attempts: 0, attempts: 1, errors: [], maximum_usd: 0, reserved_usd: 0, reserved_micro_usd: 0, revision: 3,
         token: 'a'.repeat(64), snapshot: {}, automatic_retry: {[voice.id]: true}});
       if (path === '/api/crexil/directions/d2/submit') {sent = true; return Response.json({turn_id: 't2'});}
+      if (path === '/api/crexil/projects/p1/record') return Response.json({decisions: [], material_ids: [], next_before: null,
+        direction_ids: ['d1', 'd2'], turn_ids: sent ? ['t1', 't2'] : ['t1']});
       if (path === '/api/crexil/operations') return Response.json([voice]);
       if (path === '/api/queue') return Response.json({...queue(), held: [], benches: []});
       if (path === '/api/engines') return Response.json({updated: '', external: {}, engines: []});
@@ -199,19 +201,81 @@ describe('the GRID › door Run focuses opens the room with the run just sent in
     return written;
   }
 
-  it('brings a sent run that lies past the edge to where the first section starts, once; the door keeps focus', async () => {
+  /** Leaves the open grid room by its head's Escape control. */
+  async function leave() {
+    fireEvent.click(screen.getByRole('button', {name: 'Esc · Project'}));
+    await waitFor(() => expect(screen.queryByText('Grid · Turn 0')).toBeNull());
+  }
+
+  it('brings a sent run that lies past the edge to where the first section starts; the door keeps focus', async () => {
     const door = await ran();
     const written = laidOut(1700, 2100);
     fireEvent.click(door);
     expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
     expect(written).toEqual([1497]);
     expect(door).toHaveFocus();
-    // the door forgets the run once it opened the room: the next opening leaves the row where it is
-    fireEvent.click(screen.getByRole('button', {name: 'Esc · Project'}));
-    await waitFor(() => expect(screen.queryByText('Grid · Turn 0')).toBeNull());
+  });
+
+  it('gives the row its scroll back when the room closes, once, so the Filmstrip and the next room find it where it was', async () => {
+    const door = await ran();
+    const written = laidOut(1700, 2100);
     fireEvent.click(door);
     expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
-    expect(written).toHaveLength(1);
+    await leave();
+    expect(written).toEqual([1497, 0]);
+    // the artist scrolls the Filmstrip's row; the next room opens on it, with nothing given back again
+    const strip = document.querySelector<HTMLElement>('#row-0 [data-lineage-strip]')!;
+    strip.scrollLeft = 300;
+    fireEvent.click(door);
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    await leave();
+    expect(written).toEqual([1497, 0, 300]);
+  });
+
+  it('keeps the door armed through a window switch: a blur with no related target while the document lost focus', async () => {
+    const door = await ran();
+    const written = laidOut(1700, 2100);
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    fireEvent.blur(door);
+    focused.mockRestore();
+    fireEvent.click(door);
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    expect(written).toEqual([1497]);
+  });
+
+  it('disarms the door when focus leaves it for nothing in a page that keeps focus', async () => {
+    const door = await ran();
+    const written = laidOut(1700, 2100);
+    fireEvent.blur(door);
+    fireEvent.click(door);
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    expect(written).toEqual([]);
+  });
+
+  it("reveals the run for the opening the door made only: the record's way into the room leaves the row where it is", async () => {
+    const door = await ran();
+    const written = laidOut(1700, 2100);
+    fireEvent.click(door);
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    await leave();
+    fireEvent.click(screen.getByRole('button', {name: 'Record ›'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Runs'}));
+    fireEvent.click((await screen.findAllByRole('button', {name: 'Open execution grid ›'}))[0]);
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    expect(written).toEqual([1497, 0]);
+  });
+
+  it('never arms the door when the drawer closes without a Run', async () => {
+    render(<App/>);
+    fireEvent.click(await screen.findByRole('button', {name: 'Open preparation: Blacksmith voice'}));
+    const drawer = await screen.findByRole('region', {name: 'Preparation'});
+    fireEvent.click(within(drawer).getByRole('button', {name: 'Close · Esc'}));
+    // focus goes to the preparation's own starter, never the row's door
+    await waitFor(() => expect(screen.getByRole('button', {name: 'Open preparation: Blacksmith voice'})).toHaveFocus());
+    const written = laidOut(1700, 2100);
+    fireEvent.click(screen.getByRole('button', {name: 'Grid ›'}));
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    expect(written).toEqual([]);
   });
 
   it('never moves a sent run already wholly in view (law 8)', async () => {
@@ -230,7 +294,7 @@ describe('the GRID › door Run focuses opens the room with the run just sent in
     expect(written).toEqual([]);
   });
 
-  it('opens the room as before from a door that lost focus since Run', async () => {
+  it('leaves the row where it is when the door lost focus since Run', async () => {
     const door = await ran();
     const written = laidOut(1700, 2100);
     screen.getByRole('button', {name: 'Record ›'}).focus();
@@ -239,7 +303,7 @@ describe('the GRID › door Run focuses opens the room with the run just sent in
     expect(written).toEqual([]);
   });
 
-  it('opens the room as before when no Run came first', async () => {
+  it('leaves the row where it is when no Run came first', async () => {
     render(<App/>);
     const door = await screen.findByRole('button', {name: 'Grid ›'});
     const written = laidOut(1700, 2100);
@@ -249,31 +313,39 @@ describe('the GRID › door Run focuses opens the room with the run just sent in
   });
 });
 
-describe('a face names its engine by its face name, and its hover title names it in full', () => {
-  // A take from a hosted model whose catalogue name leads with its vendor, and a take of a blind
-  // run not yet revealed, each displayed on its row.
+describe("a row's faces and sources: engines named as their faces name them, and a set-aside section's sources in the tray", () => {
+  // A take from a hosted model whose catalogue name leads with its vendor, a take of a blind run
+  // not yet revealed and a prepared image, each displayed on its row; and a section set aside
+  // whose take continues the hosted one.
   const SEEDREAM = 'bytedance-seed/seedream-4.5';
   const hosted = {...sfx, id: SEEDREAM, label: 'ByteDance Seed: Seedream 4.5', actions: ['generate'], provider: 'openrouter',
     execution_location: 'Hosted provider', data_destination: 'https://openrouter.ai/api/v1', output_payload: 'image',
     maximum_usd_per_attempt: null, price_usd: .04, price_unit: 'image', tariff: null, cost_basis: 'Published tariffs can reserve expected spend'};
-  const take = (id: string, turn: string, slotId: string, turnIdx: number, extra: object = {}) => ({id, workspace_id: 'p1', turn_id: turn,
-    slot_id: slotId, take: 1, payload: 'image', verb: 'generate', prompt: 'A stout dwarf blacksmith', engine: SEEDREAM, seed: null,
-    committed_usd: .04, charged_usd: .04, set_aside: false, available: true, parents: [], turn_idx: turnIdx, slot_pos: 0, output_index: 0,
-    material: null, retained_files: [], promoted_at: null, identity_hidden: null, created_at: '2026-10-06T10:00:10Z', ...extra});
+  const take = (id: string, turn: string | null, slotId: string | null, turnIdx: number | null, extra: object = {}) => ({id,
+    workspace_id: 'p1', turn_id: turn, slot_id: slotId, take: 1, payload: 'image', verb: 'generate', prompt: 'A stout dwarf blacksmith',
+    engine: SEEDREAM, seed: null, committed_usd: .04, charged_usd: .04, set_aside: false, available: true, parents: [], turn_idx: turnIdx,
+    slot_pos: 0, output_index: 0, material: null, retained_files: [], promoted_at: null, identity_hidden: null,
+    created_at: '2026-10-06T10:00:10Z', ...extra});
   const landed = (id: string, turn: string, engine: string, extra: object = {}) => ({...slot(0, 'queued'), id, turn_id: turn, engine,
     status: 'landed', committed_usd: .04, charged_usd: .04, ...extra});
-  const direction = (id: string, title: string, row: number, turn: string, node: string) => ({id, workspace_id: 'p1', title,
-    state: 'submitted', revision: 2, row_idx: row, selection: [node], node_ids: [node], turn_ids: [turn], set_aside: false,
-    sequence_template: false, latest_decision: null, setup: {action: 'generate', prompt: 'A stout dwarf blacksmith', references: [], operations: []}});
+  const direction = (id: string, title: string, row: number, turn: string | null, node: string, extra: object = {}) => ({id,
+    workspace_id: 'p1', title, state: 'submitted', revision: 2, row_idx: row, selection: [node], node_ids: [node],
+    turn_ids: turn ? [turn] : [], set_aside: false, sequence_template: false, latest_decision: null,
+    setup: {action: 'generate', prompt: 'A stout dwarf blacksmith', references: [], operations: []}, ...extra});
   const hidden = {engine: 'hidden', identity_hidden: true, committed_usd: null, charged_usd: null};
+  const prepared = {engine: null, committed_usd: null, charged_usd: null, verb: 'prepare', material: {filename: 'derived.png',
+    width: 1024, height: 1024, sha256: 'a'.repeat(64), media_type: 'image/png', origin: {kind: 'prepared_image'}}};
   const project = () => ({
     project: {id: 'p1', name: 'Dwarf blacksmith', brief: '', revision: 1, instructions: '', limits: {}},
-    directions: [direction('d1', 'Casting', 0, 't1', 'n1'), direction('d2', 'Blind casting', 1, 't2', 'n2')],
-    nodes: [take('n1', 't1', 's1', 0), take('n2', 't2', 's2', 1, hidden)],
-    execution_groups: [], blind_runs: [{turn_id: 't2', revealed: false}], sequences: [], charged_usd: .04, accounting: {},
+    directions: [direction('d1', 'Casting', 0, 't1', 'n1'), direction('d2', 'Blind casting', 1, 't2', 'n2'),
+      direction('d3', 'Derived', 2, null, 'n3'), direction('d4', 'Variation', 3, 't4', 'n4', {set_aside: true})],
+    nodes: [take('n1', 't1', 's1', 0), take('n2', 't2', 's2', 1, hidden), take('n3', null, null, null, prepared),
+      take('n4', 't4', 's4', 4, {parents: ['n1']})],
+    execution_groups: [], blind_runs: [{turn_id: 't2', revealed: false}], sequences: [], charged_usd: .08, accounting: {},
     restoration: null, execution_controls: [control('project', 'p1')], event_seq: 3,
     turns: [{id: 't1', idx: 0, prompt: '', created_at: '2026-10-06T10:00:00Z', dials: {}, slots: [landed('s1', 't1', SEEDREAM)]},
-      {id: 't2', idx: 1, prompt: '', created_at: '2026-10-06T10:01:00Z', dials: {}, slots: [landed('s2', 't2', 'hidden', hidden)]}],
+      {id: 't2', idx: 1, prompt: '', created_at: '2026-10-06T10:01:00Z', dials: {}, slots: [landed('s2', 't2', 'hidden', hidden)]},
+      {id: 't4', idx: 4, prompt: '', created_at: '2026-10-06T10:04:00Z', dials: {}, slots: [landed('s4', 't4', SEEDREAM)]}],
   });
 
   beforeEach(() => {
@@ -288,13 +360,27 @@ describe('a face names its engine by its face name, and its hover title names it
     }));
   });
 
-  it('names a hosted model by its model on the face and in full in its title; a blind take names no engine in either', async () => {
+  /** A face's footer line, the take and its engine, by the face's name. */
+  const footer = async (name: RegExp) => (await screen.findByRole('button', {name})).querySelector('footer > span')!;
+
+  it('titles a named engine in full and any other take as its face reads: a blind take "Blind", a prepared image "Prepared"', async () => {
     render(<App/>);
-    const named = (await screen.findByRole('button', {name: /^Act on 0A/})).querySelector('footer > span')!;
+    const named = await footer(/^Act on 0A/);
     await waitFor(() => expect(named).toHaveTextContent('0A · Seedream 4.5'));
     expect(named).toHaveAttribute('title', '0A · ByteDance Seed: Seedream 4.5');
-    const blind = screen.getByRole('button', {name: /^Act on 1A/}).querySelector('footer > span')!;
+    const blind = await footer(/^Act on 1A/);
     expect(blind).toHaveTextContent('1A · Blind');
-    expect(blind).toHaveAttribute('title', '1A · Engine hidden');
+    expect(blind).toHaveAttribute('title', '1A · Blind');
+    const derived = await footer(/^Act on derived\.png/);
+    expect(derived).toHaveTextContent('derived.png · Prepared');
+    expect(derived).toHaveAttribute('title', 'derived.png · Prepared');
+  });
+
+  it("names a set-aside section's sources in the tray, which reads the row's sources for the room it shows", async () => {
+    render(<App/>);
+    await footer(/^Act on 0A/);
+    fireEvent.click(screen.getByRole('button', {name: 'Tray · 1 ›'}));
+    const variation = await screen.findByRole('region', {name: 'Variation'});
+    expect(within(variation).getByText(/^1 source/)).toBeInTheDocument();
   });
 });

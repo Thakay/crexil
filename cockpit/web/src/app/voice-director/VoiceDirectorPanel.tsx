@@ -35,9 +35,11 @@ export type VoiceDirectorPanelProps = {
   door?: Door;
   /** The door's look, from the bar that seats it; its own otherwise. */
   doorClassName?: string;
+  /** Opens a prepared run in the project's drawer, where a card sends a run that changed. */
+  openRun?(runId: string): void;
 };
 
-export function VoiceDirectorPanel({projectId, artist, door, doorClassName}: VoiceDirectorPanelProps) {
+export function VoiceDirectorPanel({projectId, artist, door, doorClassName, openRun}: VoiceDirectorPanelProps) {
   const [open, setOpen] = useState(false);
   const [live, setLive] = useState(false);
   const column = useRef<HTMLElement>(null);
@@ -120,7 +122,7 @@ export function VoiceDirectorPanel({projectId, artist, door, doorClassName}: Voi
       <button type="button" className={css.close} onClick={close}>{live ? 'End and close' : 'Esc · Close'}</button>
     </header>
     <Suspense fallback={<p className={css.loading} role="status">Opening the voice director…</p>}>
-      <Director key={projectId} projectId={projectId} artist={artist} door={door} onLive={setLive}/>
+      <Director key={projectId} projectId={projectId} artist={artist} door={door} onLive={setLive} openRun={openRun}/>
     </Suspense>
   </aside>, document.body)}</>;
 }

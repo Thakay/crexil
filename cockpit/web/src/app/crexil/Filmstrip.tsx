@@ -5,7 +5,7 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // same tokens and return to their entry point, one Escape layer at a time. Which
 // rooms and layers are open lives in the project view store (view.ts); media
 // differences live in the registry (media.tsx).
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { $api, fetchClient } from '../../api/client';
 import { player } from '../audio/player';
@@ -253,10 +253,16 @@ function ProjectWorkspace({id}: {id: string}) {
   // Run focuses its row's GRID › door (focusAfterDrawer). While that door keeps the focus Run
   // gave it, it opens the grid room with the run just sent in view: unless the run's section
   // is already wholly in view, it moves to where a row's first section starts, before the room
-  // is first drawn, and the door keeps focus. Any other way into a room opens it as before.
+  // is first drawn, and the door keeps focus. The scroll that move takes is lent: the next room
+  // change gives it back, so the Filmstrip and the next room find the row where it was. Any
+  // other way into a room leaves the row's scroll where it is.
   const sentRun = useRef<{row: number; direction: string} | null>(null);
   const revealRun = useRef<string | null>(null);
+  const lentScroll = useRef<{strip: HTMLElement; left: number} | null>(null);
   useLayoutEffect(() => {
+    const lent = lentScroll.current;
+    lentScroll.current = null;
+    if (lent) lent.strip.scrollLeft = lent.left;
     const id = revealRun.current;
     revealRun.current = null;
     const section = id !== null && typeof room === 'number' ? document.querySelector<HTMLElement>(`[data-direction="${id}"]`) : null;
@@ -266,7 +272,9 @@ function ProjectWorkspace({id}: {id: string}) {
     const start = view + (parseFloat(getComputedStyle(strip).paddingLeft) || 0);
     const {left, right} = section.getBoundingClientRect();
     // A section wholly in view, or already where the first one starts, never moves (law 8).
-    if (Math.abs(left - start) >= 1 && (left < view || right > view + strip.clientWidth)) strip.scrollLeft += left - start;
+    if (Math.abs(left - start) < 1 || (left >= view && right <= view + strip.clientWidth)) return;
+    lentScroll.current = {strip, left: strip.scrollLeft};
+    strip.scrollLeft += left - start;
   }, [room]);
   if (!data) return <main className={s.projects}><a href={projectHref()}>‹ Projects</a>
     {query.error ? <p className={s.error} role="alert">{message(query.error)} <button onClick={() => void query.refetch()}>Try again</button></p> : <p role="status">Opening project…</p>}</main>;
@@ -297,6 +305,12 @@ function ProjectWorkspace({id}: {id: string}) {
     next?.focus();
     sentRun.current = ran && next !== null && document.activeElement === next ? {row: direction.row_idx, direction: direction.id} : null;
   });
+  /** Focus that leaves the door for the page, or for nothing in it, disarms it; a blur that
+   *  only means the window lost focus (no related target, the document unfocused) keeps it
+   *  armed, since focus returns to the door with the window. */
+  const disarm = (event: ReactFocusEvent) => {
+    if (event.relatedTarget !== null || document.hasFocus()) sentRun.current = null;
+  };
   /** A row's GRID › door opens its grid room, with the run Run just sent in view while the
    *  door still holds the focus Run gave it. */
   const openGridFrom = (row: number) => {
@@ -352,7 +366,7 @@ function ProjectWorkspace({id}: {id: string}) {
       <a className={s.quiet} href={projectHref()}>+ New project</a>
       <div className={s.spacer}/><a className={s.quiet} href={`#/connections?project=${id}`}>Connections</a><a className={s.quiet} href={`#/operations?project=${id}`}>Operations</a><button onClick={fromHere(store.getState().showImport)}>Import material</button>
       <button className={s.door} onClick={fromHere(() => store.getState().openRecord())}>Record ›</button>
-      <VoiceDirectorPanel projectId={id} doorClassName={s.door}/>
+      <VoiceDirectorPanel projectId={id} doorClassName={s.door} openRun={openDrawer}/>
       <button onClick={fromHere(store.getState().showSequences)}>Sequences{data.sequences?.length?` · ${data.sequences.length}`:''}</button>
       <button onClick={fromHere(store.getState().showDeliveries)}>Deliveries</button>
       <button onClick={fromHere(store.getState().showBackup)}>Back up</button>
@@ -392,7 +406,7 @@ function ProjectWorkspace({id}: {id: string}) {
         {room !== 'tray' && <div className={s.actions}><button className={s.primary} onClick={() => void newDirection()}>+ New direction · N</button><button onClick={fromHere(store.getState().showImport)}>Import material</button></div>}
       </div>}
       {rows.filter(row => room === null || room === 'tray' || room === row).map(row => <div className={s.row} id={`row-${row}`} key={row} data-lineage-row={row} style={{marginBottom:`var(--lineage-gap-${row},26px)`}}>
-        <RowStrip sections={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => openGridFrom(row)} onBlur={() => {sentRun.current = null;}}>Grid ›</button></div>
+        <RowStrip sections={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => openGridFrom(row)} onBlur={disarm}>Grid ›</button></div>
           {visible.filter(d=>d.row_idx===row&&d.latest_decision).map(direction=><button key={direction.id} className={s.gutterDecision} onClick={fromHere(()=>store.getState().openRecord({direction_id:direction.id}))} title={`Latest decision for ${direction.title}`}>
             <span>{direction.latest_decision?.reason||'No reason supplied'}</span><small>{actorLine(direction.latest_decision?.actor)} ›</small>
           </button>)}
@@ -498,9 +512,10 @@ function RowStrip({sections, gutter, children}: {sections: number; gutter: (more
 
 /** One take's face: a plain card with its plate, a one-row footer naming the take and its
  *  engine by its face name, and at the right its money (faces.ts); the footer's hover title
- *  names the engine in full, and a blind take's names none. Its name says the take and its
- *  medium; its description is the footer, and says the take is selected where the grid room
- *  draws that border. Memoized, so a change of the acting set redraws only the faces it touches. */
+ *  names a named engine in full, and any other take as its face does ("Blind", "Prepared",
+ *  "Imported"). Its name says the take and its medium; its description is the footer, and says
+ *  the take is selected where the grid room draws that border. Memoized, so a change of the
+ *  acting set redraws only the faces it touches. */
 const TakeFace = memo(function TakeFace({take, cost, mark, selected, onAct, onInspect}: {
   take: Material; cost: string; mark: 'acting' | 'selected' | 'ancestor' | null; selected: boolean;
   /** The catalogue the footer names its engine from; a new one redraws the face. */
@@ -512,7 +527,7 @@ const TakeFace = memo(function TakeFace({take, cost, mark, selected, onAct, onIn
     aria-label={faceName(take)} aria-describedby={foot} aria-pressed={mark === 'acting'} className={`${s.face} ${mark ? s[mark] : ''}`}
     onDoubleClick={() => onInspect(take.id)} onClick={event => onAct(take.id, event.shiftKey, event.currentTarget)}>
     <div className={s.plate}><MaterialThumbnail node={take}/>{mark === 'acting' && <span className={s.actingMark}>Acting on</span>}{take.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
-    <footer id={foot}><span title={`${label(take)} · ${engineLabel(take, 'source')}`}>{label(take)} · {engineLabel(take, 'face')}{selected && <span className={s.srOnly}>, selected</span>}</span><span>{cost}</span></footer>
+    <footer id={foot}><span title={`${label(take)} · ${engineLabel(take, engineIdentity(take).kind === 'named' ? 'source' : 'face')}`}>{label(take)} · {engineLabel(take, 'face')}{selected && <span className={s.srOnly}>, selected</span>}</span><span>{cost}</span></footer>
   </button>;
 });
 
