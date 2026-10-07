@@ -250,30 +250,37 @@ function ProjectWorkspace({id}: {id: string}) {
   const actingKey = JSON.stringify(acting);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the acting takes, whichever array holds them
   const lineageActing = useMemo(() => acting, [actingKey]);
-  // Run focuses its row's GRID › door (focusAfterDrawer). While that door keeps the focus Run
-  // gave it, it opens the grid room with the run just sent in view: unless the run's section
-  // is already wholly in view, it moves to where a row's first section starts, before the room
-  // is first drawn, and the door keeps focus. The scroll that move takes is lent: the next room
-  // change gives it back, so the Filmstrip and the next room find the row where it was. Any
-  // other way into a room leaves the row's scroll where it is.
+  // A grid room shows its row in the strip the Filmstrip shows it in, and the scroll it takes
+  // there, whatever takes it (the reveal below, a digit, the artist), is the room's: the next
+  // room change gives the row back the scroll it had when the room opened, so Escape changes
+  // nothing beneath.
+  //
+  // Run focuses its row's GRID › door (focusAfterDrawer). While the door keeps the focus Run gave
+  // it, it is armed: it shows its focus however Run was pressed, and it opens the grid room with
+  // the run just sent in view. Unless the run's section is already wholly in view, the section
+  // moves to where a row's first section starts, before the room is first drawn, and the door
+  // keeps focus.
+  // The armed run is read by the door's handlers as it is now; the armed row is what the door shows.
   const sentRun = useRef<{row: number; direction: string} | null>(null);
+  const [armedRow, setArmedRow] = useState<number | null>(null);
+  const arm = (sent: {row: number; direction: string} | null) => {sentRun.current = sent; setArmedRow(sent?.row ?? null);};
   const revealRun = useRef<string | null>(null);
-  const lentScroll = useRef<{strip: HTMLElement; left: number} | null>(null);
+  const roomScroll = useRef<{strip: HTMLElement; left: number} | null>(null);
   useLayoutEffect(() => {
-    const lent = lentScroll.current;
-    lentScroll.current = null;
-    if (lent) lent.strip.scrollLeft = lent.left;
+    const kept = roomScroll.current;
+    roomScroll.current = null;
+    if (kept && kept.strip.scrollLeft !== kept.left) kept.strip.scrollLeft = kept.left;
+    const strip = typeof room === 'number' ? document.querySelector<HTMLElement>(`#row-${room} [data-lineage-strip]`) : null;
+    if (strip) roomScroll.current = {strip, left: strip.scrollLeft};
     const id = revealRun.current;
     revealRun.current = null;
-    const section = id !== null && typeof room === 'number' ? document.querySelector<HTMLElement>(`[data-direction="${id}"]`) : null;
-    const strip = section?.closest<HTMLElement>('[data-lineage-strip]');
-    if (!section || !strip) return;
+    const section = id !== null ? strip?.querySelector<HTMLElement>(`[data-direction="${id}"]`) : null;
+    if (!strip || !section) return;
     const view = strip.getBoundingClientRect().left + strip.clientLeft;
     const start = view + (parseFloat(getComputedStyle(strip).paddingLeft) || 0);
     const {left, right} = section.getBoundingClientRect();
     // A section wholly in view, or already where the first one starts, never moves (law 8).
     if (Math.abs(left - start) < 1 || (left >= view && right <= view + strip.clientWidth)) return;
-    lentScroll.current = {strip, left: strip.scrollLeft};
     strip.scrollLeft += left - start;
   }, [room]);
   if (!data) return <main className={s.projects}><a href={projectHref()}>‹ Projects</a>
@@ -303,19 +310,19 @@ function ProjectWorkspace({id}: {id: string}) {
   const focusAfterDrawer = (direction: Direction, ran: boolean) => requestAnimationFrame(() => {
     const next = document.querySelector<HTMLElement>(ran ? `#row-${direction.row_idx} [data-grid-door]` : `[data-direction="${direction.id}"] [data-starter]`);
     next?.focus();
-    sentRun.current = ran && next !== null && document.activeElement === next ? {row: direction.row_idx, direction: direction.id} : null;
+    arm(ran && next !== null && document.activeElement === next ? {row: direction.row_idx, direction: direction.id} : null);
   });
   /** Focus that leaves the door for the page, or for nothing in it, disarms it; a blur that
    *  only means the window lost focus (no related target, the document unfocused) keeps it
    *  armed, since focus returns to the door with the window. */
   const disarm = (event: ReactFocusEvent) => {
-    if (event.relatedTarget !== null || document.hasFocus()) sentRun.current = null;
+    if (event.relatedTarget !== null || document.hasFocus()) arm(null);
   };
   /** A row's GRID › door opens its grid room, with the run Run just sent in view while the
    *  door still holds the focus Run gave it. */
   const openGridFrom = (row: number) => {
     revealRun.current = sentRun.current?.row === row ? sentRun.current.direction : null;
-    sentRun.current = null;
+    arm(null);
     store.getState().openGrid(row);
   };
   const turns = data.turns;
@@ -406,7 +413,7 @@ function ProjectWorkspace({id}: {id: string}) {
         {room !== 'tray' && <div className={s.actions}><button className={s.primary} onClick={() => void newDirection()}>+ New direction · N</button><button onClick={fromHere(store.getState().showImport)}>Import material</button></div>}
       </div>}
       {rows.filter(row => room === null || room === 'tray' || room === row).map(row => <div className={s.row} id={`row-${row}`} key={row} data-lineage-row={row} style={{marginBottom:`var(--lineage-gap-${row},26px)`}}>
-        <RowStrip sections={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => openGridFrom(row)} onBlur={disarm}>Grid ›</button></div>
+        <RowStrip sections={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door data-armed={armedRow === row || undefined} onClick={() => openGridFrom(row)} onBlur={disarm}>Grid ›</button></div>
           {visible.filter(d=>d.row_idx===row&&d.latest_decision).map(direction=><button key={direction.id} className={s.gutterDecision} onClick={fromHere(()=>store.getState().openRecord({direction_id:direction.id}))} title={`Latest decision for ${direction.title}`}>
             <span>{direction.latest_decision?.reason||'No reason supplied'}</span><small>{actorLine(direction.latest_decision?.actor)} ›</small>
           </button>)}

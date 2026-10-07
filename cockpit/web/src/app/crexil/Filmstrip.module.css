@@ -63,6 +63,9 @@
 .spacer { flex:1; }
 .money { font-size:9px; color:var(--secondary); letter-spacing:.08em; border-left:1px solid var(--hairline); padding-left:12px; }
 .app .door { border:0; background:none; color:var(--accent); padding:0; font-size:9px; letter-spacing:.08em; }
+/* The GRID › door Run armed shows its focus in the keyboard's ring however Run was pressed, so the
+   artist sees where Enter goes. */
+.app .door[data-armed]:focus { outline:var(--focus-outline); outline-offset:var(--focus-offset); }
 .footer { height:26px; flex:none; display:flex; justify-content:space-between; align-items:center; gap:24px; padding:0 24px; border-top:1px solid var(--hairline); font-size:8.5px; color:var(--secondary); letter-spacing:.08em; }
 .queue { height:36px; flex:none; margin-right:var(--director-inset,0px); padding:0 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; border-top:1px solid var(--hairline); background:var(--panel-alt); font-size:9px; color:var(--secondary); letter-spacing:.1em; }
 .queue span:last-child {color:var(--secondary);font-size:8px;}
@@ -111,8 +114,9 @@
 .gutterDecision small {font:8px/1.5 var(--font-mono);color:var(--secondary);overflow-wrap:anywhere;}
 .sections {display:flex;gap:14px;align-items:center;overflow-x:auto;min-width:0;padding:0 3px 5px;}
 /* A row whose sections run past the work area fades at its right edge; its gutter's door says how
-   many sections lie beyond and scrolls to them. */
-.moreBeyond {mask-image:linear-gradient(to right,#000 calc(100% - 72px),transparent);}
+   many sections lie beyond and scrolls to them. A face brought into view there, by a digit or by
+   focus, stops short of the fade. */
+.moreBeyond {mask-image:linear-gradient(to right,#000 calc(100% - 72px),transparent);scroll-padding-inline-end:72px;}
 .app .moreDoor {align-self:flex-start;}
 .section {flex:none;min-width:185px;border:1px solid var(--hairline);border-radius:var(--r-panel);background:var(--bg-frame);padding:12px;}
 .sectionBody {display:flex;gap:14px;align-items:flex-start;min-height:132px;}
@@ -126,12 +130,11 @@
 .plate {height:103px;display:flex;align-items:center;justify-content:center;position:relative;background:var(--panel);color:var(--secondary);font-size:10px;}
 .plate img {width:100%;height:100%;object-fit:contain;}
 /* A face's footer: the take and its engine at the left, its money at the right, 6 px apart as
-   in the kit's card strip, and 6 px in from the card's sides, where the audio plate's duration
-   and playing mark sit, so the money ends under the duration. A single-digit run's name reads
-   whole beside a charge, INCLUDED, LOCAL and AFTER REVEAL; beside UNVERIFIED a longer name, such
-   as "1B · SOUND EFFECTS", can end in an ellipsis, and the hover title names it in full. The
-   type keeps its size. */
-.face footer {height:27px;border-top:1px solid var(--hairline);font:8px var(--font-mono);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;gap:6px;padding:0 6px;color:var(--secondary);}
+   in the kit's card strip, and 4 px in from the card's sides, measured so the longest hosted
+   engine names read whole beside their money ("0D · SEEDREAM 5.0 LITE" beside $0.035 with 2 px
+   to spare). A longer name ends in an ellipsis, and the hover title names it in full. The type
+   keeps its size. */
+.face footer {height:27px;border-top:1px solid var(--hairline);font:8px var(--font-mono);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;gap:6px;padding:0 4px;color:var(--secondary);}
 .face footer>span:first-child {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .face footer>span:last-child {flex:none;color:var(--secondary);font-size:7.5px;}
 /* Words for a screen reader only: in the accessibility tree, out of the picture. */

@@ -232,6 +232,20 @@ describe('the GRID › door Run focuses opens the room with the run just sent in
     expect(written).toEqual([1497, 0, 300]);
   });
 
+  it('marks the door Run armed, though Run was clicked, so its focus shows, until it opens the room or loses its focus', async () => {
+    let door = await ran();
+    expect(door).toHaveAttribute('data-armed');
+    laidOut(1700, 2100);
+    fireEvent.click(door);
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    await waitFor(() => expect(door).not.toHaveAttribute('data-armed'));
+    cleanup();
+    sent = false;
+    door = await ran();
+    screen.getByRole('button', {name: 'Record ›'}).focus();
+    await waitFor(() => expect(door).not.toHaveAttribute('data-armed'));
+  });
+
   it('keeps the door armed through a window switch: a blur with no related target while the document lost focus', async () => {
     const door = await ran();
     const written = laidOut(1700, 2100);
@@ -382,5 +396,108 @@ describe("a row's faces and sources: engines named as their faces name them, and
     fireEvent.click(screen.getByRole('button', {name: 'Tray · 1 ›'}));
     const variation = await screen.findByRole('region', {name: 'Variation'});
     expect(within(variation).getByText(/^1 source/)).toBeInTheDocument();
+  });
+});
+
+describe("a grid room's scroll is the room's: leaving gives the row back the scroll it had when the room opened", () => {
+  // Row 0 holds nine concept images and a settled local voice casting whose takes a digit plays;
+  // row 1 holds one more run, which the record opens.
+  const image = (id: string, turn: string, turnIdx: number, pos: number) => ({id, workspace_id: 'p1', turn_id: turn, slot_id: `${turn}-${pos}`,
+    take: 1, payload: 'image', verb: 'generate', prompt: 'A stout dwarf blacksmith', engine: 'raw-sdxl', seed: pos, committed_usd: 0,
+    charged_usd: 0, set_aside: false, available: true, parents: [], turn_idx: turnIdx, slot_pos: pos, output_index: 0, material: null,
+    retained_files: [], promoted_at: null, identity_hidden: null, created_at: '2026-10-06T10:00:10Z'});
+  const voice = (id: string, index: number) => ({...image(id, 't5', 1, 0), payload: 'audio', verb: 'voice-design', engine: 'qwen3-tts',
+    slot_id: 't5-0', output_index: index, audio: {duration_s: 4, loudness_lufs: -19, peaks: [0.4, 0.6], text: null, voice: null}});
+  const landed = (turn: string, pos: number, engine: string) => ({...slot(pos, 'queued'), id: `${turn}-${pos}`, turn_id: turn, engine,
+    status: 'landed', committed_usd: 0, charged_usd: 0});
+  const direction = (id: string, title: string, row: number, turn: string, nodes: string[], selection: string[]) => ({id, workspace_id: 'p1',
+    title, state: 'submitted', revision: 2, row_idx: row, selection, node_ids: nodes, turn_ids: [turn], set_aside: false,
+    sequence_template: false, latest_decision: null, setup: {action: 'generate', prompt: 'A stout dwarf blacksmith', references: [], operations: []}});
+  const CONCEPTS = Array.from({length: 9}, (_, pos) => image(`n${pos}`, 't1', 0, pos));
+  const VOICES = [voice('v1', 0), voice('v2', 1)];
+  const project = () => ({
+    project: {id: 'p1', name: 'Dwarf blacksmith', brief: '', revision: 1, instructions: '', limits: {}},
+    directions: [direction('d1', 'Concept images', 0, 't1', CONCEPTS.map(node => node.id), ['n0']),
+      direction('d5', 'Blacksmith voice', 0, 't5', ['v1', 'v2'], []), direction('d6', 'Forge strike', 1, 't6', ['m1'], ['m1'])],
+    nodes: [...CONCEPTS, ...VOICES, image('m1', 't6', 2, 0)], execution_groups: [], blind_runs: [], sequences: [], charged_usd: 0,
+    accounting: {}, restoration: null, execution_controls: [control('project', 'p1')], event_seq: 20,
+    turns: [{id: 't1', idx: 0, prompt: '', created_at: '2026-10-06T10:00:00Z', dials: {}, slots: CONCEPTS.map((_, pos) => landed('t1', pos, 'raw-sdxl'))},
+      {id: 't5', idx: 1, prompt: '', created_at: '2026-10-06T10:01:00Z', dials: {}, slots: [landed('t5', 0, 'qwen3-tts')]},
+      {id: 't6', idx: 2, prompt: '', created_at: '2026-10-06T10:02:00Z', dials: {}, slots: [landed('t6', 0, 'raw-sdxl')]}],
+  });
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async (input: Request) => {
+      const path = new URL(input.url).pathname;
+      if (path === '/api/crexil/projects/p1') return Response.json(project());
+      if (path === '/api/crexil/projects/p1/record') return Response.json({decisions: [], material_ids: [], next_before: null,
+        direction_ids: ['d1', 'd5', 'd6'], turn_ids: ['t1', 't5', 't6']});
+      if (path === '/api/crexil/operations') return Response.json([]);
+      if (path === '/api/queue') return Response.json({...queue(), held: [], benches: []});
+      if (path === '/api/engines') return Response.json({updated: '', external: {}, engines: []});
+      if (path === '/api/costs') return Response.json({today_usd: 0, month_usd: 0, day: '2026-10-06', month: '2026-10'});
+      if (path === '/api/health') return Response.json({build: {id: 'test'}});
+      throw new Error(`unstubbed fetch: ${input.method} ${path}`);
+    }));
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+      this.dispatchEvent(new Event('play'));
+      return Promise.resolve();
+    });
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (Element.prototype as {scrollIntoView?: unknown}).scrollIntoView;
+  });
+
+  /** A row's strip as a browser keeps it, scrolled to `start`, with the offsets written to it. */
+  function scrolled(row: number, start: number) {
+    const strip = document.querySelector<HTMLElement>(`#row-${row} [data-lineage-strip]`)!;
+    const written: number[] = [];
+    let left = start;
+    Object.defineProperty(strip, 'scrollLeft', {configurable: true, get: () => left, set: (offset: number) => {left = offset; written.push(offset);}});
+    return {strip, written};
+  }
+  const door = (row: number) => within(document.querySelector<HTMLElement>(`#row-${row}`)!).getByRole('button', {name: 'Grid ›'});
+
+  it('gives back the scroll a digit took, so Escape leaves the Filmstrip row where it was', async () => {
+    render(<App/>);
+    await screen.findAllByRole('button', {name: 'Grid ›'});
+    const row0 = scrolled(0, 120);
+    // the browser scrolls the strip to bring the face a digit plays into view
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {configurable: true, writable: true,
+      value() {row0.strip.scrollLeft = 640;}});
+    fireEvent.click(door(0));
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    fireEvent.keyDown(document.body, {key: '1', code: 'Digit1'});
+    await waitFor(() => expect(screen.getByRole('button', {name: /^Act on 1A\b/})).toHaveFocus());
+    expect(row0.written).toEqual([640]);
+    fireEvent.click(screen.getByRole('button', {name: 'Esc · Project'}));
+    await waitFor(() => expect(screen.queryByText('Grid · Turn 0')).toBeNull());
+    expect(row0.written).toEqual([640, 120]);
+    expect(row0.strip.scrollLeft).toBe(120);
+  });
+
+  it("gives each row its own scroll back when the record opens a room and the rooms change rows without the Filmstrip between", async () => {
+    render(<App/>);
+    await screen.findAllByRole('button', {name: 'Grid ›'});
+    const row0 = scrolled(0, 120);
+    fireEvent.click(door(0));
+    expect(await screen.findByText('Grid · Turn 0')).toBeInTheDocument();
+    row0.strip.scrollLeft = 500;
+    // the record opens over the room, which closes: row 0 has its scroll back
+    fireEvent.click(screen.getByRole('button', {name: 'Record ›'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Runs'}));
+    expect(row0.written).toEqual([500, 120]);
+    // row 1, drawn again behind the record, opens from it
+    const row1 = scrolled(1, 40);
+    const run = (await screen.findByText(/^Run 2 ·/)).closest('article')!;
+    fireEvent.click(within(run).getByRole('button', {name: 'Open execution grid ›'}));
+    expect(await screen.findByText('Grid · Turn 1')).toBeInTheDocument();
+    row1.strip.scrollLeft = 700;
+    fireEvent.click(screen.getByRole('button', {name: 'Esc · Record'}));
+    await waitFor(() => expect(screen.queryByText('Grid · Turn 1')).toBeNull());
+    expect(row1.written).toEqual([700, 40]);
+    expect(row0.written).toEqual([500, 120]);
   });
 });
