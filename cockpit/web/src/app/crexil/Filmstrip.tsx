@@ -252,8 +252,9 @@ function ProjectWorkspace({id}: {id: string}) {
   const lineageActing = useMemo(() => acting, [actingKey]);
   // A grid room shows its row in the strip the Filmstrip shows it in, and the scroll it takes
   // there, whatever takes it (the reveal below, a digit, the artist), is the room's: the next
-  // room change gives the row back the scroll it had when the room opened, so Escape changes
-  // nothing beneath.
+  // room change gives the room's own row back the scroll it had when the room opened, when the
+  // row is shown at that change; a room left while the record hides the rows keeps the room's
+  // scroll. Other rows are not drawn in the room and come back at their start.
   //
   // Run focuses its row's GRID › door (focusAfterDrawer). While the door keeps the focus Run gave
   // it, it is armed: it shows its focus however Run was pressed, and it opens the grid room with
