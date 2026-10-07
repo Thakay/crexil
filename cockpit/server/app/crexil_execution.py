@@ -133,7 +133,7 @@ def catalogue(stack, graphs: dict | None = None) -> list[dict]:
             'reasons': ['Generation is disconnected in this isolated preview.'] if preview else
                        ['The provider is paused, unavailable, or needs a key.'] if unavailable else [],
             'execution_location': 'Hosted provider', 'data_destination': config.OPENROUTER_URL,
-            'price_usd': model.get('price_usd_per_image'), 'maximum_usd_per_attempt': None,
+            'price_usd': hosted_images.listed_price(model), 'maximum_usd_per_attempt': None,
             'cost_basis': 'Published tariffs can reserve expected spend; this route has no enforceable per-request ceiling',
             'sources': [{'role': 'source', 'accepts': ['image']}] if limit else [], 'price_unit': 'image',
             'provider': 'openrouter', 'pinned': bool(model.get('pinned'))})

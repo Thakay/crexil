@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app import config, wiring
+from app import config, hosted_images, wiring
 from app.crexil_budget import accounting, BudgetExceeded
 from app.executors import EngineFailure, OpenRouterExecutor
 from fakes import Step
@@ -50,9 +50,9 @@ def discover():
     catalog._fetched_at = confirmed
 
 
-async def hosted(client, wid, **setup):
+async def hosted(client, wid, model='testvendor/testmodel', **setup):
     operations = (await client.get('/api/crexil/operations')).json()
-    op = next(o for o in operations if o['id'] == 'testvendor/testmodel')
+    op = next(o for o in operations if o['id'] == model)
     result = await client.post(f'/api/crexil/projects/{wid}/directions', json=command(title='Hosted brass', setup={
         'prompt': 'brass lamp', 'spending_limit_usd': 1, 'spending_policy': 'published_tariff',
         'operations': [{'operation_id': op['id'], 'revision': op['revision'], 'count': 1}], **setup}))
@@ -98,6 +98,51 @@ async def test_hard_cap_unknown_controls_changed_prices_and_source_bounds_refuse
         assert rejected.status_code == 409, rejected.text
         assert not fakes['openrouter'].starts
         assert not await store().list_turns(p['id'])
+
+
+async def test_a_hosted_engine_shows_before_it_is_chosen_what_its_review_reserves(tmp_path, monkeypatch):
+    # One rule prices a hosted engine before it is chosen and reserves it at review (law 22).
+    # A per-image tariff shows one image's price, whatever a pin estimates; a tariff review
+    # cannot reserve (by token, as GPT Image 2's is, or by megapixel) and a pin whose endpoints
+    # are not confirmed yet read "price unknown", as review refuses or holds them.
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        discover()
+        live = wiring.current.provider_catalog._live
+        pins = json.loads(config.PROVIDERS_FILE.read_text())
+        pins['models'] += [{'id': 'testvendor/tokens', 'provider': 'testvendor', 'label': 'Token Model',
+                            'price_usd_per_image': .04, 'supports_seed': False, 'enabled': True},
+                           {'id': 'othervendor/unconfirmed', 'provider': 'othervendor', 'label': 'Unconfirmed',
+                            'price_usd_per_image': .03, 'supports_seed': False, 'enabled': True}]
+        config.PROVIDERS_FILE.write_text(json.dumps(pins))
+        for mid, unit, estimate in (('testvendor/tokens', 'token', None), ('testvendor/megapixels', 'megapixel', .042)):
+            endpoint = copy.deepcopy(ENDPOINT)
+            endpoint['pricing'] = [{'billable': 'output_image', 'unit': unit, 'cost_usd': .04}]
+            live[mid] = {**live['testvendor/testmodel'], 'id': mid, 'name': mid, 'endpoints': [endpoint],
+                         'price_usd_per_image': estimate}
+        operations = {op['id']: op for op in (await client.get('/api/crexil/operations')).json()}
+        assert {mid: operations[mid]['price_usd'] for mid in (
+            'testvendor/testmodel', 'testvendor/tokens', 'testvendor/megapixels', 'othervendor/unconfirmed')} == {
+            'testvendor/testmodel': .04, 'testvendor/tokens': None, 'testvendor/megapixels': None,
+            'othervendor/unconfirmed': None}
+        p = await project(client)
+        review = await reviewed(client, await hosted(client, p['id']))
+        assert review['ready'] and review['reserved_micro_usd'] == 40_000
+        for mid in ('testvendor/tokens', 'testvendor/megapixels'):
+            review = await reviewed(client, await hosted(client, p['id'], mid))
+            assert not review['ready'] and any('unknown price' in error for error in review['errors']), review
+        review = await reviewed(client, await hosted(client, p['id'], 'othervendor/unconfirmed'))
+        assert not review['ready'] and review['reserved_micro_usd'] == 0
+
+
+def test_the_price_shown_is_the_default_endpoints_for_one_image_without_sources():
+    # Review prices the first provider listed unless told otherwise, one image, no source.
+    first, second = copy.deepcopy(ENDPOINT), copy.deepcopy(ENDPOINT)
+    second.update(provider_tag='cheaper')
+    second['pricing'] = [{'billable': 'output_image', 'unit': 'image', 'cost_usd': .01}]
+    assert hosted_images.listed_price({'endpoints': [first, second]}) == .04
+    assert hosted_images.listed_price({'endpoints': [first, copy.deepcopy(first)]}) is None   # ambiguous provider
+    assert hosted_images.listed_price({'endpoints': []}) is None
+    assert hosted_images.listed_price({'id': 'pinned/only', 'price_usd_per_image': .04}) is None
 
 
 async def test_a_refresh_that_lands_after_the_injected_catalogue_never_replaces_it(tmp_path, monkeypatch):

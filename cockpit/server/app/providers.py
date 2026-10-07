@@ -275,8 +275,10 @@ class ProviderCatalog:
             out.append({
                 **live,
                 "label": pin.get("label") or live["name"],
-                # the config pin is the display price when present; the live
-                # estimate only fills gaps (billed truth stays `usage.cost`)
+                # the legacy composer's estimate: the config pin when present,
+                # the live estimate filling gaps (billed truth stays `usage.cost`);
+                # a project's drawer shows what review reserves instead
+                # (hosted_images.listed_price)
                 "price_usd_per_image": (
                     pin.get("price_usd_per_image")
                     if pin.get("price_usd_per_image") is not None

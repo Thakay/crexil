@@ -112,6 +112,22 @@ def tariff(endpoint: dict, output_count: int, reference_count: int) -> Decimal:
     return total
 
 
+def listed_price(model: dict) -> float | None:
+    """The price a hosted operation shows before it is chosen: one image, with no source,
+    on the endpoint its review uses unless told otherwise (the first provider listed), by
+    the rule that review reserves with (`tariff`). None where that rule cannot state it (a
+    token or megapixel tariff, an ambiguous provider, no endpoint yet), so the operation
+    reads "price unknown" exactly where its review would refuse the price (law 22)."""
+    tag = inputs(model)[0]['default']
+    endpoints = [e for e in model.get('endpoints', []) if e.get('provider_tag') == tag]
+    if tag is None or len(endpoints) != 1:
+        return None
+    try:
+        return float(tariff(endpoints[0], 1, 0))
+    except UnknownPrice:
+        return None
+
+
 def compile_request(model: dict, setup, choice, source_blobs: list[bytes]) -> dict:
     if model.get('endpoint_discovery_error'):
         raise ValueError('Endpoint discovery failed for this model at the last catalogue refresh. '
