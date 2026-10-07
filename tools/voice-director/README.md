@@ -26,7 +26,7 @@ microphone stays muted 400 ms after the take stops, and no take plays while a se
 
 | File | Holds |
 |---|---|
-| `agent.json` | The agent: name, tag, prompt, language model, voice model, the session's longest duration, privacy, the provider's call limits, and the six client tools. No key, no account id |
+| `agent.json` | The agent: name, tag, prompt (it names no price before `prepare_run` answers, then the run's attempts and reserved total as returned), language model, voice model, the session's longest duration, privacy, the provider's call limits, and the six client tools. No key, no account id |
 | `apply.py` | Validates `agent.json` and creates or updates the agent and its tools |
 
 The six tool names in `agent.json` must match the panel's handlers in

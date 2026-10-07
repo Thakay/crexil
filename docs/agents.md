@@ -128,7 +128,9 @@ the ceiling and send its prompt off the machine. A paid submission must also res
 review reserves. A refusal over the ceiling names the flag. Without a `payload` or an `action`,
 `crexil_list_engines` names each engine by its id, label, actions, payload, price with its unit and
 readiness, small enough for any client's tool output; with one, it adds where each engine runs, what
-leaves the machine, how it is charged, its sources and its controls. The [door's README](../tools/agent-door/README.md) lists the tools, flags and tests.
+leaves the machine, how it is charged, its sources and its controls. A hosted image engine's price is what a
+review reserves for one image on its default endpoint, and null where a review cannot reserve one (a tariff by
+token or by megapixel), as the drawer shows it before the engine is chosen. The [door's README](../tools/agent-door/README.md) lists the tools, flags and tests.
 
 Door errors give the server's plain line, then the next move, then a stable kind:
 

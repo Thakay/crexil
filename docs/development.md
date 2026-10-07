@@ -72,13 +72,17 @@ ElevenLabs sound effect (about $0.001; a test session never reads `.env`). Ruff'
 
 **Hermetic tests.** Every pytest session is sealed before any test module imports the app:
 `tests/conftest.py` and `tools/agent-door/tests/conftest.py` apply `cockpit/server/tests/hermetic.py`. It
-switches python-dotenv off (`PYTHON_DOTENV_DISABLED=1`) for the session and every process a test starts,
-points `COMFYUI_URL`, `THREED_URL`, `VOICE_RUNNER_URL`, `OPENROUTER_URL` and `ELEVENLABS_URL` at the closed
-port 9, and blanks `OPENROUTER_API_KEY`, `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_AGENT_ID`, whatever the
-shell or a checkout's `.env` holds. A test that needs an engine or a key points `config` at its own fake.
-`tests/test_hermetic.py` proves the seal with a planted `.env` and shell, and fails when `config.py` gains a
-runtime address or secret the seal does not cover. The harness suite's server reads no `.env` either; a
-preview never does.
+switches python-dotenv off (`PYTHON_DOTENV_DISABLED=1`, python-dotenv 1.2 or later) for the session and every
+process a test starts; points `COMFYUI_URL`, `THREED_URL`, `THREED_COMFY_URL`, `VOICE_RUNNER_URL`,
+`OPENROUTER_URL` and `ELEVENLABS_URL` at the closed port 9; points `COCKPIT_DB`, `COCKPIT_STAGING_DIR`,
+`PROMOTE_DIR` and `PROMOTE_ROOTS` at the session's own temporary folder, so a test that names no store of its
+own never opens the checkout's store or the key saved beside it; and blanks `OPENROUTER_API_KEY`,
+`ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_AGENT_ID`, whatever the shell or a checkout's `.env` holds. A test
+session keeps no key, except the ElevenLabs key exported for `LIVE_ELEVENLABS=1`. A test that needs an engine or
+a key points `config` at its own fake. `tests/test_hermetic.py` proves the seal with a planted `.env`, saved key
+and shell, and fails when `config` gains a setting named `*_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD` or
+`*_AGENT_ID`, or a web address, that the seal does not cover. The harness suite sets `PYTHON_DOTENV_DISABLED` for
+every process it starts, the specs' seed scripts included; a preview never reads `.env`.
 
 **End-to-end tests.** They need a fresh `npm run build`, `uv` on the `PATH`, Playwright's Chromium
 (`npx playwright install chromium`) and a free port 8123. They need no engine: Playwright boots the
