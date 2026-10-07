@@ -1,8 +1,9 @@
 // The grid room's keys and working line against a stubbed server: S selects the focused take
 // through the shared selection action and keeps an optional reason as that choice's own
 // reason; a blind run's reveal is asked for in line with an optional reason, once the
-// choice's reason is settled, and is announced in the line's one status. Fetch is stubbed; the client
-// resolves globalThis.fetch lazily (api/client.ts).
+// choice's reason is settled, and is announced in the line's one status; a digit brings the face it
+// plays into view at the nearest edge of its row. Fetch is stubbed; the client resolves
+// globalThis.fetch lazily (api/client.ts).
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { player } from '../audio/player';
@@ -25,12 +26,17 @@ const snapshot = (selection: string[] = [], revealed = false) => ({
 type Sent = {method: string; path: string; body: Record<string, unknown>};
 let sent: Sent[] = [];
 let answers: Record<string, () => Response> = {};
+/** Each face scrolled into view, and how; this page lays nothing out, so nothing moves. */
+let scrolled: {element: Element; options: unknown}[] = [];
 
 beforeEach(async () => {
   // A frame a previous test asked for (focus back to a face) runs before this test's room exists.
   await new Promise(resolve => requestAnimationFrame(resolve));
   sent = [];
   answers = {};
+  scrolled = [];
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {configurable: true, writable: true,
+    value(this: Element, options: unknown) {scrolled.push({element: this, options});}});
   vi.stubGlobal('fetch', vi.fn(async (input: Request) => {
     const path = new URL(input.url).pathname;
     sent.push({method: input.method, path, body: input.method === 'GET' ? {} : await input.json()});
@@ -42,6 +48,7 @@ afterEach(() => {
   player.release();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  delete (Element.prototype as {scrollIntoView?: unknown}).scrollIntoView;
 });
 
 function Room({data, refresh = () => {}}: {data: Snapshot; refresh?: () => void}) {
@@ -258,6 +265,17 @@ describe('audition in the grid room', () => {
     expect(played).toEqual(['a2']);
     // focus moves to the face it plays, so S and Space act on the take just heard
     expect(screen.getByRole('button', {name: 'Act on a2'})).toHaveFocus();
+  });
+  it("focuses the face a digit plays without the browser's own focus scroll, and brings it in at the nearest edge (law 8)", async () => {
+    render(<Audition room={createViewStore({room: 0})}/>);
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    digit(2);
+    await act(() => Promise.resolve());
+    const face = screen.getByRole('button', {name: 'Act on a2'});
+    expect(face).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith({preventScroll: true});
+    // nearest: a face already in view stays where it is; one out of view moves only as far as it must
+    expect(scrolled).toEqual([{element: face, options: {block: 'nearest', inline: 'nearest'}}]);
   });
   it('numbers the positions of the run that holds focus, keeps focus in that run, and keeps an empty position its number', async () => {
     render(<Audition room={createViewStore({room: 0})}/>);

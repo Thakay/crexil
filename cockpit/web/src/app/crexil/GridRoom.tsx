@@ -28,9 +28,14 @@ export function focusedTake(): string | null {
   return face?.getAttribute('data-take') ?? null;
 }
 
-/** Moves focus to a take's face, so the next key acts on the take just heard. */
+/** Moves focus to a take's face, so the next key acts on the take just heard. A face out of view
+ *  comes into view at the nearest edge of its row, the least scroll that shows it; a face in view
+ *  never moves (law 8). */
 export function focusTake(id: string) {
-  document.querySelector<HTMLElement>(`[data-take=${JSON.stringify(id)}]`)?.focus();
+  const face = document.querySelector<HTMLElement>(`[data-take=${JSON.stringify(id)}]`);
+  if (!face) return;
+  face.focus({preventScroll: true});
+  face.scrollIntoView({block: 'nearest', inline: 'nearest'});
 }
 
 /** The run the keyboard is in: the run whose grid cell holds focus (its `data-run`). */

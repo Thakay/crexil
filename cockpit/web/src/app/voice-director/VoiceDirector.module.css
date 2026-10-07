@@ -4,8 +4,9 @@
    width comes from VoiceDirectorPanel.tsx, and every Filmstrip surface keeps clear of it, so it
    sits above them and covers nothing. Its head is the panel head every room wears, 44 px, so it
    lines up with a room's head beside it. Values come from tokens.css; gold marks money about to
-   move, the accent marks a door. Selectors name the element as well as the class, so the
-   surface's own button and input rules never restyle the column. */
+   move, the accent marks a door and a free Run (the primary frame the drawer's free Run wears).
+   Selectors name the element as well as the class, so the surface's own button and input rules
+   never restyle the column. */
 
 button.door {
   font: 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase;
@@ -30,6 +31,7 @@ aside.panel button {
 aside.panel button:hover { color: var(--text); background: var(--raised); }
 aside.panel button:disabled { opacity: .5; cursor: default; }
 aside.panel .paid { color: var(--money); border-color: var(--money); background: var(--tint-money); }
+aside.panel .primary { color: var(--accent); border-color: var(--accent); background: var(--tint-accent); }
 .loading { margin: 0; padding: 12px 14px; color: var(--secondary); }
 
 .head {

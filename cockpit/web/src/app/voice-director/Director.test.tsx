@@ -1,13 +1,14 @@
 // The voice director's conversation, with the ElevenLabs SDK replaced by a fake and the shared
 // player driving a fake media element: the token reaches only the SDK, paid runs, free runs that
-// leave this machine and picks wait for the artist's click, the meter ends the session at its
-// limit and records the minutes, the panel says what leaves the machine before a session, and the
-// microphone mutes before any take sounds, whoever starts it, so the agent never hears one.
+// leave this machine and picks wait for the artist's click, a run that changed since it was
+// prepared goes to the drawer, the meter ends the session at its limit and records the minutes,
+// the panel says what leaves the machine before a session, and the microphone mutes before any
+// take sounds, whoever starts it, so the agent never hears one.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { audioUrl, player } from '../audio';
 import { HUMAN, money } from '../crexil/api';
-import Director, { CONNECTING, DISCLOSURE, shownWords } from './Director';
+import Director, { CHANGED, CONNECTING, DISCLOSURE, shownWords } from './Director';
 import { DIRECTOR, type VoiceStarted } from './door';
 import { fakeDoor, freeHosted, OPERATIONS, review, session, usage } from './fakes';
 import { TOOL_NAMES } from './tools';
@@ -78,8 +79,11 @@ const paid = {action: 'voice-design', prompt: 'A gruff dwarf blacksmith', spendi
   preview_line: 'Steel remembers every strike, and so do I. Bring me the ore before the fire dies, and mind the anvil.',
   engines: [{id: 'audio:voice-design:elevenlabs-voice-design', count: 1}]};
 
+/** Opens a prepared run in the project's drawer, as the Filmstrip does. */
+const openRun = vi.fn();
+
 beforeEach(() => {
-  for (const spy of [fake.sdk.start, fake.sdk.end, fake.sdk.update, fake.sdk.setMuted, fake.sdk.setVolume]) spy.mockClear();
+  for (const spy of [fake.sdk.start, fake.sdk.end, fake.sdk.update, fake.sdk.setMuted, fake.sdk.setVolume, openRun]) spy.mockClear();
   fake.sdk.open = false;
   player.release();
   fake.log.length = 0;
@@ -91,7 +95,7 @@ afterEach(() => {
 });
 
 async function opened(door = fakeDoor()) {
-  const view = render(<Director projectId="p1" door={door}/>);
+  const view = render(<Director projectId="p1" door={door} openRun={openRun}/>);
   await screen.findByText(/left of/);
   return {door, view};
 }
@@ -187,7 +191,9 @@ test('a free run that leaves this machine waits for the artist, says what leaves
   expect(screen.queryByText(/Started for you/)).toBeNull();
   expect(within(card).getByText(`Cap ${money(0)} · free`)).toBeInTheDocument();
   expect(within(card).getByText('Sends off this machine to sounds.example.com: the sound description.')).toBeInTheDocument();
+  // a free Run wears the primary frame, as the drawer's free Run does, never money gold (law 6)
   const run = within(card).getByRole('button', {name: 'Run · free'});
+  expect(run.className).toMatch(/primary/);
   expect(run.className).not.toMatch(/paid/);
   expect(run).not.toHaveFocus();
   await act(async () => {fireEvent.click(run);});
@@ -195,16 +201,35 @@ test('a free run that leaves this machine waits for the artist, says what leaves
   expect(fake.sdk.update).toHaveBeenCalledWith(expect.stringContaining('The artist ran'));
 });
 
-test('a price that moved since the director prepared the run is shown again and not submitted', async () => {
+test.each([
+  ['the run itself', {token: 'token-2'}],
+  ['its price', {reserved_usd: 0.05}],
+])('a card whose run changed since it was prepared (%s) offers no Run: the drawer shows the run as it is now', async (_what, moved) => {
   let reviews = 0;
-  const door = fakeDoor({review: async () => ++reviews === 1 ? review() : review({token: 'token-2', reserved_usd: 0.05})});
+  const door = fakeDoor({review: async () => ++reviews === 1 ? review() : review(moved)});
   const {tools} = await connected(door);
   await act(async () => {await tools.prepare_run(paid);});
   const card = await screen.findByRole('article', {name: /Prepared run/});
   await act(async () => {fireEvent.click(within(card).getByRole('button', {name: `Run · up to ${money(0.031)}`}));});
-  expect(await within(card).findByText(/changed since the director prepared it/)).toBeInTheDocument();
-  expect(within(card).getByRole('button', {name: `Run · up to ${money(0.05)}`})).toBeInTheDocument();
+  expect(await within(card).findByText(CHANGED)).toBeInTheDocument();
+  // the price and what leaves the machine were the prepared run's: they give way, with Run
+  expect(within(card).queryByText(/^Cap /)).toBeNull();
+  expect(within(card).queryByText(/^Sends off this machine/)).toBeNull();
+  expect(within(card).queryByRole('button', {name: /^Run/})).toBeNull();
   expect(door.submit).not.toHaveBeenCalled();
+  expect(fake.sdk.update).toHaveBeenCalledWith(expect.stringContaining('changed since you prepared it'));
+  fireEvent.click(within(card).getByRole('button', {name: 'Open in the drawer'}));
+  expect(openRun).toHaveBeenCalledWith('run-new');
+  expect(within(card).getByText('Opened in the drawer.')).toBeInTheDocument();
+});
+
+test('a run priced by its published tariff never reads as free, even when its review reserves nothing (law 6)', async () => {
+  const {tools} = await connected(fakeDoor({review: async () => review({reserved_usd: 0, reserved_micro_usd: 0})}));
+  await act(async () => {await tools.prepare_run(paid);});
+  const card = await screen.findByRole('article', {name: /Prepared run/});
+  expect(within(card).getByText(`Cap ${money(0.5)} · reserves up to ${money(0)} · by the published price; the final provider charge is not capped`))
+    .toBeInTheDocument();
+  expect(within(card).getByRole('button', {name: `Run · up to ${money(0)}`}).className).toMatch(/paid/);
 });
 
 test('spending that moved at submit is reviewed again and waits for another click', async () => {
