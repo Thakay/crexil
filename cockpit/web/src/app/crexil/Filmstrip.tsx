@@ -5,7 +5,7 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 // same tokens and return to their entry point, one Escape layer at a time. Which
 // rooms and layers are open lives in the project view store (view.ts); media
 // differences live in the registry (media.tsx).
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { $api, fetchClient } from '../../api/client';
 import { player } from '../audio/player';
@@ -45,6 +45,11 @@ import { cardVerbs, SPEAK_VERB } from './verbCard';
 import { VerbCard } from './VerbCard';
 import { covered, createViewStore, overlay, useView, useViewStore, ViewContext, type FocusReturn, type Overlay, type View } from './view';
 import s from './Filmstrip.module.css';
+
+/** The directions the workspace draws, never a discarded one: the tray's set-aside ones,
+ *  every one in a grid room, else those not set aside. */
+const shownDirections = (directions: Direction[], room: View['room']) => directions.filter(d => d.state !== 'discarded'
+  && (room === 'tray' ? d.set_aside : room !== null || !d.set_aside));
 
 /** A grid room's cells, every section of its row in order. */
 function roomCells(data: Snapshot | undefined, room: View['room']): Cell[] {
@@ -233,9 +238,39 @@ function ProjectWorkspace({id}: {id: string}) {
   const fastPick = useFastPick(data, takes, refresh);
   const {settle} = fastPick;
   useEffect(() => {settle(null); return () => player.pause();}, [room, settle]);
+  // The lineage canvas observes the layout again whenever its inputs change, so they change
+  // only with the project's record (its event sequence), the room or the acting takes, never
+  // merely because the workspace rendered again.
+  const recordSeq = data?.event_seq;
+  const lineage = useMemo(() => ({
+    bindings: data ? shownDirections(data.directions, room).flatMap(direction => sourceBindings(direction, data)) : [],
+    nodes: data?.nodes ?? [],
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the record changes only with its event sequence
+  }), [recordSeq, room]);
+  const actingKey = JSON.stringify(acting);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the acting takes, whichever array holds them
+  const lineageActing = useMemo(() => acting, [actingKey]);
+  // Run focuses its row's GRID › door (focusAfterDrawer). While that door keeps the focus Run
+  // gave it, it opens the grid room with the run just sent in view: unless the run's section
+  // is already wholly in view, it moves to where a row's first section starts, before the room
+  // is first drawn, and the door keeps focus. Any other way into a room opens it as before.
+  const sentRun = useRef<{row: number; direction: string} | null>(null);
+  const revealRun = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const id = revealRun.current;
+    revealRun.current = null;
+    const section = id !== null && typeof room === 'number' ? document.querySelector<HTMLElement>(`[data-direction="${id}"]`) : null;
+    const strip = section?.closest<HTMLElement>('[data-lineage-strip]');
+    if (!section || !strip) return;
+    const view = strip.getBoundingClientRect().left + strip.clientLeft;
+    const start = view + (parseFloat(getComputedStyle(strip).paddingLeft) || 0);
+    const {left, right} = section.getBoundingClientRect();
+    // A section wholly in view, or already where the first one starts, never moves (law 8).
+    if (Math.abs(left - start) >= 1 && (left < view || right > view + strip.clientWidth)) strip.scrollLeft += left - start;
+  }, [room]);
   if (!data) return <main className={s.projects}><a href={projectHref()}>‹ Projects</a>
     {query.error ? <p className={s.error} role="alert">{message(query.error)} <button onClick={() => void query.refetch()}>Try again</button></p> : <p role="status">Opening project…</p>}</main>;
-  const visible = directions.filter(d => d.state !== 'discarded' && (room === 'tray' ? d.set_aside : room!==null||!d.set_aside));
+  const visible = shownDirections(directions, room);
   const rows = [...new Set(visible.map(d => d.row_idx))].sort((a,b) => a-b);
   const asideCount = directions.filter(d => d.set_aside && d.state !== 'discarded').length;
   const stateAction = (direction: Direction, action: 'set_aside' | 'restore' | 'discard' | 'reuse'): Promise<string | null> => act(async () => {
@@ -257,10 +292,20 @@ function ProjectWorkspace({id}: {id: string}) {
   const fromHere = (open: () => void) => (event: {currentTarget: HTMLElement}) => {focusOrigin.current = event.currentTarget; open();};
   // Focus after the drawer is where the next move is: a sent run's row door, to watch it
   // land, else the section the preparation belongs to.
-  const focusAfterDrawer = (direction: Direction, ran: boolean) => requestAnimationFrame(() => document.querySelector<HTMLElement>(
-    ran ? `#row-${direction.row_idx} [data-grid-door]` : `[data-direction="${direction.id}"] [data-starter]`)?.focus());
+  const focusAfterDrawer = (direction: Direction, ran: boolean) => requestAnimationFrame(() => {
+    const next = document.querySelector<HTMLElement>(ran ? `#row-${direction.row_idx} [data-grid-door]` : `[data-direction="${direction.id}"] [data-starter]`);
+    next?.focus();
+    sentRun.current = ran && next !== null && document.activeElement === next ? {row: direction.row_idx, direction: direction.id} : null;
+  });
+  /** A row's GRID › door opens its grid room, with the run Run just sent in view while the
+   *  door still holds the focus Run gave it. */
+  const openGridFrom = (row: number) => {
+    revealRun.current = sentRun.current?.row === row ? sentRun.current.direction : null;
+    sentRun.current = null;
+    store.getState().openGrid(row);
+  };
   const turns = data.turns;
-  const bindings = visible.flatMap(direction=>sourceBindings(direction,data));
+  const {bindings} = lineage;
   const ancestry = ancestors(nodes,acting);
   const displayed = new Set(visible.flatMap(direction=>direction.selection));
   const charges = attemptCharges(nodes);
@@ -340,14 +385,14 @@ function ProjectWorkspace({id}: {id: string}) {
       :panel?.kind==='returned'?<ReturnedWork wid={id} nodes={nodes} initial={panel.ids} close={closeLayer} refresh={refresh} inspect={node=>store.getState().inspectFromPanel(node)}/>
       :panel?.kind==='sequences'?<SequenceRoom data={data} inactive={Boolean(activeDraft)} initialId={sequenceReturn} refresh={refresh} close={closeLayer} edit={openDrawer} inspect={inspectNode} openRun={(id,sid)=>{const direction=directions.find(item=>item.turn_ids.includes(id));if(direction)store.getState().showRunFromSequence(direction.row_idx,sid);}}/>
       :<div className={s.stage}><main className={s.canvas} onDragOver={e => e.preventDefault()} onDrop={e => {e.preventDefault(); const files=Array.from(e.dataTransfer.files); void act(async () => {for(const item of files) await importFile(id,item);});}}>
-      <LineageCanvas bindings={bindings} nodes={nodes} acting={acting} enabled={room===null}>
+      <LineageCanvas bindings={bindings} nodes={lineage.nodes} acting={lineageActing} enabled={room===null}>
       {rows.length === 0 && <div className={s.emptyProject}><span className={s.eyebrow}>{room === 'tray' ? 'Nothing set aside' : 'A place for the next idea'}</span>
         <h1>{room === 'tray' ? 'Your directions are on the project.' : 'Start with words or material.'}</h1>
         <p>{room === 'tray' ? 'Setting a direction aside keeps its record and every result.' : data.project.brief || 'Drop an image or GLB here, import a reference, or prepare your first direction. You can leave and return before running anything.'}</p>
         {room !== 'tray' && <div className={s.actions}><button className={s.primary} onClick={() => void newDirection()}>+ New direction · N</button><button onClick={fromHere(store.getState().showImport)}>Import material</button></div>}
       </div>}
       {rows.filter(row => room === null || room === 'tray' || room === row).map(row => <div className={s.row} id={`row-${row}`} key={row} data-lineage-row={row} style={{marginBottom:`var(--lineage-gap-${row},26px)`}}>
-        <RowStrip sections={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => store.getState().openGrid(row)}>Grid ›</button></div>
+        <RowStrip sections={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => openGridFrom(row)} onBlur={() => {sentRun.current = null;}}>Grid ›</button></div>
           {visible.filter(d=>d.row_idx===row&&d.latest_decision).map(direction=><button key={direction.id} className={s.gutterDecision} onClick={fromHere(()=>store.getState().openRecord({direction_id:direction.id}))} title={`Latest decision for ${direction.title}`}>
             <span>{direction.latest_decision?.reason||'No reason supplied'}</span><small>{actorLine(direction.latest_decision?.actor)} ›</small>
           </button>)}
@@ -452,9 +497,10 @@ function RowStrip({sections, gutter, children}: {sections: number; gutter: (more
 }
 
 /** One take's face: a plain card with its plate, a one-row footer naming the take and its
- *  engine, and at the right its money (faces.ts). Its name says the take and its medium; its
- *  description is the footer, and says the take is selected where the grid room draws that
- *  border. Memoized, so a change of the acting set redraws only the faces it touches. */
+ *  engine by its face name, and at the right its money (faces.ts); the footer's hover title
+ *  names the engine in full, and a blind take's names none. Its name says the take and its
+ *  medium; its description is the footer, and says the take is selected where the grid room
+ *  draws that border. Memoized, so a change of the acting set redraws only the faces it touches. */
 const TakeFace = memo(function TakeFace({take, cost, mark, selected, onAct, onInspect}: {
   take: Material; cost: string; mark: 'acting' | 'selected' | 'ancestor' | null; selected: boolean;
   /** The catalogue the footer names its engine from; a new one redraws the face. */
@@ -466,7 +512,7 @@ const TakeFace = memo(function TakeFace({take, cost, mark, selected, onAct, onIn
     aria-label={faceName(take)} aria-describedby={foot} aria-pressed={mark === 'acting'} className={`${s.face} ${mark ? s[mark] : ''}`}
     onDoubleClick={() => onInspect(take.id)} onClick={event => onAct(take.id, event.shiftKey, event.currentTarget)}>
     <div className={s.plate}><MaterialThumbnail node={take}/>{mark === 'acting' && <span className={s.actingMark}>Acting on</span>}{take.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
-    <footer id={foot}><span title={`${label(take)} · ${engineLabel(take, 'face')}`}>{label(take)} · {engineLabel(take, 'face')}{selected && <span className={s.srOnly}>, selected</span>}</span><span>{cost}</span></footer>
+    <footer id={foot}><span title={`${label(take)} · ${engineLabel(take, 'source')}`}>{label(take)} · {engineLabel(take, 'face')}{selected && <span className={s.srOnly}>, selected</span>}</span><span>{cost}</span></footer>
   </button>;
 });
 

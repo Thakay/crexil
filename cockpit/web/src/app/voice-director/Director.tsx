@@ -2,10 +2,11 @@
 // (VoiceDirectorPanel.tsx), never a modal (law 2). The server starts each session and hands
 // over a conversation token once, so the key never reaches the browser (law 18). Minutes are
 // counted from the moment the conversation connects and the session ends at its maximum (laws
-// 17 and 22). The agent's tools prepare and propose; a paid run and a pick wait for the
-// artist's click, with the price on the paid button's face (laws 6, 15 and 23). Before a
-// session starts the panel says what leaves the machine. Take audio never does: the microphone
-// mutes before any take plays (microphone.ts), and no take starts while a session connects.
+// 17 and 22). The agent's tools prepare and propose; a run that costs money or leaves this
+// machine, and a pick, wait for the artist's click, with the price on the paid button's face and
+// what leaves the machine on the card (laws 6, 15 and 23). Before a session starts the panel
+// says what leaves the machine. Take audio never does: the microphone mutes before any take
+// plays (microphone.ts), and no take starts while a session connects.
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { player, usePlayer } from '../audio';
@@ -53,6 +54,9 @@ type Unrecorded = {sessionId: string; elapsed: number; conversationId: string | 
 const POLL_MS = 4000;    // how often a queued run's progress is read for the agent
 const VERB_WORDS = {'voice-design': 'Voice design', speak: 'Speech', sfx: 'Sound effect'} as const;
 const short = (text: string, limit = 90) => text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
+/** A run card whose engines have no price and whose review reserves nothing: its Run is free,
+ *  and wears no money gold (law 6). */
+const freeRun = (card: RunCard) => !card.published && card.reservedUsd === 0;
 
 export default function Director(props: DirectorProps) {
   return <ConversationProvider><Session {...props}/></ConversationProvider>;
@@ -391,14 +395,15 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
         <p className={css.eyebrow}>Prepared by the voice director</p>
         <p className={css.what}>{VERB_WORDS[card.action]}: “{short(card.prompt)}”</p>
         <p className={css.facts}>{card.engines.map(engine => `${engine.label} ×${engine.count}`).join(' · ')}</p>
-        <p className={css.facts}>Cap {money(card.capUsd)} · reserves up to {money(card.reservedUsd)}
+        <p className={css.facts}>Cap {money(card.capUsd)} · {freeRun(card) ? 'free' : `reserves up to ${money(card.reservedUsd)}`}
           {card.published ? ' · by the published price; the final provider charge is not capped' : ''}</p>
+        {card.leaves.map(line => <p key={line} className={css.facts}>{line}</p>)}
         {card.errors.length > 0 && <ul className={css.reasons}>{card.errors.map(item => <li key={item}>{item}</li>)}</ul>}
         {card.note && <p className={css.cardNote}>{card.note}</p>}
         {card.state !== 'done' && <div className={css.actions}>
           <button type="button" disabled={card.state === 'busy'} onClick={() => discard(card)}>Discard</button>
-          {card.ready && <button type="button" className={css.paid} disabled={card.state === 'busy'} onClick={() => void confirmRun(card)}>
-            Run · up to {money(card.reservedUsd)}
+          {card.ready && <button type="button" className={freeRun(card) ? undefined : css.paid} disabled={card.state === 'busy'} onClick={() => void confirmRun(card)}>
+            {freeRun(card) ? 'Run · free' : `Run · up to ${money(card.reservedUsd)}`}
           </button>}
         </div>}
       </article> : card.kind === 'proposal' ? <article key={card.id} className={css.card} aria-label={`Proposal: ${card.takes.map(take => take.label).join(', ')}`}>

@@ -1,15 +1,15 @@
 // The voice director's conversation, with the ElevenLabs SDK replaced by a fake and the shared
-// player driving a fake media element: the token reaches only the SDK, paid runs and picks wait
-// for the artist's click, the meter ends the session at its limit and records the minutes, the
-// panel says what leaves the machine before a session, and the microphone mutes before any
-// take sounds, whoever starts it, so the agent never hears one.
+// player driving a fake media element: the token reaches only the SDK, paid runs, free runs that
+// leave this machine and picks wait for the artist's click, the meter ends the session at its
+// limit and records the minutes, the panel says what leaves the machine before a session, and the
+// microphone mutes before any take sounds, whoever starts it, so the agent never hears one.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { audioUrl, player } from '../audio';
 import { HUMAN, money } from '../crexil/api';
 import Director, { CONNECTING, DISCLOSURE, shownWords } from './Director';
 import { DIRECTOR, type VoiceStarted } from './door';
-import { fakeDoor, review, session, usage } from './fakes';
+import { fakeDoor, freeHosted, OPERATIONS, review, session, usage } from './fakes';
 import { TOOL_NAMES } from './tools';
 
 // One log, in order, of what reaches the conversation and what sounds.
@@ -155,8 +155,10 @@ test('a paid run waits for the artist, then is submitted under the artist’s na
   await act(async () => {await tools.prepare_run(paid);});
   const card = await screen.findByRole('article', {name: /Prepared run/});
   expect(within(card).getByText(`Cap ${money(0.5)} · reserves up to ${money(0.031)} · by the published price; the final provider charge is not capped`)).toBeInTheDocument();
+  expect(within(card).getByText('Sends off this machine to api.elevenlabs.io: the voice description and its preview line.')).toBeInTheDocument();
   expect(door.submit).not.toHaveBeenCalled();
   const run = within(card).getByRole('button', {name: `Run · up to ${money(0.031)}`});
+  expect(run.className).toMatch(/paid/);
   expect(run).not.toHaveFocus();
   await act(async () => {fireEvent.click(run);});
   await waitFor(() => expect(door.submit).toHaveBeenCalledWith('run-new', 1, 'token-1', HUMAN));
@@ -171,6 +173,26 @@ test('a free local run starts on the agent’s request, as the director', async 
   });
   expect(door.submit).toHaveBeenCalledWith('run-new', 1, 'token-1', DIRECTOR);
   expect(await screen.findByText(/Started for you · free · local engines/)).toBeInTheDocument();
+});
+
+test('a free run that leaves this machine waits for the artist, says what leaves, and its Run carries no money', async () => {
+  const hosted = freeHosted('sfx', 'Sound effect · Free hosted');
+  const {door, tools} = await connected(fakeDoor({operations: async () => [...OPERATIONS, hosted],
+    review: async () => review({reserved_usd: 0, reserved_micro_usd: 0, maximum_usd: 0})}));
+  await act(async () => {
+    await tools.prepare_run({action: 'sfx', prompt: 'Hammer on hot iron', spending_limit_usd: 0, engines: [{id: hosted.id, count: 2}]});
+  });
+  const card = await screen.findByRole('article', {name: /Prepared run/});
+  expect(door.submit).not.toHaveBeenCalled();
+  expect(screen.queryByText(/Started for you/)).toBeNull();
+  expect(within(card).getByText(`Cap ${money(0)} · free`)).toBeInTheDocument();
+  expect(within(card).getByText('Sends off this machine to sounds.example.com: the sound description.')).toBeInTheDocument();
+  const run = within(card).getByRole('button', {name: 'Run · free'});
+  expect(run.className).not.toMatch(/paid/);
+  expect(run).not.toHaveFocus();
+  await act(async () => {fireEvent.click(run);});
+  await waitFor(() => expect(door.submit).toHaveBeenCalledWith('run-new', 1, 'token-1', HUMAN));
+  expect(fake.sdk.update).toHaveBeenCalledWith(expect.stringContaining('The artist ran'));
 });
 
 test('a price that moved since the director prepared the run is shown again and not submitted', async () => {
