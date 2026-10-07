@@ -147,12 +147,24 @@ test("the corner is charged truth: unmoved by a quote, moved by the bill when a 
   const before = await today(request, tz);
   await expect(totals(page)).toContainText(`TODAY $${before.toFixed(2)}`, T);
 
-  // a paid take in flight: the pin's $0.04 is committed, not charged
+  // a paid take in flight: the pin's $0.04 is committed, not charged. The page draws its cell
+  // once its feed has carried the new turn and it has read the workspace again; under a full
+  // suite that read can come later than one assertion's window, so wait for the read that
+  // holds the turn, then for the cell it draws.
+  const read = page.waitForResponse(async (response) => {
+    if (new URL(response.url()).pathname !== `/api/workspaces/${wid}` || response.request().method() !== "GET") return false;
+    try {
+      return ((await response.json()) as Detail).turns.length > 0;
+    } catch {
+      return false;
+    }
+  });
   const r = await request.post(`/api/workspaces/${wid}/turns`, {
     data: { prompt: "a priced sword", external: [{ model_id: EXT_MODEL, takes: 1 }] },
   });
   expect(r.status(), await r.text()).toBe(201);
   const turn = ((await r.json()) as { turn: Turn }).turn;
+  await read;
   await expect(cell(page, 0)).toHaveAttribute("data-status", /queued|running/, T);
   expect(await today(request, tz)).toBe(before);
   await expect(totals(page)).toContainText(`TODAY $${before.toFixed(2)}`);

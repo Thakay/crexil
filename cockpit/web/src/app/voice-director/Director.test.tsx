@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { audioUrl, player } from '../audio';
 import { HUMAN, money } from '../crexil/api';
-import Director, { CONNECTING, DISCLOSURE } from './Director';
+import Director, { CONNECTING, DISCLOSURE, shownWords } from './Director';
 import { DIRECTOR, type VoiceStarted } from './door';
 import { fakeDoor, review, session, usage } from './fakes';
 import { TOOL_NAMES } from './tools';
@@ -66,6 +66,13 @@ vi.mock('../audio', async () => {
 });
 
 type Tools = Record<string, (parameters: object) => Promise<string>>;
+
+test('a director line keeps its words and loses its audio tags', () => {
+  expect(shownWords('[ready] Ready to run two takes.')).toBe('Ready to run two takes.');
+  expect(shownWords('Sure. [laughs] Let\'s go.')).toBe("Sure. Let's go.");
+  expect(shownWords('[whispers] [strong accent]')).toBe('');
+  expect(shownWords('Take [3A] is warmer.')).toBe('Take [3A] is warmer.');
+});
 
 const paid = {action: 'voice-design', prompt: 'A gruff dwarf blacksmith', spending_limit_usd: 0.5,
   preview_line: 'Steel remembers every strike, and so do I. Bring me the ore before the fire dies, and mind the anvil.',
@@ -219,6 +226,27 @@ test('the microphone mutes and the agent turns down before a take the director p
   expect(fake.audio.element?.src).toBe(audioUrl('take-2b'));
   expect(fake.log).toEqual(['microphone muted', 'agent at 0.2', 'take sounds']);
   expect(screen.getByRole('status')).toHaveTextContent('Playing a take · microphone muted');
+  // the status takes the whole cap row while a take plays: the Escape hint gives way, so the
+  // row never wraps at the column's width
+  expect(screen.queryByText('Esc · Back to the work')).toBeNull();
+  act(() => {player.pause();});
+  expect(screen.getByText('Esc · Back to the work')).toBeInTheDocument();
+});
+
+test("the log shows the director's words without the audio tags its voice reads as cues", async () => {
+  await connected();
+  const said = fake.sdk.options.onMessage as unknown as (message: {message: string; role: string}) => void;
+  act(() => {
+    said({message: '[ready] Ready to run two takes on ElevenLabs sound effects.', role: 'agent'});
+    said({message: '[sighs]', role: 'agent'});
+    said({message: 'Run the two takes [3A] and [3B].', role: 'agent'});
+  });
+  const log = screen.getByRole('log', {name: 'Conversation'});
+  expect(log).toHaveTextContent('Ready to run two takes on ElevenLabs sound effects.');
+  expect(log).not.toHaveTextContent('[ready]');
+  expect(log).not.toHaveTextContent('sighs');
+  // a take's label in brackets is a word, never a tag
+  expect(log).toHaveTextContent('Run the two takes [3A] and [3B].');
 });
 
 test('a take started outside the director, by the grid or inspection, mutes the microphone first too', async () => {

@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { components } from '../../generated/openapi';
 import { fetchClient } from '../../api/client';
 import { ACTIONS, actionView } from './actions';
-import { ActionError, blankPreparation, command, isDefiniteRefusal, isSpendingConflict, label, message,
+import { ActionError, blankPreparation, command, count, isDefiniteRefusal, isSpendingConflict, label, message,
   result, money, type Direction, type Material, type Operation, type Preparation } from './api';
 import { useEscapeLayer } from './keys';
 import { operationStanding } from './capability';
@@ -121,7 +121,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
   const wordsName = meshAction ? 'Recorded description' : spoken ?? 'Prompt';
   const tariffChosen = operations.filter(op => choices.some(choice => choice.operation_id === op.id) && tariffPriced(op));
   const sourceRoles = rolesOf(setup.action);
-  const count = choices.reduce((sum, choice) => sum + choice.count, 0);
+  const planned = choices.reduce((sum, choice) => sum + choice.count, 0);
   const carry = meshAction || setup.prompt.trim() ? []
     : wordsToCarry({id: direction.id, row: direction.row_idx, sources: refs.map(ref => ref.node_id)}, directions);
   // `note` stays beside the new review, such as why the run was reviewed again.
@@ -330,7 +330,7 @@ export function DraftDrawer({ direction, directions, nodes, operations, onSaved,
       {review.ready && setup.blind && <p>Blind run: each take's engine and price stay hidden until you reveal the run. Its total stays visible.</p>}
     </section>}
     {runError && <p className={s.error} role="alert">{runError}</p>}
-    <div className={s.drawerFoot} inert={regionEditing}><span>{preparingImage ? `${refs.length} sources · New derived image` : `${count} planned attempts · ${refs.length > 1 ? 'sources together' : 'one direction'}`}</span>
+    <div className={s.drawerFoot} inert={regionEditing}><span>{preparingImage ? `${count(refs.length, 'source')} · New derived image` : `${count(planned, 'planned attempt')} · ${refs.length > 1 ? 'sources together' : 'one direction'}`}</span>
       {direction.sequence_template ? <span>This is a sequence preparation. Close to review and authorize its remaining work in Sequences.</span> : <span className={s.actions}><button
         disabled={maskPending || changed || draft.unresolved || saving || Boolean(error) || Boolean(submission) || direction.state!=='draft'}
         aria-disabled={running || undefined} onClick={() => {if (!running) void reviewRun();}}>{running ? 'Working…' : preparingImage ? 'Review image' : 'Review run'}</button>

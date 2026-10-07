@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import type { Material } from './api';
 import { catalogueFrom, setCatalogue } from './catalogue';
-import { faceCost, pickerGroups, runLine, sectionFoot, statusWord } from './faces';
+import { attemptCharges, chargeLine, faceCost, pickerGroups, runLine, sectionFoot, statusWord } from './faces';
 
 const named = {id: 'a', engine: 'Flux 2', identity_hidden: null, charged_usd: null, material: null} as never;
 const charged = {id: 'b', engine: 'Flux 2', identity_hidden: null, charged_usd: .004, material: null} as never;
@@ -37,6 +38,38 @@ describe('faceCost', () => {
   });
 });
 
+describe('an attempt that returns several takes is charged once', () => {
+  const material = (fields: Record<string, unknown>) => ({id: 'x', engine: null, identity_hidden: null, charged_usd: null,
+    committed_usd: null, material: null, slot_id: null, take: null, output_index: 0, ...fields}) as unknown as Material;
+  // Voice Design: one call, three previews; the engine reports its charge on the first take.
+  const preview = (output: number, fields: Record<string, unknown> = {}) => material({id: `p${output}`,
+    engine: 'elevenlabs-voice-design', slot_id: 's1', take: 1, output_index: output, committed_usd: .0084, ...fields});
+  const previews = [preview(0, {charged_usd: .0084}), preview(1), preview(2)];
+  it('shows the charge on the take that carries it and INCLUDED on the others, never UNVERIFIED', () => {
+    setCatalogue(catalogueFrom(OPERATIONS, [...ENGINES, {id: 'elevenlabs-voice-design', name: 'ElevenLabs Voice Design', lane: 'external'}]));
+    const charges = attemptCharges(previews);
+    expect(previews.map(item => faceCost(item, charges))).toEqual(['$0.0084', 'Included', 'Included']);
+    // inspection says the attempt's one charge on every one of its takes
+    expect(previews.map(item => chargeLine(item, charges))).toEqual(Array(3).fill("$0.0084 for this attempt's 3 takes"));
+  });
+  it("reads UNVERIFIED on every take while the attempt's charge is not reported, and keeps attempts apart", () => {
+    const unreported = [preview(0), preview(1)];
+    expect(unreported.map(item => faceCost(item, attemptCharges(unreported)))).toEqual(['Unverified', 'Unverified']);
+    const retried = preview(1, {take: 2});
+    expect(faceCost(retried, attemptCharges([...previews, retried]))).toBe('Unverified');
+  });
+  it('reads LOCAL on a local take in inspection as on its face, whether its engine reported $0 or nothing', () => {
+    setCatalogue(catalogueFrom(OPERATIONS, [...ENGINES, {id: 'trellis2-4b', name: 'TRELLIS.2 4B', lane: 'local'}]));
+    const voice = material({engine: 'qwen3-tts', charged_usd: 0, committed_usd: 0, slot_id: 's2', take: 1});
+    const mesh = material({engine: 'trellis2-4b', slot_id: 's3', take: 1});
+    expect([faceCost(voice), faceCost(mesh)]).toEqual(['Local', 'Local']);
+    expect([chargeLine(voice, attemptCharges([voice])), chargeLine(mesh, attemptCharges([mesh]))]).toEqual(['Local', 'Local']);
+    // a hosted take whose charge is not reported says so; a reported one shows it exactly
+    expect(chargeLine(material({engine: 'elevenlabs-sfx'}), new Map())).toBe('No confirmed charge recorded');
+    expect(chargeLine(charged, new Map())).toBe('$0.004');
+  });
+});
+
 describe('pickerGroups', () => {
   it('groups takes by who made them, and a blind run under one neutral row', () => {
     expect(pickerGroups([named, blind('x'), charged, blind('y'), imported]).map(g => [g.label, g.nodes.map(n => (n as {id: string}).id)]))
@@ -60,7 +93,7 @@ describe('runLine', () => {
   });
 });
 
-describe("sectionFoot: a section says its run's state (BIBLE section states)", () => {
+describe("sectionFoot: a section says its run's state", () => {
   const turn = (id: string, statuses: string[]) => ({id, slots: statuses.map(status => ({status}))}) as never;
   const section = (fields: Record<string, unknown> = {}) => ({state: 'submitted', turn_ids: ['t1'], selection: [], node_ids: [], ...fields}) as never;
   it('says nothing has run on a preparation', () => {

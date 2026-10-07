@@ -39,7 +39,7 @@ test('artist returns edited material, resolves a lost response and delivers orig
   await page.route(`**/api/crexil/projects/${p.id}/deliveries`,async route=>{if(route.request().method()==='POST'){accepted.push(route.request().postDataJSON());if(accepted.length===1){await route.fetch();await route.abort('failed');return;}}await route.continue();});
   await delivery.getByRole('button',{name:'Deliver originals',exact:true}).click();await expect(delivery.getByRole('button',{name:'Retry same delivery request',exact:true})).toBeVisible();
   await page.reload();await page.getByRole('button',{name:'Deliveries',exact:true}).click();await delivery.getByRole('button',{name:'Retry same delivery request',exact:true}).click();
-  await expect(delivery.getByRole('heading',{name:'1 of 1 outputs delivered',exact:true})).toBeVisible();
+  await expect(delivery.getByRole('heading',{name:'1 of 1 output delivered',exact:true})).toBeVisible();
   expect(accepted).toHaveLength(2);expect(accepted[0]).toEqual(accepted[1]);
   const history=await(await request.get(`/api/crexil/projects/${p.id}/deliveries`)).json();expect(history).toHaveLength(1);expect(history[0].items[0].state).toBe('complete');
   for(const width of [1440,1920]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);await page.screenshot({path:artifact(`delivery-${width}.png`)});}

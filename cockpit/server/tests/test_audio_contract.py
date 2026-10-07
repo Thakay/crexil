@@ -153,8 +153,13 @@ async def test_operations_publish_typed_audio_contracts(tmp_path, monkeypatch):
                                    'source': 'https://elevenlabs.io/pricing/api', 'read_on': '2026-10-05'}
         assert speak['sources'][0]['role'] == 'voice' and speak['sources'][0]['accepts'] == ['audio']
         assert 'speaks only with voices designed or saved at ElevenLabs' in speak['sources'][0]['restrictions'][0]
+        # The voices v4 speaks with are data, so the roster badges another voice before it is chosen
+        # (law 12), in the sentence the review refuses it with.
+        assert speak['sources'][0]['voices'] == {'providers': ['elevenlabs'],
+            'reason': 'ElevenLabs v4 speaks only with voices designed or saved at ElevenLabs.'}
         local_speak = ops['audio:speak:qwen3-tts']
         assert local_speak['sources'][0]['restrictions'] == ["ElevenLabs' terms do not allow its audio as input to another AI model."]
+        assert local_speak['sources'][0]['voices'] is None
         assert sfx['price_unit'] == 'second' and sfx['tariff']['micro_usd'] == 2000
         assert sfx['maximum_usd_per_attempt'] is None and 'not a hard cap' in ' '.join(sfx['limitations'])
         assert 'seed' not in [i['key'] for i in sfx['inputs']]
@@ -162,8 +167,8 @@ async def test_operations_publish_typed_audio_contracts(tmp_path, monkeypatch):
         hosted = [o for o in ops.values() if o['provider'] == 'openrouter']
         assert hosted and all(o['price_unit'] == 'image' and isinstance(o['pinned'], bool) for o in hosted)
         mesh = ops['mesh:texture:hunyuan3d-21']
-        assert mesh['sources'] == [{'role': 'shape', 'accepts': ['3d'], 'restrictions': []},
-                                   {'role': 'appearance', 'accepts': ['image'], 'restrictions': []}]
+        assert mesh['sources'] == [{'role': 'shape', 'accepts': ['3d'], 'restrictions': [], 'voices': None},
+                                   {'role': 'appearance', 'accepts': ['image'], 'restrictions': [], 'voices': None}]
 
 
 async def test_audio_availability_says_why_in_plain_words(tmp_path, monkeypatch):
@@ -266,7 +271,9 @@ async def test_speech_takes_a_voice_take_and_refuses_restricted_or_wrong_sources
 
         wrong_voice = await reviewed(client, await draft(client, p['id'], 'audio:speak:elevenlabs-v4', 'Ore.',
                                                          refs=[voice['id']], policy='published_tariff'))
-        assert 'speaks only with voices designed or saved at ElevenLabs' in ' '.join(wrong_voice['errors'])
+        # The review refuses another provider's voice in the sentence the roster badges it with.
+        assert ('ElevenLabs v4 speaks only with voices designed or saved at ElevenLabs. '
+                'Choose such a take, or a local voice engine.') in ' '.join(wrong_voice['errors'])
         image = (await imported(client, p['id']))['node']
         not_audio = await reviewed(client, await draft(client, p['id'], 'audio:speak:qwen3-tts', 'Ore.', refs=[image['id']]))
         assert 'needs an audio take as its voice' in ' '.join(not_audio['errors'])

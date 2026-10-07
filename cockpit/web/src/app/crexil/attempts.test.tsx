@@ -46,6 +46,29 @@ describe('attemptFace: what happened · what it cost · what to do next (laws 3,
     expect(attemptFace(slot({engine: 'openai/gpt-image-2', committed_usd: .04}), ctx()).cost).toBe('nothing was charged');
     expect(attemptFace(slot({engine: 'openai/gpt-image-2', charged_usd: .04}), ctx()).cost).toBe('$0.04 was charged');
   });
+  it("says nothing was charged once: line two says it, so the engine's cause drops its own sentence (law 5)", () => {
+    const refused = 'ElevenLabs refused the request. Nothing was charged. Change what its details name, then prepare the request again.';
+    const face = attemptFace(slot({engine: 'elevenlabs-tts', kind: 'error', cause: refused, charged_usd: 0}), ctx());
+    expect(face).toMatchObject({cost: 'nothing was charged',
+      cause: 'ElevenLabs refused the request. Change what its details name, then prepare the request again.'});
+    // a cause that says money moved, or a cost line that says it did, keeps every sentence
+    const charged = attemptFace(slot({engine: 'elevenlabs-tts', kind: 'error', cause: refused, charged_usd: .0032}), ctx());
+    expect(charged).toMatchObject({cost: '$0.0032 was charged', cause: refused});
+  });
+  it('gives a long cause the lines its face has room for, so its next move stays in view', () => {
+    const cause = 'ElevenLabs refused the request. Change what its details name, then prepare the request again.';
+    // one row of moves and a one-line cost: four lines
+    expect(attemptFace(slot({engine: 'elevenlabs-tts', cause}), ctx()).causeLines).toBe(4);
+    // a cost that wraps: three
+    const queued = slot({id: 's2', pos: 1, status: 'queued'});
+    const local = attemptFace(slot({cause}), ctx({}, [slot({}), queued, slot({id: 's3', pos: 2, status: 'queued'})]));
+    expect(local.cost).toBe('12s of GPU time spent · 2 takes still queued');
+    expect(local.causeLines).toBe(3);
+    // more moves, or a progress line: two
+    expect(attemptFace(slot({engine: 'elevenlabs-tts', kind: 'timeout', cause}), ctx()).causeLines).toBe(2);
+    expect(attemptFace(slot({status: 'held', cause}), ctx({queue: {bench: 'engine:raw-flux2@turn:t1', benchKind: 'repeat',
+      benchCause: null}})).causeLines).toBe(2);
+  });
   it('spells a sub-cent audio charge exactly, never $0.00 (law 5)', () => {
     expect(attemptFace(slot({engine: 'elevenlabs-tts', charged_usd: .0032}), ctx()).cost).toBe('$0.0032 was charged');
   });

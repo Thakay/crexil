@@ -193,3 +193,131 @@ test('an ElevenLabs take offered to the local engine stays visible, de-emphasise
   await expect(local).toContainText("ElevenLabs' terms do not allow its audio as input to another AI model.");
   await expect(drawer.locator('[data-standing="ready"]').filter({has:page.getByText('Speak · ElevenLabs v4',{exact:true})})).toBeVisible();
 });
+
+type Snap={turns:{id:string;idx:number;slots:{id:string;committed_usd:number|null}[]}[];nodes:{id:string;turn_id:string|null}[]};
+
+/** Prepares, reviews and sends one run on a row through the API, as an agent would. */
+async function sent(request:APIRequestContext,project:string,row:number,title:string,setup:Record<string,unknown>,
+  choices:[Op,number,Record<string,unknown>?][]){
+  const ops:{id:string;revision:string}[]=await(await request.get('/api/crexil/operations')).json();
+  const direction=await(await request.post(`/api/crexil/projects/${project}/directions`,{data:{...command(),title,row_idx:row,setup:{
+    spending_policy:'published_tariff',spending_limit_usd:1,attempt_limit:16,...setup,
+    operations:choices.map(([op,count,controls={}])=>({operation_id:op.id,revision:ops.find(item=>item.id===op.id)!.revision,count,controls}))}}})).json();
+  const review=await(await request.get(`/api/crexil/directions/${direction.id}/review`)).json();
+  expect(review.ready,JSON.stringify(review.errors)).toBe(true);
+  expect((await request.post(`/api/crexil/directions/${direction.id}/submit`,{data:{...command(),revision:review.revision,review_token:review.token}})).status()).toBe(201);
+  const snap:Snap=await(await request.get(`/api/crexil/projects/${project}`)).json();
+  return snap.turns[snap.turns.length-1];
+}
+
+/** Lands every attempt of a run, charged what it reserved, and waits for its takes. */
+async function landed(request:APIRequestContext,project:string,turn:Snap['turns'][number],takes:number){
+  for(const slot of turn.slots)
+    await request.post(`/api/harness/slots/${slot.id}/resolve`,{data:{outcome:'land',charged_usd:slot.committed_usd||null}});
+  await expect.poll(async()=>((await(await request.get(`/api/crexil/projects/${project}`)).json()) as Snap).nodes
+    .filter(node=>node.turn_id===turn.id).length).toBe(takes);
+}
+
+test('digits audition the voices of a row whose images come first, and stay in the run that holds focus',async({page,request})=>{
+  const health=await(await request.get('/api/health')).json();
+  test.skip(Boolean(health.preview),'The isolated preview cannot run audio; this check uses the scripted executors.');
+  const ops:Op[]=await(await request.get('/api/crexil/operations')).json();
+  const image=ops.find(op=>op.id==='raw-flux2')!;
+  const local=ops.find(op=>op.id==='audio:voice-design:qwen3-tts')!;
+  const project=await(await request.post('/api/crexil/projects',{data:{...command(),name:`Mixed row ${Date.now()}`}})).json();
+  // The live seed's layout: the images first on the row, then the voices.
+  await landed(request,project.id,await sent(request,project.id,0,'Concept',{action:'generate',prompt:'A dwarf blacksmith',
+    spending_policy:'hard_cap',spending_limit_usd:0},[[image,2]]),2);
+  for(const title of ['Voice','Second voice'])
+    await landed(request,project.id,await sent(request,project.id,0,title,{action:'voice-design',prompt:'A gruff dwarf blacksmith.',
+      spending_policy:'hard_cap',spending_limit_usd:0},[[local,1,{preview_text:LINE}]]),3);
+  await page.goto(`/#/projects/${project.id}`);
+  await page.getByRole('button',{name:'Grid ›',exact:true}).click();
+  const status=page.locator('[role=status]').filter({hasText:/^(Playing|Paused|Played) /});
+  const face=(name:string)=>page.getByRole('button',{name:`Act on ${name}, audio, 4.0 s`,exact:true});
+  // The room's audio runs as it draws them, each with its takes' labels in grid order. The server
+  // orders a row's sections by when they were made, so the voices follow the images unless the
+  // machine's clock stepped back between them; the digits follow the room either way.
+  const voices=await page.locator('[data-run]').evaluateAll(cells=>{
+    const runs=new Map<string,string[]>();
+    for(const cell of cells)for(const take of cell.querySelectorAll('[data-take][data-audio-face]'))
+      runs.set(cell.getAttribute('data-run')!,[...(runs.get(cell.getAttribute('data-run')!)??[]),take.getAttribute('aria-label')!.split(',')[0].replace('Act on ','')]);
+    return [...runs.values()];
+  });
+  expect(voices).toHaveLength(2);
+  const [first,second]=voices;
+
+  // With no take focused, 1 plays the room's first audio run, never an image.
+  await page.evaluate(()=>(document.activeElement as HTMLElement|null)?.blur());
+  await page.keyboard.press('1');
+  await expect(status).toHaveText(`Playing ${first[0]} · 4.0 s · level matched`);
+  await expect(face(first[0])).toBeFocused();
+  await page.keyboard.press('3');
+  await expect(status).toHaveText(`Playing ${first[2]} · 4.0 s · level matched`);
+  // The digits number the run that holds focus.
+  await face(second[1]).focus();
+  await page.keyboard.press('1');
+  await expect(status).toHaveText(`Playing ${second[0]} · 4.0 s · level matched`);
+  await expect(face(second[0])).toBeFocused();
+  // An image's run holds no audio, so the digits play the first audio run's takes.
+  await page.getByRole('button',{name:'Act on 0B',exact:true}).focus();
+  await page.keyboard.press('2');
+  await expect(status).toHaveText(`Playing ${first[1]} · 4.0 s · level matched`);
+  await shots(page,'f18-grid-digits-mixed-row');
+  // A take played to its end reads as played, never paused.
+  await expect(status).toHaveText(`Played ${first[1]} · 4.0 s · level matched`,{timeout:10_000});
+});
+
+test('an attempt that returns three takes is charged once: its other takes read INCLUDED, and inspection says so',async({page,request})=>{
+  const health=await(await request.get('/api/health')).json();
+  test.skip(Boolean(health.preview),'The isolated preview cannot run audio.');
+  const eleven=(await voiceDesigners(request)).find(op=>op.provider==='elevenlabs');
+  test.skip(!eleven,'The harness offers no ElevenLabs voice design without its placeholder key.');
+  const project=await(await request.post('/api/crexil/projects',{data:{...command(),name:`One charge ${Date.now()}`}})).json();
+  await landed(request,project.id,await sent(request,project.id,0,'Voice',{action:'voice-design',prompt:'A gruff dwarf blacksmith.'},
+    [[eleven!,1,{preview_text:LINE}]]),3);
+  await page.goto(`/#/projects/${project.id}`);
+  // The corner says whose each total is (one Voice Design call: 105 characters at $0.08 per 1,000).
+  await expect(page.getByText(/^All projects today \$[\d.]+ · This project \$0\.0084$/)).toBeVisible();
+  await page.getByRole('button',{name:'Grid ›',exact:true}).click();
+  const money=(name:string)=>page.getByRole('button',{name:`Act on ${name}, audio, 4.0 s`,exact:true}).locator('footer > span').last();
+  await expect(money('0A')).toHaveText('$0.0084');
+  await expect(money('0A.2')).toHaveText('Included');
+  await expect(money('0A.3')).toHaveText('Included');
+  await shots(page,'f18-grid-one-charge');
+  await page.getByRole('button',{name:'Act on 0A.2, audio, 4.0 s',exact:true}).dblclick();
+  const inspection=page.getByRole('region',{name:'Inspect material',exact:true});
+  // Inspection opened from the grid room says where Escape returns.
+  await expect(inspection.getByRole('button',{name:'Esc · Grid',exact:true})).toBeFocused();
+  await expect(inspection.getByText('Confirmed charge',{exact:true}).locator('xpath=following-sibling::dd[1]'))
+    .toHaveText("$0.0084 for this attempt's 3 takes");
+  await page.keyboard.press('Escape');
+  await expect(inspection).not.toBeVisible();
+  await expect(page.getByText(/^Grid · Turn 0$/)).toBeVisible();
+});
+
+test('a local voice offered to ElevenLabs v4 is marked before it is chosen, with its reason (law 12)',async({page,request})=>{
+  const health=await(await request.get('/api/health')).json();
+  test.skip(Boolean(health.preview),'The isolated preview cannot run audio.');
+  const ops:Op[]=await(await request.get('/api/crexil/operations')).json();
+  const local=ops.find(op=>op.id==='audio:voice-design:qwen3-tts')!;
+  test.skip(!ops.some(op=>op.id==='audio:speak:elevenlabs-v4'&&op.availability!=='unavailable'),'ElevenLabs v4 needs its placeholder key.');
+  const project=await(await request.post('/api/crexil/projects',{data:{...command(),name:`Voice rule ${Date.now()}`}})).json();
+  await landed(request,project.id,await sent(request,project.id,0,'Voice',{action:'voice-design',prompt:'A gruff dwarf blacksmith.',
+    spending_policy:'hard_cap',spending_limit_usd:0},[[local,1,{preview_text:LINE}]]),3);
+  await page.goto(`/#/projects/${project.id}`);
+  await page.getByRole('button',{name:'Grid ›',exact:true}).click();
+  await page.getByRole('button',{name:/^Act on 0A, audio/}).click();
+  await page.getByRole('region',{name:'Actions on material',exact:true}).getByRole('button',{name:'Speak with this voice · L',exact:true}).click();
+  const drawer=page.getByRole('region',{name:'Preparation',exact:true});
+  const v4=drawer.locator('[data-standing]').filter({has:page.getByText('Speak · ElevenLabs v4',{exact:true})});
+  await expect(v4).toHaveAttribute('data-standing','blocked');
+  await expect(v4).toContainText('ElevenLabs v4 speaks only with voices designed or saved at ElevenLabs.');
+  const qwen=drawer.locator('[data-standing]').filter({has:page.getByText('Speak · Qwen3-TTS 1.7B',{exact:true})});
+  await expect(qwen).toHaveAttribute('data-standing','ready');
+  // Counts agree in number.
+  await qwen.getByRole('spinbutton',{name:'Speak · Qwen3-TTS 1.7B attempts'}).fill('1');
+  await expect(drawer.getByText('1 planned attempt · one direction',{exact:true})).toBeVisible();
+  await v4.scrollIntoViewIfNeeded();
+  await shots(page,'f18-drawer-voice-rule');
+});

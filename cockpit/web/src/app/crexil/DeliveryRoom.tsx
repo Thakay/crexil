@@ -7,7 +7,7 @@ import {useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
 import {Browser as DestinationBrowser} from '../promote/PromotePlinth';
-import {actorLine,command,engineLabel,isDefiniteRefusal,label,message,result,type Snapshot} from './api';
+import {actorLine,command,count,engineLabel,isDefiniteRefusal,label,message,result,type Snapshot} from './api';
 import {isWithheld,withheldRuns} from './blind';
 import {byGridPosition} from './cells';
 import {MaterialThumbnail} from './MaterialThumbnail';
@@ -82,10 +82,10 @@ export function DeliveryRoom({data,initial,close,refresh}:{data:Snapshot;initial
           <button type="button" disabled={!selected.length} onClick={()=>void inspect()}>Review delivery</button></div>
       </fieldset>
       {browse&&target.data&&<DestinationBrowser target={target.data} busy={busy||Boolean(pending.current)} onPick={path=>{changeDestination(path);setBrowse(false);}}/>}
-      {review&&<section className={s.sequenceReview} aria-label="Delivery review"><h2>{review.items.length} outputs · {review.items.reduce((count,item)=>count+item.files.length,0)} files</h2>
+      {review&&<section className={s.sequenceReview} aria-label="Delivery review"><h2>{count(review.items.length,'output')} · {count(review.items.reduce((sum,item)=>sum+item.files.length,0),'file')}</h2>
         {review.package?<p>Package folder <span className={s.deliveryPath}>{review.package.path}</span></p>:<p>{review.destination}</p>}
         <p>{String(review.target.where??'')}</p>
-        {review.items.map(item=><div key={item.node_id}><strong className={s.deliveryPath}>{packagePath(item,review.package?.path)}</strong><p>{item.requires_review?'This item cannot transfer yet. Its refusal will remain in the delivery record.':`${item.files.length} files including its manifest.`}</p>
+        {review.items.map(item=><div key={item.node_id}><strong className={s.deliveryPath}>{packagePath(item,review.package?.path)}</strong><p>{item.requires_review?'This item cannot transfer yet. Its refusal will remain in the delivery record.':`${count(item.files.length,'file')} including its manifest.`}</p>
           {(item.missing??[]).map(note=><p key={note}>{note}</p>)}<details><summary>Files and hashes</summary>{item.files.map(file=><p key={file.path} className={s.deliveryPath}>{file.path}<br/>{file.sha256}</p>)}</details></div>)}
         {review.errors.map(text=><p key={text} className={s.error}>{text}</p>)}
         <button className={s.primary} disabled={busy||!review.ready||Boolean(pending.current)} onClick={()=>void deliver()}>{review.items.some(item=>item.requires_review)?'Deliver ready originals':'Deliver originals'}</button>
@@ -97,7 +97,7 @@ export function DeliveryRoom({data,initial,close,refresh}:{data:Snapshot;initial
       {history.error&&<p role="alert" className={s.error}>{message(history.error)} <button onClick={()=>void history.refetch()}>Reload history</button></p>}
       {!history.data?.length&&<p className={s.hint}>{history.isLoading?'Loading delivery history…':'No deliveries recorded yet.'}</p>}
       {history.data?.map(delivery=><section key={delivery.id} className={s.sequenceStep} aria-label={`Delivery ${delivery.id}`}>
-        <header><div><h2>{delivery.items.filter(item=>item.state==='complete').length} of {delivery.items.length} outputs delivered</h2><p className={s.hint}>{actorLine(delivery.actor)} · {new Date(delivery.created_at).toLocaleString()}</p></div>
+        <header><div><h2>{delivery.items.filter(item=>item.state==='complete').length} of {count(delivery.items.length,'output')} delivered</h2><p className={s.hint}>{actorLine(delivery.actor)} · {new Date(delivery.created_at).toLocaleString()}</p></div>
           {delivery.items.some(item=>item.state!=='complete'&&!item.requires_review)&&<button disabled={busy} onClick={()=>void resume(delivery)}>Resume this delivery</button>}</header>
         <p className={s.deliveryPath}>{delivery.package?.path??delivery.destination}</p>
         {delivery.items.map(item=><details key={item.node_id}><summary>{packagePath(item,delivery.package?.path)} · {item.state==='complete'?'Delivered':item.state==='incomplete'?'Needs attention':'Ready to transfer'}</summary>

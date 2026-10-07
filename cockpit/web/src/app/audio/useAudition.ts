@@ -1,6 +1,6 @@
-// Keyboard audition of a run's audio takes. Space plays or pauses the focused take, digits 1 to
-// 9 play the take in that grid position from its start, and X switches between the two marked
-// takes at the same playhead (A/B). Every take plays at its matched level. A key is live only
+// Keyboard audition of audio takes. Space plays or pauses the focused take, digits 1 to 9 play
+// the take in that position of a run from its start, and X switches between the two marked takes
+// at the same playhead (A/B). Every take plays at its matched level. A key is live only
 // while `ready` says so for that key at the moment it is pressed, never with a modifier held and
 // never while typing (the keymap's rule). Space never presses a focused button, link or other
 // control in place of its own activation; on an audio take's face it plays. Playback keys are
@@ -37,9 +37,13 @@ export const isAudible = (node: Material | null | undefined): node is Material =
 export type AuditionKey = 'space' | 'digit' | 'x';
 
 export type AuditionOptions = {
-  /** The take positions in grid order: digit N plays position N. An empty position (null) or a
-   *  take of another medium keeps its number and plays nothing. */
+  /** The surface's takes in grid order, an empty position as null: their levels are matched
+   *  together, Space and X choose among them, and digit N plays position N unless `digits` says
+   *  otherwise. An empty position or a take of another medium plays nothing. */
   takes: readonly (Material | null)[];
+  /** The positions the digits number, read when a digit is pressed: digit N plays position N.
+   *  An empty position keeps its number and plays nothing. Defaults to `takes`. */
+  digits?: () => readonly (Material | null)[];
   /** Whether a key may act now: false while the grid is covered, or for the digits while a verb
    *  card that uses digits is open. */
   ready?: (key: AuditionKey) => boolean;
@@ -51,11 +55,11 @@ export type AuditionOptions = {
   onPlay?: (take: Material) => void;
 };
 
-export function useAudition({takes, ready, focused, pair, onPlay}: AuditionOptions) {
+export function useAudition({takes, digits, ready, focused, pair, onPlay}: AuditionOptions) {
   const owner = useAudioKeys();
   const audible = useMemo(() => takes.filter(isAudible), [takes]);
-  const latest = useRef({takes, audible, ready, focused, pair, onPlay});
-  latest.current = {takes, audible, ready, focused, pair, onPlay};
+  const latest = useRef({takes, digits, audible, ready, focused, pair, onPlay});
+  latest.current = {takes, digits, audible, ready, focused, pair, onPlay};
 
   const signature = audible.map(take => `${take.id}:${take.audio?.loudness_lufs ?? ''}`).join('|');
   useEffect(() => {
@@ -81,7 +85,8 @@ export function useAudition({takes, ready, focused, pair, onPlay}: AuditionOptio
 
   useHotkeys('1,2,3,4,5,6,7,8,9', event => {
     if (!live('digit')) return;
-    const take = latest.current.takes[Number(event.code.replace(/^(Digit|Numpad)/, '')) - 1];
+    const positions = latest.current.digits?.() ?? latest.current.takes;
+    const take = positions[Number(event.code.replace(/^(Digit|Numpad)/, '')) - 1];
     if (!isAudible(take)) return;
     event.preventDefault();
     start(take, 0);

@@ -1,7 +1,7 @@
 // One character's family on the Filmstrip, decided without the DOM. Sections that start
 // from words sit side by side on a row; a continuation lands on the row after its
 // sources, so the family reads downward along its lines, one per start, each in the hue
-// of the medium the start makes (BIBLE invariant 8). A preparation can start from the
+// of the medium the start makes. A preparation can start from the
 // words of a section on its own row or on its sources' rows: the words are copied, stay
 // editable in the preparation, and the section they come from keeps its own. Crexil
 // never fills words on its own (law 15); copying them is the participant's act. The
@@ -56,14 +56,22 @@ export function wordsToCarry(preparing: {id: string; row: number; sources: reado
 
 const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value : null;
 
+/** The words an audio request sent: the frozen request's own text, or, where the take keeps
+ *  the request its provider adapter sent (ElevenLabs), that request's body: a voice design's
+ *  description, else the text spoken or sounded. */
+function sentWords(submitted: Record<string, unknown> | null | undefined): string | null {
+  const body = (submitted?.request as {body?: Record<string, unknown>} | null | undefined)?.body;
+  return text(submitted?.text) ?? text(body?.voice_description) ?? text(body?.text);
+}
+
 /** A generated take's words as the record keeps them: as typed in the preparation the run
- *  accepted, and as submitted in the frozen request. An audio request sends its own text;
- *  an image's frozen prompt is the take's prompt, contributions included. Either is null
- *  while the record is unread or withheld, as it is for a blind run before its reveal. */
+ *  accepted, and as submitted in the request sent (`sentWords`); an image's frozen prompt
+ *  is the take's prompt, contributions included. Either is null while the record is unread
+ *  or withheld, as it is for a blind run before its reveal. */
 export function recordedWords(node: Pick<Material, 'payload' | 'prompt'>, record: TakeRecord | null | undefined):
   {typed: string | null; submitted: string | null} {
   if (!record?.request) return {typed: null, submitted: null};
   const setup = record.request.setup as {prompt?: unknown} | undefined;
-  const submitted = node.payload === 'audio' ? text(record.submitted?.text) : text(node.prompt);
+  const submitted = node.payload === 'audio' ? sentWords(record.submitted) : text(node.prompt);
   return {typed: text(setup?.prompt), submitted};
 }

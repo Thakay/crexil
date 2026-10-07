@@ -9,7 +9,7 @@
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { player, usePlayer } from '../audio';
-import { artist as browserArtist, message, money, type Actor } from '../crexil/api';
+import { artist as browserArtist, count, message, money, type Actor } from '../crexil/api';
 import { door as httpDoor, type Door, type VoiceSession, type VoiceUsage } from './door';
 import { plain } from './guard';
 import { elapsedSince, minutes, sessionPrice } from './meter';
@@ -33,6 +33,14 @@ export const DISCLOSURE = 'While a session runs, your microphone audio goes to E
 
 /** Why a take waits while a session connects. */
 export const CONNECTING = 'The voice director is connecting. Play the take once it is listening.';
+
+/** Bracketed audio tags ("[ready]", "[laughs]"), which the director's voice reads as delivery
+ *  cues and never as words. */
+const AUDIO_TAG = /\[[a-z][a-z' -]{0,29}\]/gi;
+
+/** A line of the director's as the log shows it: its words, without audio tags; empty when it
+ *  held nothing else. */
+export const shownWords = (text: string) => text.replace(AUDIO_TAG, ' ').replace(/\s{2,}/g, ' ').trim();
 
 type Line = {id: number; role: 'artist' | 'director' | 'note'; text: string};
 type Waiting = {state: 'waiting' | 'busy' | 'done'; note?: string};
@@ -116,7 +124,10 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
       holding.current = false;
     },
     onDisconnect: () => void finish(),
-    onMessage: ({message: text, role}) => note(role === 'agent' ? 'director' : 'artist', text),
+    onMessage: ({message: text, role}) => {
+      const line = role === 'agent' ? shownWords(text) : text;
+      if (line) note(role === 'agent' ? 'director' : 'artist', line);
+    },
     onError: problem => {
       setError(`The voice session reported a problem: ${problem}`);
       // A session that never connected is over: its minutes are recorded, and takes play again.
@@ -291,9 +302,9 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
       }
       const sent = await door.submit(card.runId, review.revision, review.token, artist);
       if (sent.ok) {
-        update(card.id, {state: 'done', note: `Queued ${card.attempts} attempts.`});
+        update(card.id, {state: 'done', note: `Queued ${count(card.attempts, 'attempt')}.`});
         tracked.current.set(card.runId, {title: card.title, summary: ''});
-        say(`The artist ran "${card.title}" (${card.runId}): ${card.attempts} attempts queued.`);
+        say(`The artist ran "${card.title}" (${card.runId}): ${count(card.attempts, 'attempt')} queued.`);
         return;
       }
       if (sent.conflict === 'spending') {
@@ -335,10 +346,12 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
     : conversation.isSpeaking ? 'Speaking' : 'Listening';
   const shown = cards.filter(card => card.kind === 'free' || card.state !== 'done' || card.note).slice(-8);
 
+  // One line at 300 px, whatever it says: while a take plays its status needs the whole row,
+  // so the Escape hint gives way until the take stops.
   return <>
     <div className={css.cap}>
-      <span role="status">{status}</span>
-      {live && <span>Esc · Back to the work</span>}
+      <span role="status" title={status}>{status}</span>
+      {live && !playing && <span className={css.hint}>Esc · Back to the work</span>}
     </div>
 
     <section className={css.meter} aria-label="Voice minutes">
@@ -402,7 +415,7 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive}:
       </article> : <article key={card.id} className={css.card} aria-label={`Started: ${card.title}`}>
         <p className={css.eyebrow}>Started for you · free · local engines</p>
         <p className={css.what}>{card.title}</p>
-        <p className={css.facts}>{card.attempts} attempts queued. Local engines take turns on one GPU.</p>
+        <p className={css.facts}>{count(card.attempts, 'attempt')} queued. Local engines take turns on one GPU.</p>
       </article>)}
     </section>}
 

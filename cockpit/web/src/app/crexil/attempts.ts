@@ -12,7 +12,7 @@
 // never names its engine, its lane or its cost.
 import { benchWords, costLine, receipt, waitingLine, type CellVM } from '../batch/grid';
 import type { components } from '../../generated/openapi';
-import { engineLabel, money, takeLabel, type Operation, type Snapshot } from './api';
+import { count, engineLabel, money, takeLabel, type Operation, type Snapshot } from './api';
 import { engineLane } from './catalogue';
 import type { Slot } from './cells';
 
@@ -55,6 +55,8 @@ export type AttemptFaceVM = {
   engine: string;
   /** The server's plain line (law 3); raw engine text stays behind DETAILS. */
   cause: string | null;
+  /** The lines the cause may fill (`causeLines`). */
+  causeLines?: number;
   detail: string | null;
   /** Line two: what it cost (law 5). */
   cost: string | null;
@@ -124,6 +126,22 @@ const RETRY_WHY: Record<string, (lands: string) => string> = {
 
 const secondsUntil = (at: string, nowMs: number) => Math.max(0, Math.ceil((Date.parse(at) - nowMs) / 1000));
 
+/** A cause without the sentence that says no money moved, when line two says it (law 5): the
+ *  face says it once. */
+const NOT_CHARGED = /^nothing was charged\.?$/i;
+export function causeWithoutCharge(cause: string): string {
+  return cause.split(/(?<=\.)\s+/).filter(sentence => !NOT_CHARGED.test(sentence.trim())).join(' ');
+}
+
+/** The lines a face's cause may fill, so a long cause keeps its next move in view where the face
+ *  has room: four beside one row of moves and a one-line cost, three beside a cost that wraps,
+ *  two on a face that also says a retry or its progress or holds more moves. A one-line cost is
+ *  at most 25 characters of the face's mono type across a 158 px cell. */
+export function causeLines(face: Pick<AttemptFaceVM, 'remedies' | 'retry' | 'progress' | 'cost'>): number {
+  if (face.remedies.length !== 1 || face.retry || face.progress) return 2;
+  return (face.cost?.length ?? 0) <= 25 ? 4 : 3;
+}
+
 /** A retry the scheduler is making, said while it happens (law 9): which attempt of how
  *  many, and while it waits, when it tries next. */
 function retrying(slot: Slot, wait: QueueFacts['retry'], nowMs: number, lands: string): AttemptFaceVM['retry'] {
@@ -188,6 +206,7 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
       else if (uncertain && paid) face.cost = (slot.charged_usd ?? 0) > 0 ? `${money(slot.charged_usd!)} was charged`
         : (slot.committed_usd ?? 0) > 0 ? `charge not confirmed · ${money(slot.committed_usd!)} reserved` : 'charge not confirmed';
       else face.cost = costLine(cell, turn.slots, nowMs);
+      if (face.cause && face.cost === 'nothing was charged') face.cause = causeWithoutCharge(face.cause);
       if (slot.kind === 'charged_blank') {
         if (!hidden) face.receipt = receipt(slot, turn.prompt, label);
         face.remedies = [
@@ -257,6 +276,7 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
     default:
       break;
   }
+  if (face.cause) face.causeLines = causeLines(face);
   return face;
 }
 
@@ -270,7 +290,7 @@ export function blindFace(turn: Turn, slot: Slot): AttemptFaceVM {
   return {
     slotId: slot.id, label: takeLabel(turn.idx, slot.pos), title: 'IN PROGRESS', tone: 'waiting', engine: 'Blind',
     cause: null, detail: null, cost: null, retry: null, remedies: [], receipt: null,
-    progress: `${done} of ${turn.slots.length} attempts done. Every take shows when the run settles.`,
+    progress: `${done} of ${count(turn.slots.length, 'attempt')} done. Every take shows when the run settles.`,
   };
 }
 

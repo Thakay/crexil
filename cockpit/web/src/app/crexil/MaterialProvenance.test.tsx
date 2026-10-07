@@ -1,5 +1,5 @@
 import {cleanup,render,screen,within} from '@testing-library/react';
-import {afterEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {MaterialProvenance,TakeWords,controlValue} from './MaterialProvenance';
 import type {Material,Snapshot} from './api';
 
@@ -35,6 +35,25 @@ describe('frozen provenance facts',()=>{
   });
 });
 
+describe('the seed note says what identifies an attempt',()=>{
+  beforeEach(cleanup);
+  afterEach(cleanup);
+  const hosted={controls:{},submitted:{request:{}},regions:null,request:{operation:{label:'Hosted fixture',revision:'r',maximum_usd_per_attempt:null,applied_controls:{provider:'seed'}}}};
+  it('names the seed above when one was recorded',()=>{
+    fixtures.record=hosted;
+    render(<MaterialProvenance node={node} data={data} navigate={()=>{}} openRecord={()=>{}}/>);
+    expect(screen.getByText('The seed above and the submitted operation identify this attempt.')).toBeInTheDocument();
+  });
+  it('never points at a seed that was not recorded',()=>{
+    fixtures.record=hosted;
+    const unseeded={...node,seed:null} as Material;
+    render(<MaterialProvenance node={unseeded} data={{...data,nodes:[unseeded]}} navigate={()=>{}} openRecord={()=>{}}/>);
+    expect(screen.getByText('Seed').nextElementSibling).toHaveTextContent('Not recorded');
+    expect(screen.getByText('The submitted operation identifies this attempt.')).toBeInTheDocument();
+    expect(screen.queryByText(/seed above/)).toBeNull();
+  });
+});
+
 describe('controls at review, in words',()=>{
   afterEach(cleanup);
   it('says a seed policy, a switch and a plain value without raw records',()=>{
@@ -57,6 +76,13 @@ describe('controls at review, in words',()=>{
 describe('a take keeps its words as typed and as submitted',()=>{
   afterEach(cleanup);
   const line={...node,id:'line',payload:'audio',verb:'speak',prompt:'Bring me the ore.  '} as Material;
+  it('says the words once when an ElevenLabs take kept them in the request it was sent',()=>{
+    fixtures.record={controls:{},regions:null,request:{setup:{prompt:'Bring me the ore.'}},
+      submitted:{transport:'audio',provider:'elevenlabs',request:{method:'POST',path:'/v1/text-to-speech/V/with-timestamps',body:{text:'Bring me the ore.'}}}};
+    render(<TakeWords node={line}/>);
+    expect(screen.getByText('As typed and as submitted.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading',{name:/as typed$/})).toBeNull();
+  });
   it('says the words once when they were submitted as typed',()=>{
     fixtures.record={controls:{},regions:null,request:{setup:{prompt:'Bring me the ore.  '}},submitted:{text:'Bring me the ore.'}};
     render(<TakeWords node={line}/>);

@@ -29,7 +29,7 @@ export function setArtistName(name: string) {
   } catch { /* storage unavailable: nothing is kept */ }
 }
 /** Who made a decision or a request, as every surface names them (law 23): "Artist" for
- *  the default artist, "Artist · Kay" for one with a name of their own, "Agent · <name>" for
+ *  the default artist, "Artist · Ada" for one with a name of their own, "Agent · <name>" for
  *  an agent, and plainly when the record holds no participant. */
 export function actorLine(actor: Actor | null | undefined): string {
   if (!actor) return 'Participant not recorded';
@@ -94,6 +94,8 @@ export function takeLabel(run: number, pos: number, output = 0): string {
 }
 export const label = (node: Material) => node.turn_idx === null ? (node.material?.filename ?? 'Imported image')
   : takeLabel(node.turn_idx, node.slot_pos ?? 0, node.output_index);
+/** A count and its noun in agreement: "1 attempt", "3 attempts". */
+export const count = (n: number, noun: string) => `${n} ${n === 1 ? noun : `${noun}s`}`;
 // The project surface spells money as every surface does (costs.ts): money that moved
 // never reads as $0.00 (law 5).
 export { usd as money } from '../costs';

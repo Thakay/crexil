@@ -64,6 +64,25 @@ describe('the audio player', () => {
     expect(player.store.getState().playing).toBe(true);
   });
 
+  it('knows a take that played to its end from one paused before it, until it plays or moves again', async () => {
+    const {player, made} = setup();
+    await player.play('a', {duration: 4});
+    await player.toggle('a');
+    expect(player.store.getState()).toMatchObject({playing: false, ended: false});
+    await player.toggle('a');
+    made[0].emit('pause');
+    made[0].emit('ended');
+    expect(player.store.getState()).toMatchObject({playing: false, ended: true, position: 4});
+    await player.toggle('a');
+    expect(player.store.getState()).toMatchObject({playing: true, ended: false});
+    made[0].emit('ended');
+    player.seek('a', 1);
+    expect(player.store.getState().ended).toBe(false);
+    made[0].emit('ended');
+    await player.play('b');
+    expect(player.store.getState()).toMatchObject({nodeId: 'b', ended: false});
+  });
+
   it('plays each take at its matched level, and moves the loaded take with new levels', async () => {
     const {player, made} = setup();
     player.setLevels({a: {gainDb: -6, volume: 0.5, matched: true}});

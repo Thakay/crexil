@@ -8,7 +8,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
-import {ActionError,actorLine,artist,command,engineLabel,isDefiniteRefusal,label,message,result,setArtistName,type Snapshot} from './api';
+import {ActionError,actorLine,artist,command,count,engineLabel,isDefiniteRefusal,label,message,result,setArtistName,type Snapshot} from './api';
 import {isWithheld,settled,withheldRuns} from './blind';
 import {byGridPosition} from './cells';
 import {MaterialThumbnail} from './MaterialThumbnail';
@@ -103,7 +103,7 @@ export function RecordRoom({data,scope={},close,inspect,openDirection,openRun,re
       </article>)}{record&&!directions.length&&<p>No directions match this search.</p>}</>}
       {tab==='attempts'&&<>{turns.map(turn=><article key={turn.id} className={s.decision}>
         <span className={s.micro}>Run {turn.idx} · {new Date(turn.created_at).toLocaleString()}</span><p>{turn.prompt}</p>
-        <p>{withheld.has(turn.id)?`In progress · ${settled(turn).done} of ${settled(turn).total} attempts done`:runLine(turn.slots)}</p>{blindLine(turn.id)&&<p className={s.hint}>{blindLine(turn.id)}</p>}<div className={s.actions}><button onClick={()=>openRun(turn.id)}>Open execution grid ›</button><button onClick={()=>{setFiltered({turn_id:turn.id});setBefore(undefined);setTab('decisions');}}>Decisions ›</button></div>
+        <p>{withheld.has(turn.id)?`In progress · ${settled(turn).done} of ${count(settled(turn).total,'attempt')} done`:runLine(turn.slots)}</p>{blindLine(turn.id)&&<p className={s.hint}>{blindLine(turn.id)}</p>}<div className={s.actions}><button onClick={()=>openRun(turn.id)}>Open execution grid ›</button><button onClick={()=>{setFiltered({turn_id:turn.id});setBefore(undefined);setTab('decisions');}}>Decisions ›</button></div>
       </article>)}{record&&!turns.length&&<p>No runs match this search.</p>}</>}
     </div>
   </section>;

@@ -14,7 +14,7 @@ export function AttemptFace({face, onRemedy, busy = false}: {
   return <div role="group" aria-label={`Attempt ${face.label} · ${face.title.toLowerCase()}`}
     className={`${s.attemptFace} ${tone} ${face.remedies.length > 2 ? s.attemptCrowded : ''}`}>
     <div className={s.attemptHead}><strong>{face.title}</strong><span>{face.label} · {face.engine}</span></div>
-    {face.cause && <p className={s.attemptCause} title={face.cause}>{face.cause}</p>}
+    {face.cause && <p className={s.attemptCause} title={face.cause} style={{WebkitLineClamp: face.causeLines}}>{face.cause}</p>}
     {face.retry && <p className={s.attemptRetry} title={face.retry.why}>{face.retry.label}</p>}
     {face.progress && <p className={s.attemptProgress} title={face.progress}>{face.progress}</p>}
     {face.cost && <p className={s.attemptLine} title={face.cost}>{face.cost}</p>}

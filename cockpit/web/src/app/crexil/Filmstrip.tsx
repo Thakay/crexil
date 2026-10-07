@@ -18,7 +18,7 @@ import { OperationLibrary } from './OperationLibrary';
 import { deliverControl, ExecutionControls, moveAttempt } from './ExecutionControls';
 import { AttemptFace } from './AttemptFace';
 import { attemptFace, blindFace, sharedCauses, type AttemptFaceVM, type QueueFacts, type RemedyId } from './attempts';
-import { auditionTakes } from './audition';
+import { auditionTakes, roomRuns } from './audition';
 import { hiddenRuns, isWithheld, withheldRuns } from './blind';
 import { RoomLine, useFastPick, useRoomAudition } from './GridRoom';
 import { VoiceDirectorPanel } from '../voice-director';
@@ -34,11 +34,11 @@ import { ancestors, sourceBindings } from './lineage';
 import { continuationRow } from './family';
 import { initialImagePreparation } from './ImagePreparationFields';
 import { ACTIONS, startWord, type Action } from './actions';
-import { actorLine, blankPreparation, command, engineIdentity, engineLabel, imageUrl, importFile, label, message, money, preparation,
+import { actorLine, blankPreparation, command, count, engineIdentity, engineLabel, imageUrl, importFile, label, message, money, preparation,
   projectHref, result, type Direction, type Material, type Snapshot } from './api';
 import { useCatalogue } from './catalogue';
-import { byGridPosition, gridCells, type Slot } from './cells';
-import { faceCost, pickerGroups, sectionFoot, statusWord } from './faces';
+import { byGridPosition, gridCells, type Cell, type Slot } from './cells';
+import { attemptCharges, faceCost, pickerGroups, sectionFoot, statusWord } from './faces';
 import { AUDIO_FACE, useCommandKey, useEscapeBase, useEscapeKey } from './keys';
 import { faceName, IMPORT_ACCEPT, mediumOf } from './media';
 import { cardVerbs, SPEAK_VERB } from './verbCard';
@@ -46,11 +46,11 @@ import { VerbCard } from './VerbCard';
 import { covered, createViewStore, overlay, useView, useViewStore, ViewContext, type FocusReturn, type Overlay, type View } from './view';
 import s from './Filmstrip.module.css';
 
-/** A grid room's take positions, every section of its row in order (empty positions kept). */
-function roomTakes(data: Snapshot | undefined, room: View['room']): (Material | null)[] {
+/** A grid room's cells, every section of its row in order. */
+function roomCells(data: Snapshot | undefined, room: View['room']): Cell[] {
   if (!data || typeof room !== 'number') return [];
-  return auditionTakes(data.directions.filter(direction => direction.state !== 'discarded' && direction.row_idx === room)
-    .flatMap(direction => gridCells(direction, data, true)));
+  return data.directions.filter(direction => direction.state !== 'discarded' && direction.row_idx === room)
+    .flatMap(direction => gridCells(direction, data, true));
 }
 
 /** The voice director column's width while it is open (`--director-inset` on the root
@@ -225,9 +225,11 @@ function ProjectWorkspace({id}: {id: string}) {
   const speakVerb = () => cardVerbs(actingNow(), operations.data).find(verb => verb.label === SPEAK_VERB && verb.live);
   useCommandKey('l', () => {const verb = speakVerb(); if (verb) void newDirection(undefined, verb.action, verb.parents);},
     () => !isCovered() && working.current === 0 && Boolean(speakVerb()));
-  // The open grid room's take positions: audition, and S to select the focused take.
-  const takes = roomTakes(data, room);
-  useRoomAudition(takes);
+  // The open grid room's take positions: audition, and S to select the focused take. The
+  // digits number one run's positions (GridRoom.tsx).
+  const inRoom = roomCells(data, room);
+  const takes = auditionTakes(inRoom);
+  useRoomAudition(takes, roomRuns(inRoom));
   const fastPick = useFastPick(data, takes, refresh);
   const {settle} = fastPick;
   useEffect(() => {settle(null); return () => player.pause();}, [room, settle]);
@@ -261,6 +263,7 @@ function ProjectWorkspace({id}: {id: string}) {
   const bindings = visible.flatMap(direction=>sourceBindings(direction,data));
   const ancestry = ancestors(nodes,acting);
   const displayed = new Set(visible.flatMap(direction=>direction.selection));
+  const charges = attemptCharges(nodes);
   const activeSlots = turns.flatMap(t => t.slots).filter(slot => ['queued','running','held','late'].includes(slot.status));
   const group = groupId ? data.execution_groups.find(g=>g.id===groupId) : undefined;
   const controls = data.execution_controls ?? [];
@@ -300,7 +303,7 @@ function ProjectWorkspace({id}: {id: string}) {
     <header className={s.topbar}>
       <a className={s.back} href={projectHref()} aria-label="Projects">‹</a>
       <button className={s.projectTitle} onClick={() => store.getState().toggleProjectEdit()} title="Project brief and name">{data.project.name}</button>
-      <span className={s.micro}>{rows.length} turns</span>
+      <span className={s.micro}>{count(rows.length, 'turn')}</span>
       <a className={s.quiet} href={projectHref()}>+ New project</a>
       <div className={s.spacer}/><a className={s.quiet} href={`#/connections?project=${id}`}>Connections</a><a className={s.quiet} href={`#/operations?project=${id}`}>Operations</a><button onClick={fromHere(store.getState().showImport)}>Import material</button>
       <button className={s.door} onClick={fromHere(() => store.getState().openRecord())}>Record ›</button>
@@ -309,7 +312,9 @@ function ProjectWorkspace({id}: {id: string}) {
       <button onClick={fromHere(store.getState().showDeliveries)}>Deliveries</button>
       <button onClick={fromHere(store.getState().showBackup)}>Back up</button>
       <button className={s.door} onClick={() => store.getState().toggleTray()}>Tray{asideCount ? ` · ${asideCount}` : ''} ›</button>
-      <span className={s.money}>Today {money(costs.data?.today_usd ?? 0)} · Total {money(data.charged_usd)}</span>
+      {/* The money corner says whose each total is: today's spend sums every project; the
+          second is this project's, whatever day it was spent. */}
+      <span className={s.money}>All projects today {money(costs.data?.today_usd ?? 0)} · This project {money(data.charged_usd)}</span>
     </header>
     <input hidden ref={file} type="file" multiple accept={IMPORT_ACCEPT}
       onChange={e => {const files = Array.from(e.target.files ?? []); e.target.value=''; void act(async () => {for (const item of files) await importFile(id,item);store.getState().closeImport();});}}/>
@@ -342,7 +347,7 @@ function ProjectWorkspace({id}: {id: string}) {
         {room !== 'tray' && <div className={s.actions}><button className={s.primary} onClick={() => void newDirection()}>+ New direction · N</button><button onClick={fromHere(store.getState().showImport)}>Import material</button></div>}
       </div>}
       {rows.filter(row => room === null || room === 'tray' || room === row).map(row => <div className={s.row} id={`row-${row}`} key={row} data-lineage-row={row} style={{marginBottom:`var(--lineage-gap-${row},26px)`}}>
-        <RowStrip count={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => store.getState().openGrid(row)}>Grid ›</button></div>
+        <RowStrip sections={visible.filter(d => d.row_idx === row).length} gutter={more => <aside className={s.gutter}><div><span>T{row}</span> <button className={s.door} data-grid-door onClick={() => store.getState().openGrid(row)}>Grid ›</button></div>
           {visible.filter(d=>d.row_idx===row&&d.latest_decision).map(direction=><button key={direction.id} className={s.gutterDecision} onClick={fromHere(()=>store.getState().openRecord({direction_id:direction.id}))} title={`Latest decision for ${direction.title}`}>
             <span>{direction.latest_decision?.reason||'No reason supplied'}</span><small>{actorLine(direction.latest_decision?.actor)} ›</small>
           </button>)}
@@ -377,9 +382,10 @@ function ProjectWorkspace({id}: {id: string}) {
                 const turn = slot ? turns.find(t => t.id === slot.turn_id) : undefined;
                 const face = cell.withheld && slot && turn ? blindFace(turn, slot) : !node && slot ? faceOf(slot) : null;
                 const wide = room===row && cell.span > 1;
-                return <div key={cell.key} className={room===row?s.slotBox:undefined} style={wide?{width:spanWidth(cell.span)}:undefined}>
+                return <div key={cell.key} className={room===row?s.slotBox:undefined} style={wide?{width:spanWidth(cell.span)}:undefined}
+                  data-run={room===row?slot?.turn_id:undefined}>
                   {face ? <AttemptFace face={face} busy={busy} onRemedy={remedy(direction, slot!, face)}/> : cell.takes.length > 0 &&
-                    <div className={s.takeRow}>{cell.takes.map(take => <TakeFace key={take.id} take={take} catalogue={catalogue}
+                    <div className={s.takeRow}>{cell.takes.map(take => <TakeFace key={take.id} take={take} catalogue={catalogue} cost={faceCost(take, charges)}
                       mark={acting.includes(take.id) ? 'acting' : room===row&&direction.selection.includes(take.id) ? 'selected' : ancestry.has(take.id) ? 'ancestor' : null}
                       selected={room===row&&direction.selection.includes(take.id)} onAct={actOn} onInspect={inspectTake}/>)}</div>}
                   {room===row&&slot&&<div className={s.slotFoot}><span>{node&&!cell.withheld?statusWord(slot.status):''}</span>{cell.group&&cell.group.outputs.length>0&&<button onClick={fromHere(()=>store.getState().openGroup(cell.group!.id))}>{cell.group.outputs.length} {cell.group.outputs.length===1?'file':'files'} ›</button>}</div>}
@@ -412,7 +418,8 @@ function ProjectWorkspace({id}: {id: string}) {
       close={closeLayer} saved={refresh} onInspect={inspectNode} stateAction={stateAction}/>}
     {activeDraft && <DraftDrawer key={activeDraft.id} direction={activeDraft} directions={directions} nodes={byGridPosition(nodes.filter(n => !isWithheld(n, withheld)))} operations={operations.data ?? []} onSaved={refresh} onCopied={id=>{refresh();openDrawer(id);}}
       onClose={ran => {store.getState().closeDrawer(); if (record) requestAnimationFrame(() => recordOrigin().current?.focus()); else focusAfterDrawer(activeDraft, ran);}}/>}
-    {inspect && <Inspection key={inspect.id} node={inspect} data={data} close={closeLayer} navigate={inspectNode} openGroup={id=>store.getState().openGroup(id)} openRecord={()=>store.getState().openRecord({node_id:inspect.id},inspect.id)} returnLabel={record?'Record':'Project'}/>}
+    {inspect && <Inspection key={inspect.id} node={inspect} data={data} close={closeLayer} navigate={inspectNode} openGroup={id=>store.getState().openGroup(id)} openRecord={()=>store.getState().openRecord({node_id:inspect.id},inspect.id)}
+      returnLabel={record&&!recordDestination?'Record':room==='tray'?'Tray':typeof room==='number'?'Grid':'Project'}/>}
     {group&&<OutputGroup group={group} close={()=>store.getState().closeGroup()} refresh={refresh} inspect={id=>{store.getState().closeGroup();inspectNode(id);}}/>}
     <div className={s.queue}><span>{activeSlots.length} active or unresolved · Local engines take turns on one GPU</span><span>{busy ? 'Saving work…' : 'Changes stay in this project'}</span></div>
   </>;
@@ -422,7 +429,7 @@ function ProjectWorkspace({id}: {id: string}) {
  *  row's span the row scrolls sideways"). While sections lie beyond the right edge, that edge
  *  fades, and a door at the foot of the row's gutter says how many and scrolls to them; it
  *  never covers the work. Focus scrolls them into view too. */
-function RowStrip({count, gutter, children}: {count: number; gutter: (more: ReactNode) => ReactNode; children: ReactNode}) {
+function RowStrip({sections, gutter, children}: {sections: number; gutter: (more: ReactNode) => ReactNode; children: ReactNode}) {
   const strip = useRef<HTMLDivElement>(null);
   const [beyond, setBeyond] = useState(0);
   useLayoutEffect(() => {
@@ -438,18 +445,18 @@ function RowStrip({count, gutter, children}: {count: number; gutter: (more: Reac
     element.querySelectorAll(':scope > section').forEach(section => observer.observe(section));
     element.addEventListener('scroll', measure);
     return () => {observer.disconnect(); element.removeEventListener('scroll', measure);};
-  }, [count]);
+  }, [sections]);
   const more = beyond > 0 ? <button className={`${s.door} ${s.moreDoor}`} aria-label={`Show ${beyond} more ${beyond === 1 ? 'section' : 'sections'} of this row`}
     onClick={() => strip.current?.scrollBy({left: strip.current.clientWidth * .8, behavior: 'smooth'})}>{beyond} more ›</button> : null;
   return <>{gutter(more)}<div ref={strip} className={`${s.sections} ${beyond ? s.moreBeyond : ''}`} data-lineage-strip>{children}</div></>;
 }
 
-/** One take's face (BIBLE: face): its plate, its label and engine, and at the right its money.
- *  Its name says the take and its medium; its description is the footer, and says the take is
- *  selected where the grid room draws that border. Memoized, so a change of the acting set
- *  redraws only the faces it touches. */
-const TakeFace = memo(function TakeFace({take, mark, selected, onAct, onInspect}: {
-  take: Material; mark: 'acting' | 'selected' | 'ancestor' | null; selected: boolean;
+/** One take's face: a plain card with its plate, a one-row footer naming the take and its
+ *  engine, and at the right its money (faces.ts). Its name says the take and its medium; its
+ *  description is the footer, and says the take is selected where the grid room draws that
+ *  border. Memoized, so a change of the acting set redraws only the faces it touches. */
+const TakeFace = memo(function TakeFace({take, cost, mark, selected, onAct, onInspect}: {
+  take: Material; cost: string; mark: 'acting' | 'selected' | 'ancestor' | null; selected: boolean;
   /** The catalogue the footer names its engine from; a new one redraws the face. */
   catalogue: ReturnType<typeof useCatalogue>;
   onAct: (id: string, shift: boolean, element: HTMLElement) => void; onInspect: (id: string) => void;
@@ -459,7 +466,7 @@ const TakeFace = memo(function TakeFace({take, mark, selected, onAct, onInspect}
     aria-label={faceName(take)} aria-describedby={foot} aria-pressed={mark === 'acting'} className={`${s.face} ${mark ? s[mark] : ''}`}
     onDoubleClick={() => onInspect(take.id)} onClick={event => onAct(take.id, event.shiftKey, event.currentTarget)}>
     <div className={s.plate}><MaterialThumbnail node={take}/>{mark === 'acting' && <span className={s.actingMark}>Acting on</span>}{take.promoted_at && <span className={s.promoted}>Promoted</span>}</div>
-    <footer id={foot}><span title={`${label(take)} · ${engineLabel(take, 'face')}`}>{label(take)} · {engineLabel(take, 'face')}{selected && <span className={s.srOnly}>, selected</span>}</span><span>{faceCost(take)}</span></footer>
+    <footer id={foot}><span title={`${label(take)} · ${engineLabel(take, 'face')}`}>{label(take)} · {engineLabel(take, 'face')}{selected && <span className={s.srOnly}>, selected</span>}</span><span>{cost}</span></footer>
   </button>;
 });
 

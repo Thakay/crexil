@@ -5,7 +5,7 @@ import { MaterialThumbnail } from './MaterialThumbnail';
 import {useEffect,useRef,useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {fetchClient} from '../../api/client';
-import {command,isDefiniteRefusal,label,message,money,result,type Direction,type Snapshot} from './api';
+import {command,count,isDefiniteRefusal,label,message,money,result,type Direction,type Snapshot} from './api';
 import {ExecutionControls} from './ExecutionControls';
 import {useEscapeLayer} from './keys';
 import s from './Filmstrip.module.css';
@@ -63,7 +63,7 @@ export function SequenceRoom({data,refresh,close,edit,inspect,openRun,initialId,
       <nav className={s.sequenceNav} aria-label="Project sequences">
         <button disabled={locked} className={creating?s.primary:''} onClick={()=>setCreating(true)}>+ New sequence</button>
         {sequences.map(item=><button disabled={locked} key={item.id} aria-current={!creating&&item.id===selected?'page':undefined} onClick={()=>{setSelected(item.id);setCreating(false);setError('');}}>
-          <strong>{item.title}</strong><span>{status(item)} · {item.steps.length} steps</span>
+          <strong>{item.title}</strong><span>{status(item)} · {count(item.steps.length,'step')}</span>
         </button>)}
       </nav>
       <main className={s.sequenceMain}>
@@ -129,7 +129,7 @@ function CreateSequence({data,send,edit}:{data:Snapshot;send:Send;edit:(id:strin
     </section>)}
     <div className={s.sequenceAdd}><label>Saved preparation<select aria-label="Saved preparation" value={next} onChange={e=>setNext(e.target.value)}><option value="">Choose a preparation</option>{available.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select></label><button type="button" disabled={!next||steps.length>=32} onClick={()=>{const direction=data.directions.find(item=>item.id===next)!;setSteps(previous=>[...previous,{key:`step-${counter.current++}`,direction_id:next,revision:direction.revision,input_mode:'together',dependencies:[]}]);setNext('');}}>Add step</button></div>
     {!available.length&&<p className={s.hint}>Create or reuse an unsubmitted preparation in the project to add another step.</p>}
-    <div className={s.sequenceActions}><span>{steps.length} steps · Review comes next</span><button className={s.primary} disabled={!title.trim()||!steps.length}>Save sequence</button></div>
+    <div className={s.sequenceActions}><span>{count(steps.length,'step')} · Review comes next</span><button className={s.primary} disabled={!title.trim()||!steps.length}>Save sequence</button></div>
   </form>;
 }
 

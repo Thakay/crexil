@@ -641,12 +641,23 @@ class OperationInput(BaseModel):
     reason: str | None = None
 
 
+class VoiceRule(BaseModel):
+    """The voices a speech role takes: those designed or saved at `providers`.
+    A voice take from any other provider is refused with `reason`, which the
+    roster shows before the engine is chosen (law 12)."""
+    providers: list[str]
+    reason: str
+
+
 class SourceRoleView(BaseModel):
     """One source an operation takes, in order, with the payloads it accepts
-    (law 21) and the reasons some takes of those payloads are refused."""
+    (law 21), the reasons some takes of those payloads are refused, and the
+    voices a speech role takes when its engine names them (`voices`; None takes
+    any voice its provider's terms allow)."""
     role: str
     accepts: list[Payload]
     restrictions: list[str] = Field(default_factory=list)
+    voices: VoiceRule | None = None
 
 
 class TariffView(BaseModel):

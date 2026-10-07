@@ -19,6 +19,8 @@ export type PlayerState = {
   /** The loaded take, playing or paused. */
   nodeId: string | null;
   playing: boolean;
+  /** The loaded take played to its end, and nothing has moved its playhead since. */
+  ended: boolean;
   /** Seconds into the loaded take. */
   position: number;
   /** The loaded take's length in seconds, from its facts until the element reports it. */
@@ -43,7 +45,7 @@ export type MediaLike = {
 
 export const audioUrl = (id: string) => `/api/crexil/material/${encodeURIComponent(id)}/audio`;
 
-const initial = (): PlayerState => ({nodeId: null, playing: false, position: 0, duration: 0, loop: null, levels: {}, error: null});
+const initial = (): PlayerState => ({nodeId: null, playing: false, ended: false, position: 0, duration: 0, loop: null, levels: {}, error: null});
 
 /** Why playback failed, in words. An interrupted start (a newer take replaced it) is no failure. */
 function failure(error: unknown): string | null {
@@ -83,7 +85,7 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
     const made = make();
     made.preload = 'auto';
     made.addEventListener('play', () => {
-      store.setState({playing: true, error: null});
+      store.setState({playing: true, ended: false, error: null});
       watchLoop();
     });
     made.addEventListener('pause', () => {
@@ -98,7 +100,7 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
         void start(made);
         return;
       }
-      store.setState(state => ({playing: false, position: state.duration || state.position}));
+      store.setState(state => ({playing: false, ended: true, position: state.duration || state.position}));
     });
     made.addEventListener('loadedmetadata', () => {
       const reported = (made as Partial<HTMLMediaElement>).duration;
@@ -135,7 +137,7 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
     made.pause();
     made.src = audioUrl(id);
     made.volume = volumeFor(id);
-    store.setState({nodeId: id, playing: false, position: 0, duration, loop: null, error: null});
+    store.setState({nodeId: id, playing: false, ended: false, position: 0, duration, loop: null, error: null});
     return made;
   };
 
@@ -176,7 +178,7 @@ export function createPlayer(make: () => MediaLike = () => new Audio()) {
       const {duration: known} = store.getState();
       const limit = known > 0 ? known : Infinity;
       made.currentTime = Math.min(limit, Math.max(0, seconds));
-      store.setState({position: made.currentTime});
+      store.setState({position: made.currentTime, ended: false});
       watchLoop();
     },
     /** Repeats a span of the loaded take; null plays straight through. */
