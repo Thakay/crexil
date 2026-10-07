@@ -112,10 +112,11 @@ export function engineIdentity(node: Identified, hidden = false): EngineIdentity
   if (node.engine) return {kind: 'named', name: node.engine};
   return node.material?.origin.kind === 'prepared_image' ? {kind: 'prepared'} : {kind: 'imported'};
 }
-// 'face' names the maker on a take's or an attempt's face; 'source' groups and heads material
-// by origin. An engine reads by its catalogue name (catalogue.ts), on a face by its face name:
-// a hosted model without its vendor. A blind take reads "Blind" on its face and "Engine
-// hidden" where material is grouped.
+// 'face' names the engine that made a take or an attempt on its face; 'source' groups and
+// heads material by origin. An engine reads by its catalogue name (catalogue.ts), and on a
+// face by its face name: the shorter name its matrix row gives faces, else a hosted model
+// without its vendor. A blind take reads "Blind" on its face and "Engine hidden" where
+// material is grouped.
 export function engineLabel(node: Identified, variant: 'face' | 'source', hidden = false): string {
   const identity = engineIdentity(node, hidden);
   if (identity.kind === 'named') return variant === 'face' ? engineFaceName(identity.name) : engineName(identity.name);

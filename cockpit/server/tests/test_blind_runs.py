@@ -262,6 +262,15 @@ async def test_the_decision_record_is_attributed_and_holds_no_audio(tmp_path, mo
         assert (await client.get('/api/crexil/projects/missing/decisions')).status_code == 404
 
 
+def test_a_candidate_names_its_attempt_by_the_name_its_cost_is_grouped_by():
+    # One function names an attempt: the key a line states its one cost by, and attempt_id.
+    take = {'id': 'n1', 'turn_id': 't1', 'slot_id': 's1', 'take': 2, 'engine': LOCAL, 'seed': 7, 'external': None}
+    material = {**take, 'id': 'n2', 'turn_id': None, 'slot_id': None, 'take': 0, 'engine': None, 'seed': None}
+    assert decisions._candidate(take, 0, frozenset(), None)['attempt_id'] == decisions._attempt(take) == 's1:2'
+    assert decisions._candidate(material, 1, frozenset(), None)['attempt_id'] is None
+    assert decisions._candidate(take, 0, frozenset({'t1'}), None)['attempt_id'] is None
+
+
 async def test_an_attempts_one_charge_is_stated_once_among_its_takes(tmp_path, monkeypatch):
     # A Voice Design call returns three previews and is charged once, here below
     # its reservation: a line states the attempt's charge on the first of its

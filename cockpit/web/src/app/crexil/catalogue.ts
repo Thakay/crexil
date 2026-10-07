@@ -15,8 +15,9 @@ import type { components } from '../../generated/openapi';
 import type { Operation } from './api';
 
 export type Lane = 'local' | 'hosted';
-/** `faceName` is the name the engine's matrix row gives faces (`face_name`), when it gives one. */
-export type CatalogueEntry = {name: string; lane: Lane; faceName?: string | null};
+/** `shortName` is the shorter name the engine's matrix row gives faces (`face_name`), when it
+ *  gives one. */
+export type CatalogueEntry = {name: string; lane: Lane; shortName?: string | null};
 type EngineRow = Pick<components['schemas']['Engine'], 'id' | 'name' | 'lane' | 'face_name'>;
 
 /** Each engine id's name and lane: the matrix's row for an engine it lists (the audio, mesh
@@ -26,7 +27,7 @@ export function catalogueFrom(operations: readonly Pick<Operation, 'id' | 'label
   engines: readonly EngineRow[]): ReadonlyMap<string, CatalogueEntry> {
   const entries = new Map<string, CatalogueEntry>(operations.map(op => [op.id, {name: op.label, lane: op.provider ? 'hosted' : 'local'}]));
   for (const row of engines)
-    entries.set(row.id, {name: row.name, lane: row.lane === 'external' ? 'hosted' : 'local', faceName: row.face_name});
+    entries.set(row.id, {name: row.name, lane: row.lane === 'external' ? 'hosted' : 'local', shortName: row.face_name});
   return entries;
 }
 
@@ -49,7 +50,7 @@ const VENDOR = /^[^:]+:\s+(?=\S)/;
 export function engineFaceName(id: string): string {
   const entry = store.getState().entries.get(id);
   if (!entry) return id;
-  if (entry.faceName) return entry.faceName;
+  if (entry.shortName) return entry.shortName;
   return entry.lane === 'hosted' ? entry.name.replace(VENDOR, '') : entry.name;
 }
 

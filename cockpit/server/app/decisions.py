@@ -52,10 +52,11 @@ def _model(node: dict) -> str | None:
     return external.get('model')
 
 
-def _attempt(node: dict) -> tuple | str:
-    """The attempt that made a take: its cell and attempt number, or the take
-    itself for material that came from no run."""
-    return (node['slot_id'], node['take']) if node['slot_id'] else node['id']
+def _attempt(node: dict) -> str:
+    """The attempt that made a take, named by its cell and attempt number
+    (`<slot>:<attempt>`, a candidate's `attempt_id`); material that came from no
+    run is its own attempt, named by the take."""
+    return f"{node['slot_id']}:{node['take']}" if node['slot_id'] else node['id']
 
 
 def _attempt_costs(nodes) -> dict:
@@ -79,7 +80,7 @@ def _candidate(node: dict, position: int, hidden: frozenset[str], cost: float | 
     return {'node_id': node['id'], 'position': position, 'engine': engine or 'imported',
             'provider': wiring.route_engine(engine) if engine else None,
             'model': _model(node) if engine else None, 'seed': node['seed'], 'cost_micro_usd': _micro_usd(cost),
-            'attempt_id': None if node['slot_id'] is None else f"{node['slot_id']}:{node['take']}"}
+            'attempt_id': _attempt(node) if node['slot_id'] else None}
 
 
 def _candidates(considered: list[dict], hidden: frozenset[str], costs: dict) -> list[dict]:

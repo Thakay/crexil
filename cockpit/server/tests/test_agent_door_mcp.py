@@ -106,6 +106,10 @@ async def test_the_unfiltered_engine_list_stays_compact_and_a_filter_adds_each_e
         for n in range(65):
             catalog._live[f'vendor{n}/model-{n}'] = {**catalog._live['testvendor/testmodel'], 'id': f'vendor{n}/model-{n}',
                                                     'provider': f'vendor{n}', 'label': f'Model {n}', 'name': f'Model {n}'}
+        # One engine priced by token, which a review cannot reserve from a number of images.
+        endpoint = catalog._live['testvendor/testmodel']['endpoints'][0]
+        catalog._live['vendor7/model-7']['endpoints'] = [
+            {**endpoint, 'pricing': [{'billable': 'output_image', 'unit': 'token', 'cost_usd': .00004}]}]
         door = door_over(client)
         everything = (await door.list_engines()).model_dump(mode='json')
         voices = (await door.list_engines(action='voice-design')).model_dump(mode='json')
@@ -113,7 +117,9 @@ async def test_the_unfiltered_engine_list_stays_compact_and_a_filter_adds_each_e
     assert len(everything['engines']) >= 75 and len(json.dumps(everything)) < 30_000
     assert all(set(engine) == COMPACT for engine in everything['engines'])
     priced = {e['id']: (e['price_usd'], e['price_unit']) for e in everything['engines']}
-    assert priced['testvendor/testmodel'] == (0.05, 'image') and priced['vendor7/model-7'] == (None, 'image')
+    # An engine's price is what its review reserves for one image, whatever a pin estimates.
+    assert priced['testvendor/testmodel'] == priced['vendor8/model-8'] == (0.04, 'image')
+    assert priced['vendor7/model-7'] == (None, 'image')
     assert priced[f'audio:voice-design:{LOCAL}'] == (0, 'attempt')
     assert {e['id'] for e in voices['engines']} == {f'audio:voice-design:{LOCAL}', 'audio:voice-design:elevenlabs-voice-design'}
     for engine in voices['engines'] + images['engines']:
