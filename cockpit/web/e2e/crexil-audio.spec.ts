@@ -236,8 +236,8 @@ test('digits audition the voices of a row whose images come first, and stay in t
   const status=page.locator('[role=status]').filter({hasText:/^(Playing|Paused|Played) /});
   const face=(name:string)=>page.getByRole('button',{name:`Act on ${name}, audio, 4.0 s`,exact:true});
   // The room's audio runs as it draws them, each with its takes' labels in grid order. The server
-  // orders a row's sections by when they were made, so the voices follow the images unless the
-  // machine's clock stepped back between them; the digits follow the room either way.
+  // keeps a row's sections in the order they were made, whatever the machine's clock says, and
+  // the digits follow the room.
   const voices=await page.locator('[data-run]').evaluateAll(cells=>{
     const runs=new Map<string,string[]>();
     for(const cell of cells)for(const take of cell.querySelectorAll('[data-take][data-audio-face]'))

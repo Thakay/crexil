@@ -339,6 +339,25 @@ class CreativeStore:
                    sequence_template=bool(membership['template']) if membership else False)
         return out
 
+    async def direction_ids(self, wid: str) -> list[str]:
+        """The project's directions row by row, each row in the order its sections were
+        made: the order of their creation events, whose sequence numbers the store assigns
+        as it records them, so a clock that steps back never reorders a row. A backup keeps
+        the events in that order and a restore records them anew in it; the restored
+        events name the directions as they were, which the restore record maps to the
+        ones the project has now. A direction with no creation event (one migrated from
+        legacy work) leads its row, in the order of its recorded time."""
+        from .crexil_restore import context
+        restored = ((await context(self.db, wid)) or {}).get('identities', {}).get('directions', {})
+        made: dict[str, int] = {}
+        for row in await self.db._all(
+                "SELECT seq,json_extract(payload_json,'$.direction_id') AS did FROM events "
+                "WHERE workspace_id=? AND type='direction.created' ORDER BY seq", (wid,)):
+            made.setdefault(restored.get(row['did'], row['did']), row['seq'])
+        rows = await self.db._all('SELECT id,row_idx,created_at FROM directions WHERE workspace_id=?', (wid,))
+        return [row['id'] for row in sorted(rows, key=lambda row: (
+            row['row_idx'], made.get(row['id'], 0), row['created_at'], row['id']))]
+
     async def snapshot(self, wid: str) -> dict:
         from . import blind
         from .material_files import view as retained_files
@@ -354,9 +373,7 @@ class CreativeStore:
             project = await self.project(wid)
             turns = await self.db.list_turns(wid)
             sequences = await list_sequences(self.db, wid)
-            rows = await self.db._all(
-                'SELECT id FROM directions WHERE workspace_id=? ORDER BY row_idx,created_at,id', (wid,))
-            directions = [await self.direction(r['id']) for r in rows]
+            directions = [await self.direction(did) for did in await self.direction_ids(wid)]
             history = await decisions(self.db, wid)
             for direction in directions:
                 direction['latest_decision'] = next((item for item in reversed(history)
