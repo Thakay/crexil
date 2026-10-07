@@ -312,7 +312,7 @@ async def test_a_take_binds_once_the_sibling_that_shared_its_line_settles():
 
 @pytest.mark.usefixtures('rows', 'prices')
 async def test_a_sibling_in_another_voice_never_blocks_recovery():
-    # A/B casting reads the same line in several voices at once (J2).
+    # A/B casting reads the same line in several voices at once.
     other = speech_envelope({**designed_voice('gen-7'), 'voice_id': 'voice-OTHER'})
     fake = (FakeElevenLabs().on('POST', SPEECH, httpx.ReadError('dropped'))
             .on('GET', '/v1/history', listing('hist-ours'))

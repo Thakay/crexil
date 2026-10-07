@@ -61,9 +61,9 @@ python3 tools/voice-director/apply.py --dry-run       # the voice director's age
 scripts/deploy.sh                            # optional local Docker build and start
 ```
 
-**Baseline.** On a clean checkout ruff passes, pytest reports 1343 passed and 2 skipped in about
-130 seconds, vitest reports 734 passed in 64 files, and `tsc -b`, the specs' type-check and
-`vite build` pass; `scripts/check.sh` takes about 150 seconds. The skipped tests are the live
+**Baseline.** On a clean checkout ruff passes, pytest reports 1401 passed and 2 skipped in about
+160 seconds, vitest reports 819 passed in 68 files, and `tsc -b`, the specs' type-check and
+`vite build` pass; `scripts/check.sh` takes about 170 seconds. The skipped tests are the live
 checks: `LIVE_CATALOG=1` compares the provider catalogue with the live OpenRouter API (network, no
 key, no cost), and `LIVE_ELEVENLABS=1` with a key makes one live ElevenLabs sound effect (about
 $0.001). Ruff's rules live in `cockpit/server/pyproject.toml`; `scripts/check.sh` applies them to
@@ -186,7 +186,7 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 | `COCKPIT_CONFIGS_DIR` | `<root>/configs` | Folder of `dials.json` and `engines.json`, served as they are |
 | `COCKPIT_STAGING_DIR` | `<root>/.staging/cockpit` | Working files of the instance |
 | `COCKPIT_DB` | `<root>/cockpit/server/cockpit-v4.sqlite` | The SQLite store |
-| `PROMOTE_DIR` | `/mnt/d/PROMOTED` (a WSL drive path; set your own) | Hand-off folder that Promote copies into, and where a delivery writes its character package folders. Made absolute at start |
+| `PROMOTE_DIR` | `~/crexil-handoff` | Hand-off folder that Promote copies into, and where a delivery writes its character package folders. Made absolute at start; empty reads as unset. The server never creates it. Under WSL it is often a folder on a Windows drive |
 | `PROMOTE_ROOTS` | empty, which means `PROMOTE_DIR` itself | Colon-separated folders a promote target may sit in. A target outside them is refused |
 | `COCKPIT_STATIC_DIR` | `cockpit/server/static` | Built web client served at `/` |
 | `MODELS_ROOT` | `~/models` | Model tree. Read only: file hashes for manifests, and the health check |
@@ -220,7 +220,10 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 
 Launchers and tools read a few of their own (`COMFY_*`, `THREED_*`, `BENCH_ROOT`, `COCKPIT_URL`,
 `SMOKE_KEEP_RES`, `HF_TOKEN`); each script names them. `compose.yaml` reads `COCKPIT_PORT`,
-`MODELS_ROOT`, `PROMOTE_DIR`, `PROMOTE_ROOTS`, `PROMOTE_MOUNT` and `OPENROUTER_API_KEY` from `.env`.
+`MODELS_ROOT`, `PROMOTE_DIR`, `PROMOTE_ROOTS`, `PROMOTE_MOUNT`, `OPENROUTER_API_KEY`,
+`ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_AGENT_ID`, `CREXIL_VOICE_MINUTES_CAP` and
+`CREXIL_VOICE_SESSION_MAX_S` from `.env`. It mounts `PROMOTE_MOUNT`, else the hand-off folder, at the
+same path inside the container, and a missing folder stops the start instead of being created.
 
 The client reads two build-time variables. `VITE_CREXIL_PREVIEW=1`, which `scripts/preview.sh`
 sets, builds the preview client. `VITE_CREXIL_FRONT_DOOR` (`projects` or `workspaces`) names what
@@ -233,7 +236,7 @@ All engines are optional and none is bundled. The server generates nothing itsel
 down is benched with its reason, and the server still boots. **Engines, node packs, model weights
 and hosted models are not part of this repository. Each carries its own licence and terms, and some
 forbid commercial use.** See [third-party.md](third-party.md). `scripts/models-manifest.json`
-records a licence note per entry; nothing enforces it.
+records a licence note per entry, which the downloader prints; nothing enforces it.
 
 Audio engines are rows of `configs/engines.json` with payload `audio`, each naming its provider.
 They ship disabled; set `enabled` when an installation can reach them. A row states per verb how many
@@ -253,7 +256,7 @@ sound-effect test that costs about $0.001; `scripts/check.sh` never runs it.
 A designed ElevenLabs voice becomes a saved voice, which takes one of the account's voice slots, the
 first time it speaks. Crexil saves each designed voice at most once: the save is kept in the record
 (`voice.saved`) as soon as ElevenLabs answers, and before saving Crexil looks the voice up in the
-account by its `crexil_generated_voice_id` label. Crexil never deletes a voice; free slots in the
+account by its `crexil_gen_voice_id` label. Crexil never deletes a voice; free slots in the
 ElevenLabs account. A save refused because every slot is in use says so.
 
 ### Local ComfyUI lane
@@ -272,7 +275,9 @@ ElevenLabs account. A save refused because every slot is in use says so.
   version (`@vN`) never changes after it ships. Presets reload on every catalogue fetch, so no
   restart is needed.
 - Model files come from `scripts/download_models.py`, driven by `scripts/models-manifest.json`
-  (`--list`, `--verify`, `--group`, `--all`). It needs the `hf` CLI, `curl`, and for gated
+  (`--list`, `--verify`, `--group`, `--all`). With no arguments it fetches only the `flux-core`
+  starter group, all Apache-2.0; any other group downloads when named, and every entry prints its
+  recorded licence before it downloads. It needs the `hf` CLI, `curl`, and for gated
   repositories a Hugging Face token. It writes under the manifest's `models_root` key; `MODELS_ROOT`
   moves only where the server and `scripts/smoke.py` look.
 - `scripts/smoke.py` submits every graph in `workflows/` to a running ComfyUI and checks that a PNG
@@ -321,9 +326,12 @@ ElevenLabs account. A save refused because every slot is in use says so.
 
 ### Hosted models
 
-- One transport, OpenRouter, and one key, `OPENROUTER_API_KEY`, from `.env` or the setup route
-  (`POST /api/setup/openrouter` with the header `X-Cockpit-Setup: 1`; the client has no form for
-  it yet); the environment wins. Without a key the hosted lane is benched, nothing else.
+- Hosted images go through one transport, OpenRouter, with one key, `OPENROUTER_API_KEY`, from
+  `.env` or the Connections room's key form, which saves it through the setup route
+  (`POST /api/setup/openrouter` with the header `X-Cockpit-Setup: 1`, loopback clients only) into
+  `secrets.json` beside the store; the environment wins. Without a key the hosted image lane is
+  benched, nothing else. Hosted audio goes to ElevenLabs with `ELEVENLABS_API_KEY`, read from the
+  environment only.
 - The model list is OpenRouter's live catalogue, cached for six hours with a snapshot in the staging
   folder. `providers.json` holds pins, overrides and the offline fallback, and `enabled: true` pins
   a model to the top of the picker. Listed prices are estimates; the billed cost comes back with
@@ -353,6 +361,7 @@ ElevenLabs account. A save refused because every slot is in use says so.
 - **No authentication.** The server trusts localhost: a Host allow-list, an Origin check, and a key
   setup route that refuses non-loopback clients unless `COCKPIT_LOOPBACK_PUBLISH=1` (set in
   `compose.yaml`, where clients arrive from a bridge address). Never expose the port.
+  [SECURITY.md](../SECURITY.md) holds the threat model as built and what leaves the machine.
 - **The voice director's column.** While it is open it sets `--director-inset` on the root element, and every
   Filmstrip surface keeps its right edge clear of `var(--director-inset, 0px)`: in-flow surfaces sit inside the
   project room's `.workspace`, which yields through `margin-right`; fixed layers yield through `right`; the verb

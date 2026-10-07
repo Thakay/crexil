@@ -1,6 +1,6 @@
-"""Seams between wave 3 changes: review asks the hosted catalogue for fresh facts
-about exactly the operations it compiles, so a long-idle catalogue never refuses
-a hosted engine only for its age (law 17)."""
+"""Review asks the hosted catalogue for fresh facts about exactly the operations it
+compiles, so a long-idle catalogue never refuses a hosted engine only for its age
+(law 17)."""
 
 import pytest
 

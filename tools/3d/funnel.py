@@ -69,7 +69,7 @@ def promote_dir() -> Path:
             key, sep, val = line.strip().partition("=")
             if sep and key.strip() == "PROMOTE_DIR":
                 value = val.strip()
-    return Path(os.path.expanduser(value or "/mnt/d/PROMOTED"))
+    return Path(os.path.expanduser(value or "~/crexil-handoff"))
 
 
 RUNS = HERE / "runs"

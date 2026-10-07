@@ -3,8 +3,8 @@
 Runs every applicable brief from bench/briefs.json against the given
 presets with a FIXED seed, through the same path the artist uses (one
 workspace, one local-only turn per brief × preset, never raw ComfyUI), and
-assembles a static contact sheet under /mnt/d/BENCH/<date>-<tag>/ that
-opens on the Windows side by double-click: rows = briefs, columns = presets,
+assembles a static contact sheet under BENCH_ROOT/<date>-<tag>/ that opens
+in a browser by double-click: rows = briefs, columns = presets,
 cell = thumbnail + elapsed + params, click-through to full size.
 
 The sheet assembler is decoupled: results.json is the record, and
@@ -15,13 +15,13 @@ cells into the same format and reuse the assembler.
 Usage (from cockpit/server, its venv has PIL):
   uv run python ../../scripts/bench.py --presets raw-sdxl,raw-flux2,prop-sheet --tag baseline
   uv run python ../../scripts/bench.py --role region_source --presets raw-sdxl --tag region-sources
-  uv run python ../../scripts/bench.py --assemble-only --dir /mnt/d/BENCH/2026-07-26-baseline
+  uv run python ../../scripts/bench.py --assemble-only --dir ../../.staging/bench/2026-07-26-baseline
 
 Notes: turns run sequentially so per-cell elapsed is generation time, not
 queue wait (one-GPU truth); a failed cell records its error and the run
 continues; parked briefs (ui-text) are skipped unless --include-parked.
-BENCH_ROOT overrides the sheet root (a dry run against a harness server,
-COCKPIT_HARNESS_EXECUTORS=1, lands under .staging instead of the drive).
+BENCH_ROOT is the sheet root: `.staging/bench` in the checkout unless set,
+for example to a folder on a Windows drive under WSL.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from html import escape
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-BENCH_ROOT = Path(os.environ.get("BENCH_ROOT", "/mnt/d/BENCH"))
+BENCH_ROOT = Path(os.environ.get("BENCH_ROOT", REPO / ".staging" / "bench"))
 THUMB_H = 260
 TURN_TIMEOUT_S = 600
 

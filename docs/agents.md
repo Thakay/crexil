@@ -121,9 +121,11 @@ client, work through the same actions. Register it from the checkout root:
 claude mcp add --transport stdio crexil -- uv run --script "$PWD/tools/agent-door/crexil_mcp.py" --agent-name Claude --max-run-usd 0
 ```
 
-`--max-run-usd` is the door's own ceiling per run, on top of the server's limits. At `0`, the
-agent can only run free local engines. A paid submission must also restate the amount its review
-reserves. The [door's README](../tools/agent-door/README.md) lists the tools, flags and tests.
+`--max-run-usd` is the door's own ceiling per run, on top of the server's limits. It compares
+money, not where an engine runs: at `0` the agent can run only work whose review reserves nothing.
+Today that is the local engines, but a hosted model that the live catalogue prices at $0 would pass
+the ceiling and send its prompt off the machine. A paid submission must also restate the amount its
+review reserves. The [door's README](../tools/agent-door/README.md) lists the tools, flags and tests.
 
 Door errors give the server's plain line, then the next move, then a stable kind:
 
@@ -184,7 +186,8 @@ words with one `row_idx`, and a continuation with the `row_idx` after its source
 ## Delivery and its files
 
 Delivery copies the chosen takes into the installation's hand-off folder, `PROMOTE_DIR` in
-`.env`, as one character package: a folder named after the project and the delivery, such as
+`.env` (unset, `crexil-handoff` in the user's home folder; the server never creates it), as one
+character package: a folder named after the project and the delivery, such as
 `dwarf-blacksmith_3f9a0c1d2e4b/`. Each take lands in its medium's folder: `Art/` for images,
 `Models/` for meshes as GLB, `Audio/Voice/` for spoken lines, `Audio/Voice/Previews/` for voice
 design previews and `Audio/SFX/` for sound effects. A take is named by its grid label and its own

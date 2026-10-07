@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The promotion boundary: copy a PNG + its sidecar manifest JSON from ext4
-staging into the Windows-mounted promoted tree, per preset.
+"""The promotion boundary: copy a PNG + its sidecar manifest JSON from
+staging into the hand-off folder, per preset.
 
 A standalone CLI that bypasses the cockpit: nothing it copies is recorded in
 the store, the PROMOTE_ROOTS fence is not applied, and the cockpit's own
@@ -12,8 +12,8 @@ Usage:
   scripts/promote.py <image.png> --preset prop-sheet [--manifest m.json]
                      [--asset-id abc123]
 
-PROMOTE_DIR resolution order: $PROMOTE_DIR, repo .env, /mnt/d/PROMOTED.
-Prints the two promoted paths on success.
+PROMOTE_DIR resolution order: $PROMOTE_DIR, repo .env, then the server's
+default, ~/crexil-handoff. Prints the two promoted paths on success.
 """
 
 from __future__ import annotations
@@ -43,9 +43,9 @@ def read_env_file() -> dict:
 
 
 def promote_dir() -> Path:
-    return Path(os.environ.get("PROMOTE_DIR")
-                or read_env_file().get("PROMOTE_DIR")
-                or "/mnt/d/PROMOTED")
+    return Path(os.path.expanduser(os.environ.get("PROMOTE_DIR")
+                                   or read_env_file().get("PROMOTE_DIR")
+                                   or "~/crexil-handoff"))
 
 
 def atomic_copy(src: Path, dest: Path) -> None:

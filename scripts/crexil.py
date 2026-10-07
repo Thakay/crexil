@@ -28,7 +28,7 @@ Examples:
   crexil.py backup PROJECT project.crexil.zip
   crexil.py restore project.crexil.zip --name "Restored project"
   crexil.py decisions PROJECT                   # the decision record, one JSON line per decision
-  crexil.py --actor human:Kay reveal RUN --reason "Done listening"
+  crexil.py --actor human:Ada reveal RUN --reason "Done listening"
 """
 
 from __future__ import annotations

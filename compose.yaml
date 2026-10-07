@@ -9,11 +9,11 @@
 # (`wsl --shutdown` or networkingMode=mirrored brings it back).
 #
 # Machine values come from the repo .env (see .env.example), with these defaults:
-#   COCKPIT_PORT    host port for the UI and API                  (8000)
+#   COCKPIT_PORT    host port for the UI and API                    (8000)
 #   MODELS_ROOT     host folder of model weights, mounted read-only (~/models)
-#   PROMOTE_DIR     the hand-off folder a promoted take lands in  (/mnt/d/PROMOTED)
-#   PROMOTE_ROOTS   the fence: where a re-point may go             (/mnt/d)
-#   PROMOTE_MOUNT   the drive or folder mounted for promotion      (/mnt/d)
+#   PROMOTE_DIR     the hand-off folder a delivery lands in         ($HOME/crexil-handoff)
+#   PROMOTE_ROOTS   the fence: where a re-point may go              (the hand-off folder)
+#   PROMOTE_MOUNT   the folder or drive mounted for promotion       (the hand-off folder)
 # Use `docker compose -p <name>` to run a second, separate instance: the
 # container and the data volume are named after the project.
 
@@ -31,30 +31,40 @@ services:
       THREED_URL: http://host.docker.internal:8189
       VOICE_RUNNER_URL: http://host.docker.internal:8190
       # compose interpolates ${...} from the repo .env (the file itself is
-      # never baked into the image)
+      # never baked into the image, and the app in here never reads it)
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_AGENT_ID: ${ELEVENLABS_VOICE_AGENT_ID:-}
+      CREXIL_VOICE_MINUTES_CAP: ${CREXIL_VOICE_MINUTES_CAP:-0}
+      CREXIL_VOICE_SESSION_MAX_S: ${CREXIL_VOICE_SESSION_MAX_S:-300}
       # tells the in-container app that the HOST publish above is loopback,
       # so the localhost-only setup surface stays usable. If you ever change
       # the publish away from 127.0.0.1, REMOVE this line (the setup surface
       # will then refuse, correctly: remote exposure needs real auth).
       COCKPIT_LOOPBACK_PUBLISH: "1"
-      # The promotion drive is mounted below at the SAME path inside and out.
+      # The hand-off folder is mounted below at the SAME path inside and out.
       # PROMOTE_ROOTS is the fence: a target outside it is refused in words,
       # which is what keeps /tmp and /data (writable in here, erased by a
-      # rebuild or `down -v`) from ever taking a promotion.
-      PROMOTE_DIR: ${PROMOTE_DIR:-/mnt/d/PROMOTED}
-      PROMOTE_ROOTS: ${PROMOTE_ROOTS:-/mnt/d}
+      # rebuild or `down -v`) from ever taking a promotion. Empty, the fence
+      # is the hand-off folder itself.
+      PROMOTE_DIR: ${PROMOTE_DIR:-${HOME}/crexil-handoff}
+      PROMOTE_ROOTS: ${PROMOTE_ROOTS:-}
     volumes:
       - ./presets:/repo/presets:ro
       - ./workflows:/repo/workflows:ro
       - ./providers.json:/repo/providers.json:ro   # external engines: models and price estimates
       - ./configs:/repo/configs:ro   # dials + engines tables, served as-is
       - ${MODELS_ROOT:-~/models}:/models:ro          # read-only: manifest hashing
-      # The promotion boundary is the DRIVE (or parent folder), not the one
-      # folder, and it keeps its own path so what the artist names is what the
-      # cockpit sees and prints. Mounting the drive is what lets a re-point
-      # reach anything real; PROMOTE_ROOTS above is what keeps a typo on it.
-      - ${PROMOTE_MOUNT:-/mnt/d}:${PROMOTE_MOUNT:-/mnt/d}
+      # The promotion boundary: the hand-off folder, or the parent folder or
+      # drive PROMOTE_MOUNT names so a re-point can reach further, while
+      # PROMOTE_ROOTS above keeps a typo inside it. It keeps its own path, so
+      # what the artist names is what the cockpit sees and prints, and a
+      # missing folder stops the start instead of being created.
+      - type: bind
+        source: ${PROMOTE_MOUNT:-${PROMOTE_DIR:-${HOME}/crexil-handoff}}
+        target: ${PROMOTE_MOUNT:-${PROMOTE_DIR:-${HOME}/crexil-handoff}}
+        bind:
+          create_host_path: false
       - cockpit-data:/data           # sqlite + staging (named volume: sane locking)
     restart: unless-stopped
 

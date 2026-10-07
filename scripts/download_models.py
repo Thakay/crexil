@@ -2,12 +2,16 @@
 """Idempotent model downloader driven by scripts/models-manifest.json.
 
 Stdlib only; shells out to `hf download` (HF repos) and `curl` (plain URLs).
-License metadata lives in the manifest and is recorded, never enforced.
+License metadata lives in the manifest and is shown, never enforced: every
+entry prints its recorded licence before it downloads and in --list. With no
+arguments only the starter group downloads, whose weights are all Apache-2.0;
+a group holding non-commercial or unconfirmed weights downloads only when it
+is named (PRD section 2: never a default, never blocked when asked for).
 Gated repos are skipped with instructions unless an HF token is present.
 
 Usage:
-  scripts/download_models.py                       # default groups, in priority order
-  scripts/download_models.py --group flux-core     # one group (repeatable)
+  scripts/download_models.py                       # the starter group, flux-core
+  scripts/download_models.py --group sdxl-rails    # one group (repeatable)
   scripts/download_models.py --all                 # every group incl. deferred
   scripts/download_models.py --list                # show plan + on-disk status
   scripts/download_models.py --verify              # HEAD-check every source URL
@@ -26,7 +30,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = REPO_ROOT / "scripts" / "models-manifest.json"
-DEFAULT_GROUPS = ["flux-core", "sdxl-rails", "krita-sd15"]
+# The starter only: FLUX.2 klein 4B, its text encoder and its VAE, Apache-2.0.
+DEFAULT_GROUPS = ["flux-core"]
+LICENCES = ("Every entry prints the licence the manifest recorded. Some groups hold "
+            "non-commercial or unconfirmed weights: read docs/third-party.md first.")
 
 GATE_HELP = (
     "  gated repo and no HF token found.\n"
@@ -121,17 +128,20 @@ def main() -> int:
     entries = [e for g in group_order if g in wanted
                for e in m["entries"] if e["group"] == g]
     token = have_hf_token()
+    print(LICENCES)
 
     if args.list or args.verify:
         for e in entries:
             if e.get("managed_by"):
                 print(f"EXTERNAL {e['group']:12} {e['name']:70} ~{e['approx_gb']:.2f}GB"
-                      f"  (managed by {e['managed_by'].split(' ')[0]}; license ledger only)")
+                      f"  (managed by {e['managed_by'].split(' ')[0]}; license ledger only)"
+                      f"  licence: {e['license']}")
                 continue
             dest = root / e["dest"]
             state = "PRESENT" if size_ok(dest, e["approx_gb"]) else "missing"
             gate = " [GATED]" if e.get("requires_hf_gate") else ""
-            line = f"{state:8} {e['group']:12} {e['dest']:70} ~{e['approx_gb']:.2f}GB{gate}"
+            line = (f"{state:8} {e['group']:12} {e['dest']:70} ~{e['approx_gb']:.2f}GB{gate}"
+                    f"  licence: {e['license']}")
             if args.verify and state != "PRESENT":
                 ok, code = head_check(source_url(e))
                 line += f"  url:{code}{'' if ok else '  <-- BROKEN'}"
@@ -154,7 +164,7 @@ def main() -> int:
             print(GATE_HELP.format(repo=e["source"]["repo"]))
             skipped_gated.append(e["name"])
             continue
-        print(f"GET  ~{e['approx_gb']}GB  {tag} -> {dest}", flush=True)
+        print(f"GET  ~{e['approx_gb']}GB  {tag} -> {dest}  licence: {e['license']}", flush=True)
         ok = (download_url(e, dest) if e["source"]["type"] == "url"
               else download_hf(e, dest, root))
         if ok and size_ok(dest, e["approx_gb"]):
