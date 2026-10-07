@@ -287,3 +287,34 @@ test('verbs and operations that cannot act stay visible, de-emphasised, with the
   await voice.scrollIntoViewIfNeeded();
   await shots(page,'fx-c3-drawer-badge');
 });
+
+test('a refused paid attempt says nothing was charged once, and its whole cause reads beside its one move (laws 3, 4, 5)',async({page,request})=>{
+  const health=await(await request.get('/api/health')).json();
+  test.skip(Boolean(health.preview),'Attempt faces need scripted executors to fail a slot.');
+  const ops:{id:string;revision:string;availability:string}[]=await(await request.get('/api/crexil/operations')).json();
+  const sfx=ops.find(op=>op.id==='audio:sfx:elevenlabs-sfx');
+  test.skip(!sfx||sfx.availability==='unavailable','ElevenLabs Sound Effects needs its placeholder key.');
+  const project=await(await request.post('/api/crexil/projects',{data:{...command(),name:`Refused ${Date.now()}`}})).json();
+  const direction=await(await request.post(`/api/crexil/projects/${project.id}/directions`,{data:{...command(),title:'Forge strike',setup:{
+    action:'sfx',prompt:'One bright hammer blow on an anvil',spending_policy:'published_tariff',spending_limit_usd:1,attempt_limit:4,
+    operations:[{operation_id:sfx!.id,revision:sfx!.revision,count:1,controls:{duration_seconds:2}}]}}})).json();
+  const review=await(await request.get(`/api/crexil/directions/${direction.id}/review`)).json();
+  expect((await request.post(`/api/crexil/directions/${direction.id}/submit`,{data:{...command(),revision:review.revision,review_token:review.token}})).status()).toBe(201);
+  const slot=(await(await request.get(`/api/crexil/projects/${project.id}`)).json()).turns[0].slots[0];
+  // ElevenLabs' own words for a refusal before generation: the cause, its charge, the next move.
+  await request.post(`/api/harness/slots/${slot.id}/resolve`,{data:{outcome:'fail',kind:'preflight',charged_usd:0,
+    message:'ElevenLabs refused the request. Nothing was charged. Change what its details name, then prepare the request again.',
+    detail:'{"status": 400, "code": "invalid_labels"}'}});
+  await page.goto(`/#/projects/${project.id}`);
+  await page.getByRole('button',{name:'Grid ›',exact:true}).click();
+  const face=page.getByRole('group',{name:'Attempt 0A · failed',exact:true});
+  await expect(face).toContainText('FAILED');
+  // Line two says the charge, and only line two (law 5).
+  expect(((await face.innerText()).match(/nothing was charged/gi)??[]).length).toBe(1);
+  const cause=face.locator('p').first();
+  await expect(cause).toHaveText('ElevenLabs refused the request. Change what its details name, then prepare the request again.');
+  expect(await cause.evaluate(element=>element.scrollHeight<=element.clientHeight+1),'the cause reads whole at face width').toBe(true);
+  await expect(face.getByRole('button')).toHaveText(['REUSE SETUP']);
+  await drawnWhole(face);
+  await shots(page,'f18-grid-refused-face');
+});

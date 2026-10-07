@@ -68,6 +68,25 @@ describe('recordedWords: a take keeps its words as typed and as submitted', () =
     expect(recordedWords({payload: 'audio', prompt: '  Bring me the ore.  '}, {...typed, submitted: {text: 'Bring me the ore.'}}))
       .toEqual({typed: '  Bring me the ore.  ', submitted: 'Bring me the ore.'});
   });
+  it('reads an ElevenLabs take as submitted from the request ElevenLabs was sent', () => {
+    // The shape a live speech take keeps (its identifiers replaced): the words sit in the request's body.
+    const speech = {transport: 'audio', provider: 'elevenlabs', verb: 'speak', model_id: 'eleven_v4',
+      request: {method: 'POST', path: '/v1/text-to-speech/VOICE/with-timestamps', query: {output_format: 'pcm_24000'},
+        body: {text: 'Good steel takes patience.', model_id: 'eleven_v4', seed: 7}}, request_id: 'R', charged_micro_usd: 2080};
+    expect(recordedWords({payload: 'audio', prompt: 'Good steel takes patience.'},
+      {request: {setup: {prompt: 'Good steel takes patience.'}}, submitted: speech}))
+      .toEqual({typed: 'Good steel takes patience.', submitted: 'Good steel takes patience.'});
+    // a sound sends its description as the body's text
+    const sound = {...speech, verb: 'sfx', request: {method: 'POST', path: '/v1/sound-generation', query: {},
+      body: {text: 'Iron hissing in water', duration_seconds: 2}}};
+    expect(recordedWords({payload: 'audio', prompt: null}, {request: {setup: {prompt: 'Iron hissing in water'}}, submitted: sound}).submitted)
+      .toBe('Iron hissing in water');
+    // a voice design sends the description, never its preview line, as the words typed
+    const design = {...speech, verb: 'voice-design', request: {method: 'POST', path: '/v1/text-to-voice/design', query: {},
+      body: {voice_description: 'A gruff dwarf blacksmith', text: 'Steel remembers every strike, and so do I.', model_id: 'eleven_ttv_v3'}}};
+    expect(recordedWords({payload: 'audio', prompt: null}, {request: {setup: {prompt: 'A gruff dwarf blacksmith'}}, submitted: design}))
+      .toEqual({typed: 'A gruff dwarf blacksmith', submitted: 'A gruff dwarf blacksmith'});
+  });
   it("reads an image as submitted from the take's frozen prompt, contributions included", () => {
     expect(recordedWords({payload: 'image', prompt: `${BRIEF}\n\nKeep the silhouette.`}, {request: {setup: {prompt: BRIEF}}, submitted: {}}))
       .toEqual({typed: BRIEF, submitted: `${BRIEF}\n\nKeep the silhouette.`});

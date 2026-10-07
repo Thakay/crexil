@@ -20,7 +20,7 @@ const data = {
   nodes: [node('voice', 't1'), node('flying', 't2', {identity_hidden: true, engine: 'hidden'})],
   turns: [{id: 't1', idx: 0, created_at: '2026-10-05T00:00:00Z', prompt: 'A gruff voice', slots: [{id: 's1', engine: 'qwen3-tts', status: 'landed'}]},
     {id: 't2', idx: 1, created_at: '2026-10-05T00:00:00Z', prompt: 'Another', slots: [{id: 's2', engine: 'hidden', identity_hidden: true, status: 'running'}]}],
-  blind_runs: [{turn_id: 't1', revealed: true, revealed_by: {kind: 'human', name: 'Kay'}, revealed_at: '2026-10-05T01:00:00Z'},
+  blind_runs: [{turn_id: 't1', revealed: true, revealed_by: {kind: 'human', name: 'Ada'}, revealed_at: '2026-10-05T01:00:00Z'},
     {turn_id: 't2', revealed: false, revealed_by: null, revealed_at: null}],
 } as unknown as Snapshot;
 
@@ -45,18 +45,18 @@ describe('the record room', () => {
   it('says which runs were blind and who revealed them', () => {
     open();
     fireEvent.click(screen.getByRole('button', {name: 'Runs'}));
-    expect(screen.getByText(/^Blind run · revealed by Kay · /)).toBeInTheDocument();
+    expect(screen.getByText(/^Blind run · revealed by Ada · /)).toBeInTheDocument();
     expect(screen.getByText('Blind run · engines hidden until the reveal')).toBeInTheDocument();
     // a blind run in flight says how far it has got, never which attempt landed first
-    expect(screen.getByText('In progress · 0 of 1 attempts done')).toBeInTheDocument();
+    expect(screen.getByText('In progress · 0 of 1 attempt done')).toBeInTheDocument();
     expect(screen.queryByText(/Engine hidden · running/)).toBeNull();
   });
   it("keeps the name the record gives this browser's artist", () => {
     open();
     const name = screen.getByRole('textbox', {name: 'Recorded as'});
     expect(name).toHaveValue('Artist');
-    fireEvent.change(name, {target: {value: 'Kay'}});
-    expect(artist()).toEqual({kind: 'human', name: 'Kay'});
+    fireEvent.change(name, {target: {value: 'Ada'}});
+    expect(artist()).toEqual({kind: 'human', name: 'Ada'});
   });
 });
 

@@ -1,6 +1,7 @@
 // The grid room's keyboard and its working line, the second line of its head. Digits play
-// the room's take positions, Space the focused take and X the two marked takes, at matched
-// levels; playing is inspection, never a verb (law 11). S selects the focused take: it opens
+// the take positions of the audio run that holds focus, else of the room's first audio run;
+// Space plays the focused take and X the two marked takes, at levels matched across the room;
+// playing is inspection, never a verb (law 11). S selects the focused take: it opens
 // the take's optional reason, and the choice is recorded once, with that reason, through the
 // shared selection action ("the row is the choice"), so the record and its export hold one
 // decision with its author and reason (law 23). A blind run's reveal is asked for in line,
@@ -12,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchClient } from '../../api/client';
 import { isAudible, useAudition, usePlayer } from '../audio';
 import { command, isDefiniteRefusal, label, message, result, type Material, type Snapshot } from './api';
-import { keyHint, pairOf, playingLine } from './audition';
+import { digitPositions, keyHint, pairOf, playingLine, type RunPositions } from './audition';
 import { hiddenRuns, inFlight } from './blind';
 import { engineLane } from './catalogue';
 import { useCommandKey, useEscapeLayer } from './keys';
@@ -32,12 +33,21 @@ export function focusTake(id: string) {
   document.querySelector<HTMLElement>(`[data-take=${JSON.stringify(id)}]`)?.focus();
 }
 
-/** Audition over the room's take positions. Every key rests while anything covers the room;
- *  the digits also rest while the verb card is open, since 3 is its to-3D key. */
-export function useRoomAudition(takes: readonly (Material | null)[]) {
+/** The run the keyboard is in: the run whose grid cell holds focus (its `data-run`). */
+export function focusedRun(): string | null {
+  const cell = document.activeElement instanceof Element ? document.activeElement.closest('[data-run]') : null;
+  return cell?.getAttribute('data-run') ?? null;
+}
+
+/** Audition over the room's take positions; the digits number one audio run's positions. A
+ *  digit moves focus to the take it plays, so the next digit stays in its run. Every key rests
+ *  while anything covers the room; the digits also rest while the verb card is open, since 3 is
+ *  its to-3D key. */
+export function useRoomAudition(takes: readonly (Material | null)[], runs: readonly RunPositions[]) {
   const store = useViewStore();
   useAudition({
     takes,
+    digits: () => digitPositions(runs, focusedRun()),
     ready: key => !covered(store.getState()) && (key !== 'digit' || store.getState().acting.length === 0),
     focused: focusedTake,
     pair: () => pairOf(store.getState().acting, takes),
@@ -96,7 +106,7 @@ export function RoomLine({data, turns, takes, fastPick, refresh}: {
   const audible = takes.some(isAudible);
   const status = useRef<HTMLSpanElement>(null);
   // A take started, stopped or refused says itself; what was said before gives way to it.
-  const player = usePlayer(state => `${state.nodeId}:${state.playing}:${state.error}`);
+  const player = usePlayer(state => `${state.nodeId}:${state.playing}:${state.ended}:${state.error}`);
   const {announce} = fastPick;
   const heard = useRef(player);
   useEffect(() => {
@@ -133,11 +143,12 @@ function pickedFrom(data: Snapshot, turn: Turn): string[] {
 function Playing({takes}: {takes: readonly (Material | null)[]}) {
   const id = usePlayer(state => state.nodeId);
   const playing = usePlayer(state => state.playing);
+  const ended = usePlayer(state => state.ended);
   const error = usePlayer(state => state.error);
   const matched = usePlayer(state => Boolean(state.nodeId && state.levels[state.nodeId]?.matched));
   const take = takes.find(item => item !== null && item.id === id) ?? null;
   if (!take) return null;
-  return error ? `${label(take)} · ${error}` : playingLine(take, playing, matched);
+  return error ? `${label(take)} · ${error}` : playingLine(take, playing, matched, ended);
 }
 
 /** The reason S asks for. Enter records the choice with the reason; Escape, an empty Enter or

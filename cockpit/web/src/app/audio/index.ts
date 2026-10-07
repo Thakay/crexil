@@ -1,6 +1,6 @@
 // The audio surface's public parts. The media registry holds `audioMedium` as MEDIA.audio; a
-// surface calls useAudition with a run's take positions in grid order, and reads playback
-// through usePlayer.
+// surface calls useAudition with its take positions in grid order, and the positions its digits
+// number, and reads playback through usePlayer.
 export { AudioCell } from './AudioCell';
 export { AudioInspector, formatLine, levelLine, voiceLine } from './AudioInspector';
 export { MAX_ATTENUATION_DB, matchLevels, type Level } from './level';

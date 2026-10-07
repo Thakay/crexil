@@ -70,7 +70,7 @@ test('one character brief carries through image, voice, line reads, a sound and 
   };
   const leave=async()=>{await page.getByRole('button',{name:'Esc · Project',exact:true}).click();};
 
-  // J1 · the character brief fans out to the image engines; one take is chosen with a reason.
+  // The character brief fans out to the image engines; one take is chosen with a reason.
   await page.goto(`/#/projects/${project.id}`);
   await page.getByRole('button',{name:'+ New direction · N',exact:true}).first().click();
   await drawer.getByRole('textbox',{name:'Direction name',exact:true}).fill('Dwarf blacksmith');
@@ -82,7 +82,7 @@ test('one character brief carries through image, voice, line reads, a sound and 
   await pick('Act on 0B','0B','Reads as a smith from across the room.');
   await leave();
 
-  // J2 · a voice designed from the same brief: a new section on its row starts from its words, edited.
+  // A voice designed from the same brief: a new section on its row starts from its words, edited.
   await row(0).getByRole('button',{name:'+ Section',exact:true}).click();
   await drawer.getByRole('combobox',{name:'Action'}).selectOption('voice-design');
   const offer=drawer.getByRole('group',{name:'Start from the words of',exact:true});
@@ -127,7 +127,7 @@ test('one character brief carries through image, voice, line reads, a sound and 
   await run('Run 1 attempt · free');
   await land(3);
 
-  // J3 · a sound from the same brief, priced by its published tariff before it runs.
+  // A sound from the same brief, priced by its published tariff before it runs.
   await row(0).getByRole('button',{name:'+ Section',exact:true}).click();
   await drawer.getByRole('combobox',{name:'Action'}).selectOption('sfx');
   await drawer.getByRole('group',{name:'Start from the words of',exact:true}).getByRole('button',{name:'Start from the words of Dwarf blacksmith',exact:true}).click();
@@ -143,7 +143,7 @@ test('one character brief carries through image, voice, line reads, a sound and 
   await pick('Act on 4A, audio, 4.0 s','4A','Heaviest step; the iron rings.');
   await leave();
 
-  // J4 · the chosen image continues into 3D through the mesh lane, beside the line reads.
+  // The chosen image continues into 3D through the mesh lane, beside the line reads.
   await page.getByRole('button',{name:'Act on 0B',exact:true}).click();
   await page.getByRole('region',{name:'Actions on material',exact:true}).getByRole('button',{name:'Generate 3D',exact:true}).click();
   await choose('Generate 3D · TRELLIS.2 4B',1);
@@ -155,8 +155,8 @@ test('one character brief carries through image, voice, line reads, a sound and 
   await pick('Act on 5A','5A','Holds the silhouette.');
   await leave();
 
-  // J5 · one family: the brief's sections on one row, their continuations on the next, one
-  // line per start in the hue of what it makes (BIBLE invariant 8).
+  // One family: the brief's sections on one row, their continuations on the next, one
+  // line per start in the hue of what it makes.
   const view=await snapshot();
   const titles=(n:number)=>view.directions.filter(direction=>direction.row_idx===n).map(direction=>direction.title);
   expect(titles(0)).toEqual(['Dwarf blacksmith','Blacksmith voice','Blacksmith footsteps']);

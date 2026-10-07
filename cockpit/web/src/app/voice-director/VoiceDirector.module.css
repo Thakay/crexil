@@ -39,11 +39,14 @@ aside.panel .paid { color: var(--money); border-color: var(--money); background:
 .title { margin: 0; font: 12px var(--font-mono); text-transform: uppercase; color: var(--text); font-weight: 400; }
 aside.panel .close { margin-left: auto; padding: 5px 10px; white-space: nowrap; }
 
+/* The cap row is one line and never wraps, so nothing below it moves while a take plays. */
 .cap {
-  flex: none; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 6px 14px;
-  border-bottom: 1px solid var(--hairline);
+  flex: none; display: flex; justify-content: space-between; gap: 12px; padding: 6px 14px;
+  border-bottom: 1px solid var(--hairline); white-space: nowrap;
   font: 9px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--secondary);
 }
+.cap > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cap > .hint { flex: none; }
 
 .meter { padding: 10px 14px 0; flex: none; }
 .meter meter { width: 100%; height: 6px; }

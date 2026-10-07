@@ -87,9 +87,9 @@ describe('command', () => {
     expect(agent.request_id).not.toBe(command().request_id);
   });
   it("names the artist as this browser's setting names them, and Artist when it names no one", () => {
-    setArtistName('  Kay  ');
-    expect(artist()).toEqual({kind: 'human', name: 'Kay'});
-    expect(command().actor).toEqual({kind: 'human', name: 'Kay'});
+    setArtistName('  Ada  ');
+    expect(artist()).toEqual({kind: 'human', name: 'Ada'});
+    expect(command().actor).toEqual({kind: 'human', name: 'Ada'});
     setArtistName('x'.repeat(200));
     expect(artist().name).toHaveLength(120);
     setArtistName('   ');

@@ -7,6 +7,7 @@ import {$api} from '../../api/client';
 import {DecisionCard} from './RecordRoom';
 import {actionView} from './actions';
 import {actorLine,engineLabel,isHidden,label,message,money,type Actor,type Material,type Snapshot} from './api';
+import {attemptCharges,chargeLine} from './faces';
 import {recordedWords} from './family';
 import s from './Filmstrip.module.css';
 
@@ -56,7 +57,7 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
       <dt>Requested by</dt><dd>{actorLine(request?.actor)}</dd>
       <dt>Attempt</dt><dd>{node.take} · {new Date(node.created_at).toLocaleString()}</dd>
       <dt>Seed</dt><dd>{node.seed??(node.payload==='3d'&&node.verb!=='to_3d'?'Not used by this operation':'Not recorded')}</dd>
-      <dt>Confirmed charge</dt><dd>{node.charged_usd===null?'No confirmed charge recorded':money(node.charged_usd)}</dd>
+      <dt>Confirmed charge</dt><dd>{chargeLine(node,attemptCharges(data.nodes))}</dd>
       {node.committed_usd!==null&&<><dt>{typeof operation?.maximum_usd_per_attempt==='number'?'Spending bound':'Reserved at submission'}</dt><dd>{money(node.committed_usd)}</dd></>}
     </dl>}
     {operation?.cost_basis&&<p>{operation.cost_basis}</p>}
@@ -67,7 +68,7 @@ export function MaterialProvenance({node,data,navigate,openRecord}:{node:Materia
       return <div key={`${ref.node_id}:${index}`} className={s.recordSource}><strong>{index+1}. {node?label(node):ref.node_id}</strong><p>{ref.contribution||'No contribution instruction supplied.'}</p>
         {ref.role&&<p>Role · {ref.role}</p>}{ref.strength!=null&&<p>Strength · {ref.strength}</p>}{node&&<button onClick={()=>navigate(id)}>Inspect source ›</button>}</div>;
     })}</>:null}
-    {Boolean(Object.keys(controls).length)&&<><h3>{operation?.applied_controls?'Controls at review':'Saved settings'}</h3><dl>{Object.entries(controls).map(([name,value])=><div key={name}><dt>{name.replaceAll('_',' ')}</dt><dd>{controlValue(value)}</dd></div>)}</dl><p>The seed above and the submitted operation identify this attempt.</p></>}
+    {Boolean(Object.keys(controls).length)&&<><h3>{operation?.applied_controls?'Controls at review':'Saved settings'}</h3><dl>{Object.entries(controls).map(([name,value])=><div key={name}><dt>{name.replaceAll('_',' ')}</dt><dd>{controlValue(value)}</dd></div>)}</dl><p>{node.seed!=null?'The seed above and the submitted operation identify this attempt.':'The submitted operation identifies this attempt.'}</p></>}
     {(request?.brief||request?.project_instructions)&&<details><summary>Project instructions at acceptance</summary>{request.brief&&<p>{request.brief}</p>}{request.project_instructions&&<p>{request.project_instructions}</p>}</details>}
     {recorded?.regions&&<details><summary>Recorded edit regions and protected area</summary><pre>{JSON.stringify(recorded.regions,null,2)}</pre></details>}
     {recorded?.submitted&&<details><summary>Submitted workflow or operation</summary><pre>{JSON.stringify(recorded.submitted,null,2)}</pre></details>}

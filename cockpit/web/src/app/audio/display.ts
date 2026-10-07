@@ -17,19 +17,21 @@ export function bars(peaks: readonly number[], count: number): number[] {
   return out;
 }
 
+/** Seconds to the nearest tenth, the one rounding every length and clock reads by, so a face,
+ *  the working line and inspection never disagree about a take's length. */
+const tenths = (seconds: number) => Math.round(seconds * 10);
+
 /** Seconds as the audio clock reads them: 0:03.2. */
 export function clock(seconds: number): string {
-  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-  const tenths = Math.floor(safe * 10);
-  const minutes = Math.floor(tenths / 600);
-  const rest = (tenths - minutes * 600) / 10;
-  return `${minutes}:${rest.toFixed(1).padStart(4, '0')}`;
+  const counted = tenths(Number.isFinite(seconds) && seconds > 0 ? seconds : 0);
+  const minutes = Math.floor(counted / 600);
+  return `${minutes}:${((counted - minutes * 600) / 10).toFixed(1).padStart(4, '0')}`;
 }
 
 /** A take's length on a face: 4.4 s, or 12 s past ten seconds. */
 export function length(seconds: number | null | undefined): string {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return '';
-  return seconds < 10 ? `${seconds.toFixed(1)} s` : `${Math.round(seconds)} s`;
+  return seconds < 10 ? `${(tenths(seconds) / 10).toFixed(1)} s` : `${Math.round(seconds)} s`;
 }
 
 type Timed = {characters: string[]; starts: number[]};

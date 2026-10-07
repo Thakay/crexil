@@ -1,4 +1,4 @@
-// The verb card: the floating card beside the take or set being acted on (BIBLE: verb card).
+// The verb card: the floating card beside the take or set being acted on.
 // It floats inside the work area, below a room's head and working line and left of the
 // voice director's column, so it never covers a room's chrome (law 2). As the board draws
 // it, it sits beside the section of the take last acted on, right of it when there is room,

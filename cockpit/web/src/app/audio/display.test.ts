@@ -18,13 +18,20 @@ describe('waveform bars', () => {
 describe('time readouts', () => {
   it('reads seconds as a clock', () => {
     expect(clock(3.24)).toBe('0:03.2');
-    expect(clock(61.05)).toBe('1:01.0');
+    expect(clock(61.04)).toBe('1:01.0');
+    expect(clock(61.06)).toBe('1:01.1');
     expect(clock(Number.NaN)).toBe('0:00.0');
   });
   it('states a take length on a face', () => {
     expect(length(4.44)).toBe('4.4 s');
     expect(length(12.6)).toBe('13 s');
     expect(length(null)).toBe('');
+  });
+  it('reads a length on a face and on the clock alike, to the nearest tenth', () => {
+    // a live line read: its face said 4.5 s while inspection said 0:04.4
+    expect([length(4.48), clock(4.48)]).toEqual(['4.5 s', '0:04.5']);
+    expect([length(8.76), clock(8.76)]).toEqual(['8.8 s', '0:08.8']);
+    expect(clock(59.96)).toBe('1:00.0');
   });
 });
 

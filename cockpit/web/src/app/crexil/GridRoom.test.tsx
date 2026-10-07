@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { player } from '../audio/player';
 import type { Material, Snapshot } from './api';
+import type { RunPositions } from './audition';
 import { RoomLine, useFastPick, useRoomAudition } from './GridRoom';
 import { useEscapeBase, useEscapeKey } from './keys';
 import { createViewStore, ViewContext } from './view';
@@ -18,7 +19,7 @@ const snapshot = (selection: string[] = [], revealed = false) => ({
   project: {id: 'p1'}, nodes: takes, execution_groups: [],
   directions: [{id: 'd1', revision: 4, selection, node_ids: takes.map(item => item.id), turn_ids: ['t1']}],
   turns: [{id: 't1', idx: 0, slots: [{id: 's1', status: 'landed'}, {id: 's2', status: 'landed'}]}],
-  blind_runs: [{turn_id: 't1', revealed, revealed_by: revealed ? {kind: 'human', name: 'Kay'} : null}],
+  blind_runs: [{turn_id: 't1', revealed, revealed_by: revealed ? {kind: 'human', name: 'Ada'} : null}],
 }) as unknown as Snapshot;
 
 type Sent = {method: string; path: string; body: Record<string, unknown>};
@@ -153,11 +154,11 @@ describe('the reveal follows the choice (law 23, never a dialog)', () => {
     expect(sent[0]).toMatchObject({path: '/api/crexil/turns/t1/reveal', body: {reason: 'Chosen blind.', actor: {kind: 'human'}}});
   });
   it("announces the reveal in the line's one status and moves focus there", async () => {
-    answers['POST /api/crexil/turns/t1/reveal'] = () => Response.json({turn_id: 't1', revealed: true, revealed_by: {kind: 'human', name: 'Kay'}});
+    answers['POST /api/crexil/turns/t1/reveal'] = () => Response.json({turn_id: 't1', revealed: true, revealed_by: {kind: 'human', name: 'Ada'}});
     mount(snapshot(['b1']));
     fireEvent.click(screen.getByRole('button', {name: 'Reveal engines'}));
     const status = screen.getByRole('status');
-    await waitFor(() => expect(status).toHaveTextContent('Run 0 revealed by Kay. Every take now names its engine and price.'));
+    await waitFor(() => expect(status).toHaveTextContent('Run 0 revealed by Ada. Every take now names its engine and price.'));
     await waitFor(() => expect(status).toHaveFocus());
     expect(screen.getAllByRole('status')).toHaveLength(1);
   });
@@ -185,7 +186,7 @@ describe('the reveal follows the choice (law 23, never a dialog)', () => {
   it('names who revealed a run once it is revealed', () => {
     mount(snapshot(['b1'], true));
     expect(screen.queryByRole('group', {name: 'Blind run 0'})).toBeNull();
-    expect(screen.getByText('Run 0 revealed by Kay')).toBeInTheDocument();
+    expect(screen.getByText('Run 0 revealed by Ada')).toBeInTheDocument();
   });
 });
 
@@ -201,6 +202,19 @@ describe('the working line', () => {
     await act(() => player.play('b1'));
     expect(screen.getByRole('status')).toHaveTextContent('Playing 0B · 4.4 s · as recorded');
   });
+  it('says a take that played to its end as played, never paused', async () => {
+    mount(snapshot());
+    let element: HTMLMediaElement | null = null;
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+      element = this;
+      this.dispatchEvent(new Event('play'));
+      return Promise.resolve();
+    });
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    await act(() => player.play('b1', {duration: 4.4}));
+    act(() => {element!.dispatchEvent(new Event('pause')); element!.dispatchEvent(new Event('ended'));});
+    expect(screen.getByRole('status')).toHaveTextContent('Played 0B · 4.4 s · as recorded');
+  });
   it("says why a take did not play, such as the voice director's session connecting", async () => {
     mount(snapshot());
     const remove = player.beforePlay(() => 'The voice director is connecting. Play the take once it is listening.');
@@ -211,12 +225,20 @@ describe('the working line', () => {
 });
 
 describe('audition in the grid room', () => {
-  function Audition({room}: {room: ReturnType<typeof createViewStore>}) {
-    return <ViewContext.Provider value={room}><Keys/></ViewContext.Provider>;
+  // A row as the live seed laid it out: three images first, then the voices, then the sounds,
+  // whose second position waits for its attempt.
+  const image = (id: string) => ({...take(id, 0), payload: 'image'}) as unknown as Material;
+  const sound = (id: string, slot_pos: number) => ({...take(id, slot_pos), turn_id: 't2'}) as unknown as Material;
+  const runs: RunPositions[] = [{run: 'r0', takes: [image('i1'), image('i2'), image('i3')]}, {run: 't1', takes},
+    {run: 't2', takes: [sound('c1', 0), null, sound('c3', 2)]}];
+  const room = runs.flatMap(run => run.takes);
+  function Audition({room: view}: {room: ReturnType<typeof createViewStore>}) {
+    return <ViewContext.Provider value={view}><Keys/></ViewContext.Provider>;
   }
   function Keys() {
-    useRoomAudition(takes);
-    return <>{takes.map(item => <button key={item.id} data-take={item.id} data-audio-face="">Act on {item.id}</button>)}</>;
+    useRoomAudition(room, runs);
+    return <>{runs.map(run => <div key={run.run} data-run={run.run}>{run.takes.map((item, i) => item
+      ? <button key={item.id} data-take={item.id} data-audio-face="">Act on {item.id}</button> : <span key={i}/>)}</div>)}</>;
   }
   const digit = (n: number) => fireEvent.keyDown(document.activeElement ?? document.body, {key: String(n), code: `Digit${n}`});
   let played: string[] = [];
@@ -229,12 +251,34 @@ describe('audition in the grid room', () => {
     });
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   });
-  it('plays position N with digit N and moves focus to its face, so S and Space act on the take just heard', async () => {
+  it("plays position N of the room's first audio run with no take focused, so a row whose images come first reaches its voices", async () => {
     render(<Audition room={createViewStore({room: 0})}/>);
     digit(2);
     await act(() => Promise.resolve());
     expect(played).toEqual(['a2']);
+    // focus moves to the face it plays, so S and Space act on the take just heard
     expect(screen.getByRole('button', {name: 'Act on a2'})).toHaveFocus();
+  });
+  it('numbers the positions of the run that holds focus, keeps focus in that run, and keeps an empty position its number', async () => {
+    render(<Audition room={createViewStore({room: 0})}/>);
+    screen.getByRole('button', {name: 'Act on c1'}).focus();
+    digit(3);
+    await act(() => Promise.resolve());
+    expect(played).toEqual(['c3']);
+    expect(screen.getByRole('button', {name: 'Act on c3'})).toHaveFocus();
+    digit(2);
+    await act(() => Promise.resolve());
+    expect(played).toEqual(['c3']);
+    digit(1);
+    await act(() => Promise.resolve());
+    expect(played).toEqual(['c3', 'c1']);
+  });
+  it("plays the first audio run's takes while an image holds focus, never the images", async () => {
+    render(<Audition room={createViewStore({room: 0})}/>);
+    screen.getByRole('button', {name: 'Act on i2'}).focus();
+    digit(3);
+    await act(() => Promise.resolve());
+    expect(played).toEqual(['b1']);
   });
   it('rests every key while anything covers the room, the related outputs and project edit included', async () => {
     for (const overlays of [[{kind: 'group', id: 'g'}], [{kind: 'projectEdit'}]] as const) {

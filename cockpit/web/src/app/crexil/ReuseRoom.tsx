@@ -3,7 +3,7 @@
 import {useState} from 'react';
 import type {components} from '../../generated/openapi';
 import {$api,fetchClient} from '../../api/client';
-import {command,isDefiniteRefusal,label,message,result} from './api';
+import {command,count,isDefiniteRefusal,label,message,result} from './api';
 import {MaterialThumbnail} from './MaterialThumbnail';
 import s from './Filmstrip.module.css';
 
@@ -64,7 +64,7 @@ export function ReuseRoom({wid,close,chooseFiles,refresh,inspect}:{wid:string;cl
           <div className={s.actions}><button disabled={!selected} onClick={()=>void check()}>Review import</button></div>
         </fieldset>
         {review&&<section className={s.sequenceReview} aria-label="Import review"><h2>{review.filename}</h2><p>From {review.source_project_name}</p>
-          <p>{review.files.length} files · {(review.total_bytes/1024/1024).toFixed(2)} MB. Original bytes are copied; no generation is requested.</p>
+          <p>{count(review.files.length,'file')} · {(review.total_bytes/1024/1024).toFixed(2)} MB. Original bytes are copied; no generation is requested.</p>
           <p>Recorded source relationships remain in the imported provenance. The new material can become a source for directions in this project.</p>
           {review.missing.map(note=><p key={note}>{note}</p>)}{review.errors.map(note=><p key={note} className={s.error}>{note}</p>)}
           <details><summary>Files and hashes</summary>{review.files.map((file,index)=><p className={s.deliveryPath} key={index}>{file.filename} · {file.size_bytes.toLocaleString()} bytes<br/>{file.sha256}</p>)}</details>
