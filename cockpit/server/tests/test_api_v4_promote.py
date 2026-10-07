@@ -79,9 +79,10 @@ async def test_the_target_says_where_it_is_and_which_disk_it_is_on(
         assert t["ok"] is True and t["path"] == str(root)
         assert t["source"] == "env" and t["default_path"] == str(root)
         assert t["message"] is None and t["remedy"] is None
-        # the cockpit's own disk is legal but never silent, and the
+        # this machine's own disk is legal but never silent, and the
         # claim comes from the mount table, so a tmp_path root says it
-        assert "the cockpit's own disk" in t["where"]
+        assert t["where"] == ("on this machine's own disk, not a mounted drive, "
+                              "so nothing delivered here leaves this machine")
 
 
 async def test_a_broken_target_is_read_as_broken_without_being_created(

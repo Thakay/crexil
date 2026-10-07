@@ -61,7 +61,7 @@
     "file": "Juggernaut-XI-byRunDiffusion.safetensors"
    },
    "approx_gb": 7.1,
-   "license": "CreativeML OpenRAIL++ + RunDiffusion terms",
+   "license": "Treat as non-commercial: CC BY-NC-ND 4.0 on its model card (checked 2026-09-18); recorded earlier as CreativeML OpenRAIL++ + RunDiffusion terms",
    "commercial_note": "RunDiffusion restricts use in paid generation APIs/services; check its terms against your use. Its model card said CC BY-NC-ND 4.0 when checked on 2026-09-18: treat it as non-commercial. Newest release at download time (XI-v11 supersedes XL-v9)."
   },
   {
