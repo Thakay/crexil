@@ -114,7 +114,9 @@ blind voice-design run, auditions it from the keyboard, picks a take with a reas
 and reads the record and its export. Every voice-design operation the harness offers takes part;
 scripted audio takes are four-second tones. The harness suite sets a placeholder
 `ELEVENLABS_API_KEY`, with `ELEVENLABS_URL` on a closed port, so the ElevenLabs operations are
-ready; the scripted executors never call ElevenLabs.
+ready; the scripted executors never call ElevenLabs. It also checks that the digits reach the voices of a
+row whose images come first, that an attempt returning three takes shows its one charge once, and that a
+local voice marks ElevenLabs v4 before it is chosen.
 
 Playwright runs specs without type-checking them. `scripts/check.sh` type-checks the specs,
 `paths.ts` and both Playwright configs through `cockpit/web/tsconfig.e2e.json`: the app's strict

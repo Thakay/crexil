@@ -176,8 +176,8 @@ artist listens, picks and delivers. With the door registered at a `0` ceiling, t
 6. `crexil_propose` with `{"take_ids": ["TAKE"], "reason": "Warmest growl, clearest consonants"}`.
    This records the agent's assessment. The artist's pick stays empty until the artist picks.
 
-The artist then auditions the takes in the run's grid room (a digit plays a take, Space pauses, X
-switches two marked takes), selects one with S and a reason, reveals a blind run, and delivers it. A
+The artist then auditions the takes in the run's grid room (a digit plays a take of the run that holds focus, else of the
+row's first audio run; Space pauses; X switches two marked takes), selects one with S and a reason, reveals a blind run, and delivers it. A
 later run can `speak` the character's lines with that voice: pass the picked take as the run's
 source, whose role is `voice`. One run speaks one line, so each line, and each voice, gets its own
 run. To keep a character's runs together on the Filmstrip, create the sections that start from its
