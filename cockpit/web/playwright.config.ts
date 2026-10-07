@@ -63,6 +63,10 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 30_000,
     env: {
+      // The server reads no .env (python-dotenv's own switch), so a
+      // checkout's keys, agent, store and folders never reach the harness,
+      // whatever its .env holds; everything it needs is set here.
+      PYTHON_DOTENV_DISABLED: "1",
       COCKPIT_DB: DB,
       COCKPIT_STAGING_DIR: STAGING,
       COCKPIT_STATIC_DIR: "../web/dist",
@@ -71,9 +75,10 @@ export default defineConfig({
       THREED_URL: "http://127.0.0.1:9",
       VOICE_RUNNER_URL: "http://127.0.0.1:9",
       OPENROUTER_URL: "http://127.0.0.1:9",
-      // Keys are blank whatever the shell or a checkout's .env holds: an
-      // empty variable is set, so the server's .env loading never fills it.
+      // Keys and the voice director's agent are blank whatever the shell
+      // exported: an empty variable is set.
       OPENROUTER_API_KEY: "",
+      ELEVENLABS_VOICE_AGENT_ID: "",
       // ElevenLabs gets a placeholder key at a closed port, so its operations
       // are ready and a blind voice run has two engines; the scripted
       // executors never call ElevenLabs, and a real key never reaches here.
