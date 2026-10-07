@@ -1,5 +1,8 @@
 // Measure actual card anchors after layout and both scroll axes. The SVG is
 // pointer-transparent; clipping never substitutes another card for a source.
+// A change of its inputs (bindings, nodes, acting, enabled) observes afresh the rows,
+// strips, cards and starters then drawn; its caller changes them only with the record,
+// the room or the acting takes, so a render alone never re-measures.
 import {useLayoutEffect,useRef,useState,type ReactNode} from 'react';
 import {ancestors,routeLineage,type Anchor,type Binding,type RowBox} from './lineage';
 import type {Material} from './api';

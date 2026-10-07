@@ -4,16 +4,27 @@
 import { sentBy } from './actions';
 import { money, type Operation } from './api';
 
-const LOOPBACK = /^(127\.|localhost(:|$)|\[::1\])/;
+/** A loopback host, with or without its port: 127.x.x.x, localhost or [::1]. */
+const LOOPBACK = /^(127(\.\d{1,3}){3}|localhost|\[::1\])(:\d+)?$/;
+
+/** The host Crexil sends an operation's request to; a destination that is not an address,
+ *  as given. */
+function destinationHost(op: Pick<Operation, 'data_destination'>): string {
+  try {return new URL(op.data_destination).host;} catch {return op.data_destination;}
+}
+
+/** Whether Crexil sends the operation's request to this machine: its destination is a
+ *  loopback host. Decided by where the request goes, never by price; any other host, and a
+ *  destination that is not an address, is off this machine. */
+export const onThisMachine = (op: Pick<Operation, 'data_destination'>): boolean => LOOPBACK.test(destinationHost(op));
 
 /** Where Crexil sends the request, and what goes with it: off this machine to a hosted
  *  provider, or to a runtime on this machine. A runtime's own onward calls are its own;
  *  this line says only where Crexil sends. */
 export function dataLine(op: Pick<Operation, 'data_destination'>, action: string | null | undefined): string {
-  let host = op.data_destination;
-  try {host = new URL(op.data_destination).host;} catch { /* not an address: said as given */ }
+  const host = destinationHost(op);
   const what = sentBy(action);
-  return LOOPBACK.test(host) ? `Sends to ${host} on this machine: ${what}.` : `Sends off this machine to ${host}: ${what}.`;
+  return onThisMachine(op) ? `Sends to ${host} on this machine: ${what}.` : `Sends off this machine to ${host}: ${what}.`;
 }
 
 /** How the operation is priced. A tariff counted in characters or seconds is said in its

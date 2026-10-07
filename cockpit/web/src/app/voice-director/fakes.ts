@@ -25,6 +25,12 @@ export const OPERATIONS: Operation[] = [
   operation({id: 'raw-sdxl', label: 'SDXL', actions: ['generate'], output_payload: 'image'}),
 ];
 
+/** A hosted engine whose published price is nothing, as the server lists it (a zero ceiling):
+ *  free, but its requests leave this machine. */
+export const freeHosted = (verb: 'sfx' | 'voice-design', label: string) => operation({id: `audio:${verb}:free-hosted`, label,
+  actions: [verb], execution_location: 'Hosted provider', data_destination: 'https://sounds.example.com', price_usd: 0,
+  cost_basis: 'No charge by its published price', inputs: [{key: verb === 'sfx' ? 'duration_seconds' : 'preview_text'}]});
+
 export function material(partial: Partial<Material> & {id: string}): Material {
   return {payload: 'audio', turn_idx: 1, slot_pos: 1, output_index: 0, engine: 'qwen3-tts', available: true,
     material: null, ...partial} as Material;

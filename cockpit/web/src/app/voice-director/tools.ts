@@ -1,9 +1,12 @@
 // The voice director's six client tools. Each answers the agent with facts, ids, labels and
 // reasons as JSON text, never media or an address (guard.ts). The agent prepares runs and
 // proposes picks as `agent:voice-director`; it never submits paid work, picks, reveals,
-// delivers or changes limits (laws 15, 22, 23). A paid run becomes a card the artist confirms
-// with a click; a run on free local engines starts on the agent's request.
+// delivers or changes limits (laws 15, 22, 23). A run starts on the agent's request only when
+// it is free and every engine it chose runs on this machine, decided by where Crexil sends
+// each request, never by price; any other run becomes a card the artist confirms with a click.
+import { sentBy } from '../crexil/actions';
 import { blankPreparation, label as nodeLabel, message, type Material, type Operation, type Preparation } from '../crexil/api';
+import { dataLine, onThisMachine } from '../crexil/operationFacts';
 import { DIRECTOR, type Door, type RunView } from './door';
 import { answer, plain } from './guard';
 
@@ -17,13 +20,16 @@ type Verb = keyof typeof VERBS;
 const MAX_ENGINES = 4;
 const MAX_COUNT = 4;
 
-/** A prepared paid run the artist confirms or discards in the panel. */
+/** A prepared run the artist confirms or discards in the panel: a paid run, or a free one
+ *  that leaves this machine. */
 export type RunCard = {
   id: string; runId: string; title: string; action: Verb; prompt: string;
   engines: {label: string; count: number}[];
   capUsd: number; reservedUsd: number; maximumUsd: number | null;
   /** Reserved by the published price: the final provider charge is not capped. */
   published: boolean;
+  /** What leaves this machine, in the drawer's words: one line for each destination off it. */
+  leaves: string[];
   ready: boolean; errors: string[]; revision: number; token: string; attempts: number;
 };
 
@@ -137,7 +143,8 @@ export function createTools(projectId: string, door: Door, handoff: Handoff): Re
         if (!node) return refuse(`There is no audio take ${voice} in this project.`);
         references.push({node_id: node.id, contribution: ''});
       }
-      // A free local engine reserves nothing; anything else is reserved by its published price.
+      // A run whose engines all have a zero ceiling is bounded by them (a hard cap); any other
+      // is reserved by its published price.
       const paid = choices.some(({op}) => op.maximum_usd_per_attempt !== 0);
       const attempts = choices.reduce((sum, {count}) => sum + count, 0);
       const setup: Preparation = {...blankPreparation(), action: verb, prompt, references,
@@ -148,7 +155,10 @@ export function createTools(projectId: string, door: Door, handoff: Handoff): Re
       const run = await door.prepare(projectId, title, setup);
       const review = await door.review(run.id);
       const errors = review.errors.map(plain);
-      if (!paid && review.ready && review.reserved_usd === 0) {
+      const free = !paid && review.reserved_usd === 0;
+      const leaves = [...new Set(choices.filter(({op}) => !onThisMachine(op)).map(({op}) => dataLine(op, verb)))];
+      // Only free work that stays on this machine starts on the agent's request (law 15).
+      if (free && leaves.length === 0 && review.ready) {
         const sent = await door.submit(run.id, review.revision, review.token, DIRECTOR);
         if (!sent.ok) return answer({status: 'not_started', run_id: run.id, error: plain(sent.message)});
         handoff.ranFree({runId: run.id, title, attempts: review.ready_attempts});
@@ -156,13 +166,15 @@ export function createTools(projectId: string, door: Door, handoff: Handoff): Re
       }
       handoff.runCard({id: crypto.randomUUID(), runId: run.id, title, action: verb, prompt,
         engines: choices.map(({op, count}) => ({label: op.label, count})),
-        capUsd: cap, reservedUsd: review.reserved_usd, maximumUsd: review.maximum_usd, published: paid,
+        capUsd: cap, reservedUsd: review.reserved_usd, maximumUsd: review.maximum_usd, published: paid, leaves,
         ready: review.ready, errors, revision: review.revision, token: review.token, attempts: review.ready_attempts});
       return answer({
         status: review.ready ? 'awaiting_confirmation' : 'not_ready', run_id: run.id,
         attempts: review.ready_attempts, reserved_usd: review.reserved_usd, cap_usd: cap, errors,
-        next: review.ready ? 'The artist runs it with a click in the panel. Tell them the price.'
-          : 'Nothing was sent. Fix what the errors say, then prepare again.',
+        ...(free ? {cost: 'free: nothing is reserved'} : {}),
+        next: !review.ready ? 'Nothing was sent. Fix what the errors say, then prepare again.'
+          : free ? `It is free, but it sends ${sentBy(verb)} off this machine, so the artist runs it with a click in the panel. Tell them why it waits.`
+          : 'The artist runs it with a click in the panel. Tell them the price.',
       });
     }),
 

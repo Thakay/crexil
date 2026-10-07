@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Operation } from './api';
-import { dataLine, priceLine, priceTag, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
+import { dataLine, onThisMachine, priceLine, priceTag, retriesLine, tariffOffer, tariffPriced } from './operationFacts';
 
 const op = (fields: Partial<Operation>) => ({label: 'Op', maximum_usd_per_attempt: null, price_usd: null, tariff: null,
   price_unit: null, cost_basis: 'Basis', data_destination: 'https://api.elevenlabs.io', ...fields}) as Operation;
@@ -18,6 +18,24 @@ describe('dataLine: what leaves the machine', () => {
   });
   it('states a destination that is not an address as given', () => {
     expect(dataLine(op({data_destination: 'Configured runtime'}), 'continue')).toBe('Sends off this machine to Configured runtime: the prompt and any sources.');
+  });
+});
+
+describe('onThisMachine: the one rule for where a request goes', () => {
+  const at = (data_destination: string) => onThisMachine({data_destination});
+  it('reads every loopback form, with or without a scheme or a port, as this machine', () => {
+    for (const destination of ['http://127.0.0.1:8190', 'http://127.1:8190', 'http://localhost:8188', 'http://LOCALHOST',
+      'http://[::1]:8189', 'http://[0:0:0:0:0:0:0:1]', 'localhost', '[::1]', '[::1]:8189', '127.0.0.1', '127.0.0.1:8190'])
+      expect(at(destination), destination).toBe(true);
+  });
+  it('reads any other host, and a destination that is not an address, as off this machine', () => {
+    for (const destination of ['https://api.elevenlabs.io', 'https://openrouter.ai/api/v1', 'http://host.docker.internal:8190',
+      'http://192.168.1.20:8190', 'Configured runtime', '127.example.com', 'http://127.0.0.1.nip.io', 'http://localhost.example.com', ''])
+      expect(at(destination), destination).toBe(false);
+  });
+  it('is the rule the drawer says, so the two never disagree', () => {
+    for (const destination of ['http://127.0.0.1:8190', 'localhost', '[::1]', 'https://api.elevenlabs.io', '127.example.com', 'Configured runtime'])
+      expect(dataLine(op({data_destination: destination}), 'sfx').includes(' on this machine: '), destination).toBe(at(destination));
   });
 });
 

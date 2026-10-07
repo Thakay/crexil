@@ -4,7 +4,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { ActionError } from '../crexil/api';
 import { DIRECTOR } from './door';
-import { fakeDoor, review, runView } from './fakes';
+import { fakeDoor, freeHosted, OPERATIONS, review, runView } from './fakes';
 import { carriesMediaOrAddress } from './guard';
 import { createTools, findTake, TOOL_NAMES, type Handoff } from './tools';
 
@@ -34,11 +34,14 @@ describe('what the agent reads', () => {
   });
 
   test('no answer carries media, a URL, a file route or a media file name', async () => {
-    const {call, said} = setup();
+    const hosted = freeHosted('sfx', 'Sound effect · Free hosted');
+    const {call, said, door} = setup({operations: async () => [...OPERATIONS, hosted]});
     await call('list_engines', {payload: 'audio'});
     await call('list_engines', {payload: 'image'});
     await call('get_project_summary');
     await call('prepare_run', paidDesign);
+    door.review.mockResolvedValueOnce(review({reserved_usd: 0, reserved_micro_usd: 0, maximum_usd: 0}));
+    await call('prepare_run', {action: 'sfx', prompt: 'Hammer on hot iron', spending_limit_usd: 0, engines: [{id: hosted.id, count: 1}]});
     await call('get_run_status', {run_id: 'run-2'});
     await call('play_take', {run_id: 'run-2', take: '2B'});
     await call('propose_pick', {run_id: 'run-2', takes: ['2B'], reason: 'Warmest of the three.'});
@@ -98,7 +101,8 @@ describe('preparing a run', () => {
         controls: {preview_text: paidDesign.preview_line}},
     ]);
     expect(handoff.runCard).toHaveBeenCalledWith(expect.objectContaining({runId: 'run-new', reservedUsd: 0.031, published: true,
-      ready: true, token: 'token-1', engines: [{label: 'Voice design · ElevenLabs', count: 1}, {label: 'Voice design · Qwen3-TTS', count: 1}]}));
+      ready: true, token: 'token-1', engines: [{label: 'Voice design · ElevenLabs', count: 1}, {label: 'Voice design · Qwen3-TTS', count: 1}],
+      leaves: ['Sends off this machine to api.elevenlabs.io: the voice description and its preview line.']}));
   });
 
   test('a run on free local engines starts at once, as the director', async () => {
@@ -109,6 +113,47 @@ describe('preparing a run', () => {
     expect(door.submit).toHaveBeenCalledWith('run-new', 1, 'token-1', DIRECTOR);
     expect(handoff.ranFree).toHaveBeenCalledWith(expect.objectContaining({runId: 'run-new', attempts: 2}));
     expect(handoff.runCard).not.toHaveBeenCalled();
+  });
+
+  // Law 15: a price of nothing is not leave to send the artist's words off this machine.
+  const nothingReserved = async () => review({reserved_usd: 0, reserved_micro_usd: 0, maximum_usd: 0});
+
+  test('a hosted engine priced at $0 waits for the artist’s click, and the agent is told why', async () => {
+    const hosted = freeHosted('sfx', 'Sound effect · Free hosted');
+    const {call, door, handoff} = setup({operations: async () => [...OPERATIONS, hosted], review: nothingReserved});
+    const result = await call('prepare_run', {action: 'sfx', prompt: 'Hammer on hot iron', spending_limit_usd: 0,
+      engines: [{id: hosted.id, count: 2}]});
+    expect(result).toEqual({status: 'awaiting_confirmation', run_id: 'run-new', attempts: 2, reserved_usd: 0, cap_usd: 0, errors: [],
+      cost: 'free: nothing is reserved',
+      next: 'It is free, but it sends the sound description off this machine, so the artist runs it with a click in the panel. Tell them why it waits.'});
+    expect(door.prepare.mock.calls[0][2].spending_policy).toBe('hard_cap');
+    expect(door.submit).not.toHaveBeenCalled();
+    expect(handoff.ranFree).not.toHaveBeenCalled();
+    expect(handoff.runCard).toHaveBeenCalledWith(expect.objectContaining({runId: 'run-new', reservedUsd: 0, published: false,
+      ready: true, leaves: ['Sends off this machine to sounds.example.com: the sound description.']}));
+  });
+
+  test('a free run that mixes local and hosted engines waits for the click', async () => {
+    const hosted = freeHosted('voice-design', 'Voice design · Free hosted');
+    const {call, door, handoff} = setup({operations: async () => [...OPERATIONS, hosted], review: nothingReserved});
+    const result = await call('prepare_run', {...paidDesign, spending_limit_usd: 0,
+      engines: [{id: 'audio:voice-design:qwen3-tts', count: 1}, {id: hosted.id, count: 1}]});
+    expect(result).toMatchObject({status: 'awaiting_confirmation', cost: 'free: nothing is reserved'});
+    expect(door.submit).not.toHaveBeenCalled();
+    expect(handoff.ranFree).not.toHaveBeenCalled();
+    // only the hosted engine's request leaves; the local runner's stays on this machine
+    expect(handoff.runCard).toHaveBeenCalledWith(expect.objectContaining({
+      leaves: ['Sends off this machine to sounds.example.com: the voice description and its preview line.']}));
+  });
+
+  test('where the request goes decides, never the engine’s lane or price: a voice runner on another machine waits', async () => {
+    const elsewhere = OPERATIONS.map(op => op.id === 'audio:voice-design:qwen3-tts' ? {...op, data_destination: 'http://192.168.1.20:8190'} : op);
+    const {call, door, handoff} = setup({operations: async () => elsewhere, review: nothingReserved});
+    const result = await call('prepare_run', {...paidDesign, engines: [{id: 'audio:voice-design:qwen3-tts', count: 2}], spending_limit_usd: 0});
+    expect(result.status).toBe('awaiting_confirmation');
+    expect(door.submit).not.toHaveBeenCalled();
+    expect(handoff.runCard).toHaveBeenCalledWith(expect.objectContaining({
+      leaves: ['Sends off this machine to 192.168.1.20:8190: the voice description and its preview line.']}));
   });
 
   test('speech uses the voice take named by its label', async () => {
