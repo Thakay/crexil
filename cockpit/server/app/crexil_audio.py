@@ -9,7 +9,9 @@ attempt returns (`takes_per_attempt`), the longest text one request takes
 (`pcm_channels`, mono unless stated; never in `fixed`, whose fields are sent to
 the provider). Rows may declare the voices their speech accepts
 (`voice_providers`), the provider's terms on their outputs (`terms`) and the
-seeds the engine takes (`seed_range`, lowest and highest).
+seeds the engine takes (`seed_range`, lowest and highest). The catalogue
+publishes a row's accepted voices as its speech role's `voices`, so the roster
+badges another provider's voice before the engine is chosen (law 12).
 
 Review binds the voice take's bytes and checks its recorded terms (laws 12, 21),
 and refuses a fixed or locked seed whose attempts would leave the engine's seed
@@ -109,13 +111,24 @@ def tariff(row: dict, verb: str) -> dict | None:
     return dict(found)
 
 
+def voice_rule(row: dict) -> dict | None:
+    """The voices this engine speaks with, when its row limits them (`voice_providers`):
+    the providers whose designed or saved voices it takes, and the sentence that refuses
+    any other voice. None when any voice its provider's terms allow will do."""
+    providers = row.get('voice_providers')
+    if not providers:
+        return None
+    return {'providers': list(providers),
+            'reason': f"{row['name']} speaks only with voices designed or saved at "
+                      f"{', '.join(audio_executors.LABELS.get(p, p) for p in providers)}."}
+
+
 def restrictions(row: dict) -> list[str]:
     """Why some audio takes may not be this engine's voice (law 12: badge, never filter)."""
     notes = [other['terms']['reason'] for other in audio.engines().values()
              if audio.refusal(audio.terms(other), row.get('provider')) and other['terms'].get('reason')]
-    if row.get('voice_providers'):
-        notes.append(f"{row['name']} speaks only with voices designed or saved at "
-                     f"{', '.join(audio_executors.LABELS.get(p, p) for p in row['voice_providers'])}.")
+    if rule := voice_rule(row):
+        notes.append(rule['reason'])
     return list(dict.fromkeys(notes))
 
 
@@ -187,8 +200,8 @@ def catalogue(stack) -> list[dict]:
                 'revision': digest([row, verb, specs, notes, destination(row.get('provider'))])[:16],
                 'actions': [verb], 'inputs': specs, 'source_limit': len(ROLES.get(verb, [])),
                 'source_roles': ROLES.get(verb, []),
-                'sources': [{'role': role, 'accepts': ['audio'], 'restrictions': restrictions(row)}
-                            for role in ROLES.get(verb, [])],
+                'sources': [{'role': role, 'accepts': ['audio'], 'restrictions': restrictions(row),
+                             'voices': voice_rule(row)} for role in ROLES.get(verb, [])],
                 'output_payload': 'audio', 'limitations': notes, 'attempt_max': ATTEMPT_MAX,
                 'takes_per_attempt': takes(row, verb), 'provider': row.get('provider'),
                 'evidence': 'declared', 'availability': 'unavailable' if why else 'unverified', 'reasons': why,
@@ -259,10 +272,8 @@ async def compile_request(db, op: dict, setup, choice, nodes: list[dict]) -> dic
             raise ValueError(f"{row['name']} needs a voice take of at least {shortest:g} seconds; this one is "
                              f"{facts.get('duration_s') or 0:.1f} seconds. Choose a longer take. All sources are kept.")
         recorded = dict(facts.get('voice') or {})
-        if row.get('voice_providers') and recorded.get('provider') not in row['voice_providers']:
-            raise ValueError(f"{row['name']} speaks only with voices designed or saved at "
-                             f"{', '.join(audio_executors.LABELS.get(p, p) for p in row['voice_providers'])}. "
-                             'Choose such a take, or a local voice engine.')
+        if (rule := voice_rule(row)) and recorded.get('provider') not in rule['providers']:
+            raise ValueError(f"{rule['reason']} Choose such a take, or a local voice engine.")
         digest = await db.file_sha256(node['output_path'])
         if digest is None:
             raise ValueError('The voice take is no longer on disk. Restore or replace it. All sources are kept.')

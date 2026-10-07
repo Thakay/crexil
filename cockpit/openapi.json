@@ -9319,7 +9319,7 @@
         "type": "object"
       },
       "SourceRoleView": {
-        "description": "One source an operation takes, in order, with the payloads it accepts\n(law 21) and the reasons some takes of those payloads are refused.",
+        "description": "One source an operation takes, in order, with the payloads it accepts\n(law 21), the reasons some takes of those payloads are refused, and the\nvoices a speech role takes when its engine names them (`voices`; None takes\nany voice its provider's terms allow).",
         "properties": {
           "accepts": {
             "items": {
@@ -9343,6 +9343,16 @@
           "role": {
             "title": "Role",
             "type": "string"
+          },
+          "voices": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoiceRule"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -10236,6 +10246,28 @@
           }
         },
         "title": "ViewUpdate",
+        "type": "object"
+      },
+      "VoiceRule": {
+        "description": "The voices a speech role takes: those designed or saved at `providers`.\nA voice take from any other provider is refused with `reason`, which the\nroster shows before the engine is chosen (law 12).",
+        "properties": {
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "providers",
+          "reason"
+        ],
+        "title": "VoiceRule",
         "type": "object"
       },
       "VoiceSessionStarted": {

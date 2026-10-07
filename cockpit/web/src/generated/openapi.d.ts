@@ -5398,7 +5398,9 @@ export interface components {
         /**
          * SourceRoleView
          * @description One source an operation takes, in order, with the payloads it accepts
-         *     (law 21) and the reasons some takes of those payloads are refused.
+         *     (law 21), the reasons some takes of those payloads are refused, and the
+         *     voices a speech role takes when its engine names them (`voices`; None takes
+         *     any voice its provider's terms allow).
          */
         SourceRoleView: {
             /** Accepts */
@@ -5407,6 +5409,7 @@ export interface components {
             restrictions?: string[];
             /** Role */
             role: string;
+            voices?: components["schemas"]["VoiceRule"] | null;
         };
         /** StartSequence */
         StartSequence: {
@@ -5702,6 +5705,18 @@ export interface components {
             viewport?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * VoiceRule
+         * @description The voices a speech role takes: those designed or saved at `providers`.
+         *     A voice take from any other provider is refused with `reason`, which the
+         *     roster shows before the engine is chosen (law 12).
+         */
+        VoiceRule: {
+            /** Providers */
+            providers: string[];
+            /** Reason */
+            reason: string;
         };
         /**
          * VoiceSessionStarted
