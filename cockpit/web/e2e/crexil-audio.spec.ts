@@ -235,26 +235,37 @@ test('digits audition the voices of a row whose images come first, and stay in t
   await page.getByRole('button',{name:'Grid ›',exact:true}).click();
   const status=page.locator('[role=status]').filter({hasText:/^(Playing|Paused|Played) /});
   const face=(name:string)=>page.getByRole('button',{name:`Act on ${name}, audio, 4.0 s`,exact:true});
+  // The room's audio runs as it draws them, each with its takes' labels in grid order. The server
+  // orders a row's sections by when they were made, so the voices follow the images unless the
+  // machine's clock stepped back between them; the digits follow the room either way.
+  const voices=await page.locator('[data-run]').evaluateAll(cells=>{
+    const runs=new Map<string,string[]>();
+    for(const cell of cells)for(const take of cell.querySelectorAll('[data-take][data-audio-face]'))
+      runs.set(cell.getAttribute('data-run')!,[...(runs.get(cell.getAttribute('data-run')!)??[]),take.getAttribute('aria-label')!.split(',')[0].replace('Act on ','')]);
+    return [...runs.values()];
+  });
+  expect(voices).toHaveLength(2);
+  const [first,second]=voices;
 
   // With no take focused, 1 plays the room's first audio run, never an image.
   await page.evaluate(()=>(document.activeElement as HTMLElement|null)?.blur());
   await page.keyboard.press('1');
-  await expect(status).toHaveText('Playing 1A · 4.0 s · level matched');
-  await expect(face('1A')).toBeFocused();
+  await expect(status).toHaveText(`Playing ${first[0]} · 4.0 s · level matched`);
+  await expect(face(first[0])).toBeFocused();
   await page.keyboard.press('3');
-  await expect(status).toHaveText('Playing 1A.3 · 4.0 s · level matched');
+  await expect(status).toHaveText(`Playing ${first[2]} · 4.0 s · level matched`);
   // The digits number the run that holds focus.
-  await face('2A.2').focus();
+  await face(second[1]).focus();
   await page.keyboard.press('1');
-  await expect(status).toHaveText('Playing 2A · 4.0 s · level matched');
-  await expect(face('2A')).toBeFocused();
+  await expect(status).toHaveText(`Playing ${second[0]} · 4.0 s · level matched`);
+  await expect(face(second[0])).toBeFocused();
   // An image's run holds no audio, so the digits play the first audio run's takes.
   await page.getByRole('button',{name:'Act on 0B',exact:true}).focus();
   await page.keyboard.press('2');
-  await expect(status).toHaveText('Playing 1A.2 · 4.0 s · level matched');
+  await expect(status).toHaveText(`Playing ${first[1]} · 4.0 s · level matched`);
   await shots(page,'f18-grid-digits-mixed-row');
   // A take played to its end reads as played, never paused.
-  await expect(status).toHaveText('Played 1A.2 · 4.0 s · level matched',{timeout:10_000});
+  await expect(status).toHaveText(`Played ${first[1]} · 4.0 s · level matched`,{timeout:10_000});
 });
 
 test('an attempt that returns three takes is charged once: its other takes read INCLUDED, and inspection says so',async({page,request})=>{
