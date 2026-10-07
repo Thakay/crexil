@@ -98,9 +98,9 @@ def test_decisions_prints_the_decision_record_as_lines(monkeypatch, capsys):
 
 def test_reveal_sends_an_attributed_command(monkeypatch):
     requests = transport(monkeypatch)
-    monkeypatch.setattr(sys, 'argv', ['crexil.py', '--actor', 'human:Kay', 'reveal', 'run1', '--reason', 'Done listening'])
+    monkeypatch.setattr(sys, 'argv', ['crexil.py', '--actor', 'human:Ada', 'reveal', 'run1', '--reason', 'Done listening'])
     assert cli.main() == 0
     sent = json.loads(requests[0].data)
     assert requests[0].full_url == 'http://127.0.0.1:8000/api/crexil/turns/run1/reveal'
     assert requests[0].get_method() == 'POST'
-    assert sent['reason'] == 'Done listening' and sent['actor'] == {'kind': 'human', 'name': 'Kay'}
+    assert sent['reason'] == 'Done listening' and sent['actor'] == {'kind': 'human', 'name': 'Ada'}

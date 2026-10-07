@@ -102,8 +102,8 @@ def test_preview_config_overrides_inherited_live_paths(tmp_path):
     server = Path(__file__).resolve().parents[1]
     env = {**os.environ, "CREXIL_PREVIEW": "1", "COCKPIT_REPO_ROOT": str(tmp_path),
            "COCKPIT_DB": "/live/db.sqlite", "COCKPIT_STAGING_DIR": "/live/staging",
-           "COCKPIT_STATIC_DIR": "/live/static", "PROMOTE_DIR": "/mnt/d/AI_PROMOTED",
-           "PROMOTE_ROOTS": "/mnt/d", "OPENROUTER_API_KEY": "inherited-secret",
+           "COCKPIT_STATIC_DIR": "/live/static", "PROMOTE_DIR": "/live/handoff",
+           "PROMOTE_ROOTS": "/live", "OPENROUTER_API_KEY": "inherited-secret",
            "COCKPIT_HARNESS_EXECUTORS": "1"}
     code = """
 import json

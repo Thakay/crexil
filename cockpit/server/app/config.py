@@ -1,6 +1,7 @@
 """Central config. Everything env-driven with dev defaults derived from the
-repo layout; the Docker image overrides via environment (all paths are
-WSL/ext4-native except PROMOTE_DIR, the one promotion boundary).
+repo layout; the Docker image overrides via environment. PROMOTE_DIR, the
+hand-off folder, is the one promotion boundary and the one default outside
+the checkout: `crexil-handoff` in the user's home, on any system.
 
 CREXIL_PREVIEW isolates writable state beneath this checkout's .preview,
 ignores local secrets, and selects unavailable runtime adapters. A preview
@@ -50,17 +51,21 @@ STAGING_DIR = Path(os.environ.get("COCKPIT_STAGING_DIR", REPO_ROOT / ".staging" 
 # than schema 4 is refused (SchemaVersionError), never migrated or overwritten.
 DB_PATH = Path(os.environ.get("COCKPIT_DB",
                               REPO_ROOT / "cockpit" / "server" / "cockpit-v4.sqlite"))
-# The promotion boundary: the one Windows-mounted path in the system. Resolved
-# absolute because the promote face PRINTS it: a relative value
-# would name a different folder depending on where the process was started,
-# and the plinth refuses that ambiguity from a re-point for the same reason.
+# The promotion boundary: the hand-off folder that Promote and a delivery copy
+# into. The server never creates it (promote.validate_target), so the default
+# names a folder the user makes or replaces; under WSL an installation often
+# names a folder on a Windows drive (/mnt/<drive>/...) instead. An empty value
+# reads as unset, never as the working folder. Resolved absolute because the
+# promote face PRINTS it: a relative value would name a different folder
+# depending on where the process was started, and the plinth refuses that
+# ambiguity from a re-point for the same reason.
 PROMOTE_DIR = Path(
-    os.path.expanduser(os.environ.get("PROMOTE_DIR", "/mnt/d/PROMOTED"))
+    os.path.expanduser(os.environ.get("PROMOTE_DIR") or "~/crexil-handoff")
 ).resolve()
-# where a promotion is ALLOWED to go, colon-separated like PATH. The
-# cockpit mounts the promotion drive rather than the single folder, so the
-# artist can steer within it (the re-point) — and this is the fence that
-# keeps a typo on the drive. Defaulting to PROMOTE_DIR itself means an
+# where a promotion is ALLOWED to go, colon-separated like PATH. An
+# installation may mount a whole drive or parent folder rather than the single
+# folder, so the artist can steer within it (the re-point), and this is the
+# fence that keeps a typo inside it. Defaulting to PROMOTE_DIR itself means an
 # unconfigured deployment can only ever promote into its own tree and that
 # tree's subfolders: safe by omission, never open by omission.
 PROMOTE_ROOTS = [

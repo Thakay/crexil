@@ -60,6 +60,7 @@ def test_a_missing_target_is_refused_in_words_and_never_created(
     assert "isn't there" in str(e.value)
     assert "point the cockpit at another folder" in str(e.value)
     assert "the take is untouched" in str(e.value)
+    assert "\u2014" not in str(e.value)        # plain words, no dash
     assert not root.exists()                  # no mkdir -p look-alike
     # the record side is fine: the staged manifest was written first
     assert (config.STAGING_DIR / "manifests" / "a2.json").exists()
@@ -103,34 +104,59 @@ def test_validate_target_never_writes_and_reads_config_by_default(
         validate_target()
 
 
-def test_the_fence_defaults_to_the_promote_dir_itself_so_omission_is_safe():
+def test_the_fence_defaults_to_the_promote_dir_itself_so_omission_is_safe(
+        tmp_path):
     """The default is `PROMOTE_ROOTS or [PROMOTE_DIR]`, which matters
     more than it looks: a deployment that forgets the variable can only
     promote into its own tree and that tree's subfolders. The failure mode
     of omission is a fence that is too TIGHT, never one that is open."""
     import importlib
-    # unset, and set-but-empty: both must land on the tight default
+    drive = tmp_path.resolve()
+    # unset, and set-but-empty: both must land on the tight default. The
+    # root holds no .env, so no checkout's own settings take part.
     for env in ({}, {"PROMOTE_ROOTS": ""}):
         with mock.patch.dict(
-                os.environ, {"PROMOTE_DIR": "/mnt/d/PROMOTED", **env},
+                os.environ, {"COCKPIT_REPO_ROOT": str(drive / "checkout"),
+                             "PROMOTE_DIR": str(drive / "handoff"), **env},
                 clear=True):
             fresh = importlib.reload(config)
-            assert [Path("/mnt/d/PROMOTED")] == fresh.PROMOTE_ROOTS
+            assert [drive / "handoff"] == fresh.PROMOTE_ROOTS
             assert not promote.inside_roots(Path("/tmp"),
                                             fresh.PROMOTE_ROOTS)
-            assert not promote.inside_roots(Path("/mnt/d"),
-                                            fresh.PROMOTE_ROOTS)
-            assert promote.inside_roots(Path("/mnt/d/PROMOTED/hero"),
+            assert not promote.inside_roots(drive, fresh.PROMOTE_ROOTS)
+            assert promote.inside_roots(drive / "handoff" / "hero",
                                         fresh.PROMOTE_ROOTS)
     importlib.reload(config)          # leave the module as we found it
 
 
-def test_the_fence_reads_a_colon_separated_list_like_PATH():
+def test_the_hand_off_folder_defaults_to_one_in_the_home_never_created(
+        tmp_path):
+    """With nothing set, the hand-off folder is `~/crexil-handoff`, made
+    absolute, and the fence is that folder alone: a fresh installation on
+    any system delivers there or nowhere. An empty value reads as unset,
+    never as the working folder. Reading the setting never makes the
+    folder; the user does, or names another."""
     import importlib
-    with mock.patch.dict(os.environ, {"PROMOTE_ROOTS": "/mnt/d:/mnt/e"},
+    home = tmp_path.resolve() / "home"
+    # unset, and set-but-empty (an uncommented `PROMOTE_DIR=` in .env)
+    for env in ({}, {"PROMOTE_DIR": ""}):
+        with mock.patch.dict(os.environ,
+                             {"COCKPIT_REPO_ROOT": str(tmp_path / "checkout"),
+                              "HOME": str(home), **env}, clear=True):
+            fresh = importlib.reload(config)
+            assert home / "crexil-handoff" == fresh.PROMOTE_DIR
+            assert [fresh.PROMOTE_DIR] == fresh.PROMOTE_ROOTS
+            assert not fresh.PROMOTE_DIR.exists()
+    importlib.reload(config)          # leave the module as we found it
+
+
+def test_the_fence_reads_a_colon_separated_list_like_PATH(tmp_path):
+    import importlib
+    a, b = tmp_path.resolve() / "a", tmp_path.resolve() / "b"
+    with mock.patch.dict(os.environ, {"PROMOTE_ROOTS": f"{a}:{b}"},
                          clear=False):
         fresh = importlib.reload(config)
-        assert [Path("/mnt/d"), Path("/mnt/e")] == fresh.PROMOTE_ROOTS
+        assert [a, b] == fresh.PROMOTE_ROOTS
     importlib.reload(config)
 
 
@@ -153,6 +179,7 @@ def test_a_target_that_breaks_partway_leaves_nothing_behind(
     with pytest.raises(PromoteTargetError) as e:
         promote_candidate(img, {"asset": "a5"}, "raw-sdxl", "a5", root=root)
     assert "nothing of a5 was left there" in str(e.value)
+    assert "\u2014" not in str(e.value)
     assert calls[-2:] == ["a5.json", "a5.png"]       # manifest first, image last
     preset_dir = root / "raw-sdxl"
     assert not (preset_dir / "a5.json").exists()      # rolled back
@@ -166,7 +193,7 @@ def test_the_error_is_an_oserror_for_oserror_minded_callers():
     still gets the D5 words."""
     e = PromoteTargetError("x", remedy="y", target=Path("/z"))
     assert isinstance(e, OSError)
-    assert str(e) == "x — y"
+    assert str(e) == "x; y"
 
 
 # --- which disk, read from the mount table ---
@@ -189,10 +216,12 @@ def test_where_it_lives_makes_only_claims_the_kernel_can_back(monkeypatch):
     assert promote.where_it_lives(Path("/promote/hero-sword")) \
         == "on the volume mounted at /promote"
     # nothing mounted anywhere along the path: the one place the cockpit
-    # says "my own disk", and it says what that means
+    # says "this machine's own disk", and it says what that means, in
+    # plain words with no dash
     line = promote.where_it_lives(Path("/home/artist/out"))
-    assert "the cockpit's own disk" in line
-    assert "nothing promoted here leaves this machine" in line
+    assert line == ("on this machine's own disk, not a mounted drive, so "
+                    "nothing delivered here leaves this machine")
+    assert "—" not in line
 
 
 def test_an_unmounted_windows_drive_is_still_caught_by_the_path_test():
@@ -221,6 +250,7 @@ def test_a_target_off_the_drive_is_refused_before_the_filesystem_is_touched(
     assert f"{outside} is outside" in e.value.message
     assert "only promote onto the drive it was given" in e.value.message
     assert "pick a folder on that drive" in e.value.remedy
+    assert "\u2014" not in str(e.value)
     # and the legal ones still pass
     assert validate_target(drive / "PROMOTED", [drive]) \
         == drive / "PROMOTED"

@@ -1,9 +1,9 @@
 """Promotion from inside the cockpit: the copy-out to the artist's tree.
 
-Same contract as scripts/promote.py (the standalone CLI): the promoted tree
-is the ONLY Windows-mounted path in the system; never symlinks. The
-manifest is also kept in ext4 staging so cockpit state survives without the
-promote folder.
+Same contract as scripts/promote.py (the standalone CLI): copies land in the
+hand-off folder, the one place the cockpit writes outside its own state;
+never symlinks. The manifest is also kept in staging so cockpit state
+survives without the hand-off folder.
 
 Promote is the one irreversible act and the one place the app touches the
 artist's real production tree, and a folder rename is routine there. So:
@@ -68,7 +68,7 @@ class PromoteTargetError(OSError):
     409 with the two halves apart."""
 
     def __init__(self, message: str, *, remedy: str, target: Path):
-        super().__init__(f"{message} — {remedy}")
+        super().__init__(f"{message}; {remedy}")
         self.message = message
         self.remedy = remedy
         self.target = target
@@ -155,8 +155,8 @@ def validate_target(root: Path | None = None,
     allowed = roots if roots is not None else config.PROMOTE_ROOTS
     if not inside_roots(root, allowed):
         raise PromoteTargetError(
-            f"the promote target {root} is outside {_describe_roots(allowed)}"
-            " — the cockpit can only promote onto the drive it was given",
+            f"the promote target {root} is outside {_describe_roots(allowed)},"
+            " and the cockpit can only promote onto the drive it was given",
             remedy="pick a folder on that drive and promote again; the take "
                    "is untouched", target=root)
     mount = _mount_root(root)
@@ -166,8 +166,8 @@ def validate_target(root: Path | None = None,
             "isn't mounted", remedy=REPOINT, target=root)
     if not root.exists():
         raise PromoteTargetError(
-            f"the promote target {root} isn't there — moved, renamed or "
-            "not yet created", remedy=REPOINT, target=root)
+            f"the promote target {root} isn't there: it was moved, renamed "
+            "or not yet created", remedy=REPOINT, target=root)
     if not root.is_dir():
         raise PromoteTargetError(
             f"the promote target {root} is a file, not a folder",
@@ -267,7 +267,7 @@ def promote_candidate(artefact_path: Path, manifest: dict, dest_rel: str,
             done.unlink(missing_ok=True)
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise PromoteTargetError(
-            f"the promote target {target} broke partway — nothing of "
+            f"the promote target {target} broke partway, and nothing of "
             f"{asset_id} was left there: {e}",
             remedy=REPOINT, target=target) from e
     shutil.rmtree(tmpdir, ignore_errors=True)
@@ -287,23 +287,22 @@ def _nearest_mount(path: Path) -> Path | None:
 
 
 def where_it_lives(root: Path) -> str:
-    """Which disk this root is on, in the artist's words. The promotion
-    boundary makes the promoted tree the ONE Windows-mounted path in the
-    system, so a re-point onto the cockpit's own disk is legal but must
-    never be silent: the face prints this line beside the path.
+    """Which disk this root is on, in the artist's words: the promote face
+    and a delivery's review print it beside the path, so a hand-off folder
+    on this machine's own disk is legal but never silent.
 
     Read from the MOUNT TABLE, not from the spelling of the path. A
-    container can bind-mount the promotion drive at any path (for example
+    container can bind-mount the hand-off folder at any path (for example
     `/promote`), and a `/mnt/<drive>` prefix test would call that the
     container's own disk and print the exact opposite of the truth. So the
-    only positive claim made here is one the kernel can
-    back — a mount point — and "the cockpit's own disk" is said only when
-    nothing along the path is mounted at all.
+    only positive claim made here is one the kernel can back, a mount
+    point, and "this machine's own disk" is said only when nothing along
+    the path is mounted at all.
     """
     mount = _nearest_mount(root)
     if mount is None:
-        return ("on the cockpit's own disk — not a mounted asset tree, so "
-                "nothing promoted here leaves this machine")
+        return ("on this machine's own disk, not a mounted drive, so nothing "
+                "delivered here leaves this machine")
     if _mount_root(root) == mount:
         return f"on the Windows drive mounted at {mount}"
     return f"on the volume mounted at {mount}"
@@ -393,8 +392,8 @@ def browse(path: Path | None = None, roots: list[Path] | None = None) -> dict:
                 "note": None}
     if not inside_roots(path, roots):
         raise PromoteTargetError(
-            f"{path} is outside {_describe_roots(roots)} — the cockpit can "
-            "only look around the drive it was given",
+            f"{path} is outside {_describe_roots(roots)}, and the cockpit "
+            "can only look around the drive it was given",
             remedy=START_OVER, target=path)
     mount = _mount_root(path)
     if mount is not None and not os.path.ismount(mount):
@@ -403,7 +402,7 @@ def browse(path: Path | None = None, roots: list[Path] | None = None) -> dict:
             remedy=START_OVER, target=path)
     if not path.exists():
         raise PromoteTargetError(
-            f"{path} isn't there — moved, renamed or not yet created",
+            f"{path} isn't there: it was moved, renamed or not yet created",
             remedy=START_OVER, target=path)
     if not path.is_dir():
         raise PromoteTargetError(f"{path} is a file, not a folder",
@@ -421,7 +420,7 @@ def browse(path: Path | None = None, roots: list[Path] | None = None) -> dict:
     except OSError as e:
         names = []
         note = ("this folder can't be read from inside the cockpit, so "
-                f"what's in it can't be listed — {e.strerror or e}")
+                f"what's in it can't be listed: {e.strerror or e}")
     return {"here": _handle(path, path.name or str(path), roots),
             "parent": parent,
             "folders": [_handle(path / n, n, roots) for n in names],

@@ -16,12 +16,13 @@ Working name in code: **cockpit** (the `cockpit/` directory, the package names a
 `COCKPIT_` variables). The name describes supervisory control: the automation flies, the human
 watches the instruments and decides, and a recorder keeps everything.
 
-**Today it is a fan-out bench for humans.** One brief goes to every image engine you have: local
-diffusion through ComfyUI graphs and hosted models through OpenRouter. The takes land in one
-grid, one cell per take, position never moving. Every take remembers its parents. A winner goes
-on to Refine, to the local 3D engines, or out through Promote, which copies the artefact and its
-manifest to the hand-off folder for a DCC tool. Nothing is lost, and every prompt is indexed for
-search (a search surface is not built yet).
+**Today it is a fan-out bench for humans, and agents can work in it.** One brief goes to many
+engines: images through local ComfyUI graphs and hosted models on OpenRouter, voices and sound
+effects through ElevenLabs and a local open-weight voice engine, meshes through local 3D engines.
+The takes land in one grid, one cell per take, position never moving, and a run can be compared
+blind. Every take remembers its parents. A winner goes on to another verb, or out through
+delivery (Promote on the legacy canvas), which copies the artefacts and their manifests to the
+hand-off folder. Nothing is lost, and the project record is searchable, reasons included.
 
 **It is not** a chat app, a node-graph editor, version control for pixels, a DCC, or a
 compliance product. Workflow authoring stays in ComfyUI's format; the canvas shows lineage,
@@ -134,10 +135,9 @@ multi-source requests, states run and project limits before dispatch, and record
 participant behind each preparation, selection, assessment and execution control; an assessment
 carries its reason. View state (canvas positions, viewport and dials) is stored
 without events, and image and 3D engine definitions carry no `provider` field yet (§2); audio
-engine definitions declare theirs. The downloader shows
-no licence class, its default groups include non-commercial and unconfirmed weights, and the
-SDXL reference graphs load a checkpoint whose card now says non-commercial (§2, what ships; see
-[third-party.md](third-party.md)).
+engine definitions declare theirs. The SDXL reference graphs
+load a checkpoint whose card now says non-commercial, and two shipped presets run Refine and
+region edits on them (§2, what ships; see [third-party.md](third-party.md)).
 [failure-cases.md](failure-cases.md) says what is implemented for each failure case.
 
 1. **Failures are per slot; messages are per cause.** One dead engine never stops the other
