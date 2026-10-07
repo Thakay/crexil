@@ -32,6 +32,14 @@ TARIFF_UNITS = {'1k_characters': ('characters', 'billed characters', 1000),
                 'attempt': ('attempts', 'number of attempts', 1)}
 
 
+def money(value) -> str:
+    """An amount in dollars as every line Crexil writes says it: cents when it has
+    no finer part ("$0.60", "$1.00"), else every digit it has ("$0.018",
+    "$0.86508"), never rounded into another amount."""
+    amount = Decimal(str(value))
+    return f'${amount:.2f}' if amount == amount.quantize(Decimal('0.01')) else f'${amount.normalize():f}'
+
+
 def audio_reservation(tariff: dict | None, measures: dict) -> int:
     """The published-tariff price of one audio attempt, in integer micro-dollars,
     from the engine's tariff and the attempt's measures: `characters` (for
@@ -143,7 +151,7 @@ def violations(limits: dict, current: dict, *, attempts: int = 0, reserved: floa
             errors.append(f'{label} requires a hard cap. Published tariffs cannot meet that promise.')
         total = Decimal(str(current['charged_usd'])) + Decimal(str(current['reserved_usd'])) + Decimal(str(reserved))
         if total > Decimal(str(ceiling)):
-            errors.append(f'{label} spending limit is ${ceiling}; charged and reserved spending totals ${total}.')
+            errors.append(f'{label} spending limit is {money(ceiling)}; charged and reserved spending totals {money(total)}.')
     return errors
 
 

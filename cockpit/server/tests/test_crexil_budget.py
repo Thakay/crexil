@@ -1,8 +1,11 @@
-"""Exact run membership shares project accounting without changing charge truth."""
+"""Exact run membership shares project accounting without changing charge truth,
+and a limit's refusal states its money as every line does."""
+
+from decimal import Decimal
 
 import pytest
 
-from app.crexil_budget import accounting
+from app.crexil_budget import accounting, money, violations
 from test_db import opened
 
 pytestmark = pytest.mark.anyio
@@ -145,3 +148,21 @@ async def test_an_automatic_retry_is_the_same_requested_attempt_as_the_try_it_re
         assert (await accounting(db, ws['id']))['attempts'] == 3
         await db.dispatch_slot(second)
         assert (await accounting(db, ws['id']))['attempts'] == 3
+
+
+def test_money_reads_cents_or_every_digit_it_has_never_rounded():
+    assert [money(v) for v in (0, 0.6, 1, 1.5, 12.3)] == ['$0.00', '$0.60', '$1.00', '$1.50', '$12.30']
+    assert [money(v) for v in (0.018, 0.0336, 0.00408, Decimal('0.86508'))] == \
+        ['$0.018', '$0.0336', '$0.00408', '$0.86508']
+
+
+def test_a_limit_refusal_states_its_amounts_with_two_decimals_or_more():
+    # The project cap a live run refused over (J7): $0.60 against $0.36 charged and $0.50508 asked.
+    spent = {'attempts': 0, 'charged_usd': 0.36, 'reserved_usd': 0.0, 'unresolved_attempts': 0,
+             'unbounded_attempts': 0, 'tariff_attempts': 0}
+    limits = {'spending_limit_usd': 0.6, 'spending_policy': 'published_tariff'}
+    assert violations(limits, spent, reserved=0.50508, tariff=True) == [
+        'Project spending limit is $0.60; charged and reserved spending totals $0.86508.']
+    assert violations({'spending_limit_usd': 1, 'spending_policy': 'published_tariff'}, spent,
+                      reserved=0.74, tariff=True, label='Run') == [
+        'Run spending limit is $1.00; charged and reserved spending totals $1.10.']

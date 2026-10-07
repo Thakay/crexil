@@ -77,6 +77,19 @@ async def test_a_client_runs_the_whole_voice_journey_through_the_protocol(tmp_pa
     assert project['runs'][0]['picked'] == 0                  # a proposal never picks
 
 
+async def test_the_engine_list_is_compact_unless_the_call_names_a_payload_or_an_action(tmp_path, monkeypatch):
+    async with booted_audio(tmp_path, monkeypatch) as (client, _), Client(server_over(client)) as session:
+        everything = await ok(session, 'crexil_list_engines')
+        voices = await ok(session, 'crexil_list_engines', {'action': 'voice-design'})
+        tools = {t.name: t for t in (await session.list_tools()).tools}
+    compact = {'id', 'label', 'actions', 'produces', 'availability', 'reasons', 'price_usd', 'price_unit'}
+    assert everything['engines'] and all(set(engine) == compact for engine in everything['engines'])
+    assert voices['engines'] and all(engine['controls'] and engine['data_destination'] for engine in voices['engines'])
+    schema = tools['crexil_list_engines'].output_schema
+    engine = schema['$defs']['Engine']
+    assert set(engine['required']) == compact and 'controls' in engine['properties']   # details stay optional
+
+
 async def test_a_refusal_comes_back_as_a_tool_error_that_keeps_its_kind(tmp_path, monkeypatch):
     async with booted_audio(tmp_path, monkeypatch) as (client, _), Client(server_over(client)) as session:
         made = await ok(session, 'crexil_create_project', {'name': 'Dwarf blacksmith'})
@@ -85,7 +98,7 @@ async def test_a_refusal_comes_back_as_a_tool_error_that_keeps_its_kind(tmp_path
             'engines': [{'id': 'audio:sfx:elevenlabs-sfx'}], 'spending_limit_usd': 1})
         unknown = await session.call_tool('crexil_get_run', {'run_id': 'nothing-here'})
     assert over.is_error and '(kind: over_door_ceiling)' in over.content[0].text
-    assert 'Nothing was sent' in over.content[0].text
+    assert 'Nothing was sent' in over.content[0].text and '--max-run-usd' in over.content[0].text
     assert unknown.is_error and '(kind: not_found)' in unknown.content[0].text
 
 
