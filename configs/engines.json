@@ -12,7 +12,8 @@
       "verbs: which 3D steps this engine serves (law 16). The surfaces read it to badge a verb an engine does not do rather than hide the engine (law 12). An image engine has no verbs list: the image lane's steps are presets, not engine-declared. The RUNNER is the authority (tools/3d/runner.py KINDS) and cockpit/server/app/mesh.py MESH_KINDS is its server-side mirror; this list is the published copy, and a test holds the three in agreement (test_mesh.py).",
       "params: the handles a SURFACE may offer for a verb, keyed by verb then by the runner's own param name. It is a published OFFER, not the runner's whitelist: the runner accepts more than this (a knob it takes but the product does not offer is simply absent here), so the guard is `published ⊆ runner` and never equality. A key here that the runner would refuse by name is the drift the test catches. A mesh engine has one because its handles are engine-declared; an image engine's live in presets/*.json `inputs` instead, which is why no image row carries this key.",
       "params[verb][key]: `label` is the artist's name for it, `effect` the permanently visible plain-effect line (never a tooltip), `type`/`choices`/`default` the control. `state` is the knob's own verification (law 12), read the same way a capability's is: verified = this range was run and measured, unverified = authored from the engine's docs and not yet exercised. `supported: false` publishes a handle this engine does NOT have, with `why`: the surface lists it and dashes it rather than leaving an artist to wonder whether the app forgot it (law 12: badge, never filter). Seed is NOT here: it is a run-level field, published as the `seed` capability above.",
-      "audio rows (payload audio) name their `provider`, the adapter that reaches them (elevenlabs or voice-runner), and `enabled`. Per verb they declare `models`, `params` (public controls), `fixed` provider fields, `tariffs` ({unit, micro_usd, measure, source, read_on}: exact integer micro-dollars, where measure names the text or control the unit counts), `takes_per_attempt`, and optional `text_limits` and `pcm_channels` (how many interleaved channels a raw PCM answer carries, 1 unless stated; never inside `fixed`, whose fields are sent to the provider). `voice_providers` limits speech to voices designed or saved at those providers. `terms` records the provider's terms on its outputs: every take carries them, and a hop they forbid is badged with their reason (laws 12, 21). The seed is published as the `seed` capability, as for 3D."
+      "audio rows (payload audio) name their `provider`, the adapter that reaches them (elevenlabs or voice-runner), and `enabled`. Per verb they declare `models`, `params` (public controls), `fixed` provider fields, `tariffs` ({unit, micro_usd, measure, source, read_on}: exact integer micro-dollars, where measure names the text or control the unit counts), `takes_per_attempt`, and optional `text_limits` and `pcm_channels` (how many interleaved channels a raw PCM answer carries, 1 unless stated; never inside `fixed`, whose fields are sent to the provider). `voice_providers` limits speech to voices designed or saved at those providers. `terms` records the provider's terms on its outputs: every take carries them, and a hop they forbid is badged with their reason (laws 12, 21). The seed is published as the `seed` capability, as for 3D.",
+      "face_name (optional): the words a take's face gives the engine when `name` would not fit the face's line beside its money: the part of `name` that names the model, never its maker. Inspection, the record, the drawer and the picker keep `name`. It only words faces, so no operation's revision digests it, and naming a face never turns away a saved preparation."
     ],
     "homes": {
       "external prices and seed pins": "providers.json (pins/overrides) + the live OpenRouter catalogue; the authoritative cost is per-generation usage.cost",
@@ -412,6 +413,7 @@
     {
       "id": "elevenlabs-voice-design",
       "name": "ElevenLabs Voice Design",
+      "face_name": "Voice Design",
       "lane": "external",
       "payload": "audio",
       "provider": "elevenlabs",
@@ -596,6 +598,7 @@
     {
       "id": "elevenlabs-sfx",
       "name": "ElevenLabs Sound Effects",
+      "face_name": "Sound Effects",
       "lane": "external",
       "payload": "audio",
       "provider": "elevenlabs",

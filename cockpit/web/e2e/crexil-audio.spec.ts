@@ -134,6 +134,14 @@ test('a blind voice casting runs end to end: audition from the keyboard, pick wi
   await expect(fourth).not.toContainText('Blind');
   const revealed=(await snapshot()).blind_runs[0];
   expect(revealed).toMatchObject({revealed:true,revealed_by:{kind:'human',name:'Artist'}});
+  // Revealed, each face names its engine's model as its matrix row words it for faces, never
+  // its maker ("Voice Design", never "ElevenLabs Voice Design"); inspection keeps the full name.
+  const rows:{id:string;name:string;face_name?:string|null}[]=(await(await request.get('/api/engines')).json()).engines;
+  const faceOf=(op:Op)=>{const row=rows.find(item=>item.id===op.id.split(':')[2])!;return row.face_name??row.name;};
+  const named=(await section.locator('button[data-take] footer > span:first-child').allTextContents())
+    .map(text=>text.replace(/^\S+ · /,'').replace(/, selected$/,''));
+  expect(named.sort()).toEqual(chosen.flatMap(({op,count})=>Array(count*3).fill(faceOf(op))).sort());
+  if(chosen.some(({op})=>op.provider==='elevenlabs'))expect(named.filter(name=>name==='Voice Design')).toHaveLength(3);
   await shots(page,'d7-grid-revealed');
 
   // Inspection shows the take's measured facts (law 17).
@@ -284,11 +292,20 @@ test('an attempt that returns three takes is charged once: its other takes read 
   await expect(money('0A')).toHaveText('$0.0084');
   await expect(money('0A.2')).toHaveText('Included');
   await expect(money('0A.3')).toHaveText('Included');
+  // A face names the model, never its maker: the take that carries the charge reads its name whole.
+  const named=(name:string)=>page.getByRole('button',{name:`Act on ${name}, audio, 4.0 s`,exact:true}).locator('footer > span').first();
+  for(const name of ['0A','0A.2','0A.3'])await expect(named(name)).toHaveText(`${name} · Voice Design`);
+  for(const width of [1440,1920]){
+    await page.setViewportSize({width,height:900});
+    expect(await named('0A').evaluate(element=>element.scrollWidth<=element.clientWidth),`whole at ${width}`).toBe(true);
+  }
+  await page.setViewportSize({width:1440,height:900});
   await shots(page,'f18-grid-one-charge');
   await page.getByRole('button',{name:'Act on 0A.2, audio, 4.0 s',exact:true}).dblclick();
   const inspection=page.getByRole('region',{name:'Inspect material',exact:true});
-  // Inspection opened from the grid room says where Escape returns.
+  // Inspection opened from the grid room says where Escape returns, and names the engine in full.
   await expect(inspection.getByRole('button',{name:'Esc · Grid',exact:true})).toBeFocused();
+  await expect(inspection.locator('header')).toContainText('ElevenLabs Voice Design');
   await expect(inspection.getByText('Confirmed charge',{exact:true}).locator('xpath=following-sibling::dd[1]'))
     .toHaveText("$0.0084 for this attempt's 3 takes");
   await page.keyboard.press('Escape');

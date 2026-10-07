@@ -129,6 +129,18 @@ def test_audio_rows_are_well_formed_enabled_only_with_their_adapter_and_route_to
             for verb in rows[i]['verbs']} == {'voice-design': 1, 'speak': 1, 'sfx': 2}
 
 
+def test_a_face_name_is_the_part_of_its_engines_name_that_names_the_model():
+    # A take's face has room for about twenty characters beside its money, so a row whose
+    # name would be cut gives its faces the words that name the model, never its maker;
+    # inspection, the record, the drawer and the picker keep the row's name.
+    rows = json.loads((REPO / 'configs/engines.json').read_text())['engines']
+    faces = {row['id']: row['face_name'] for row in rows if 'face_name' in row}
+    assert faces == {'elevenlabs-voice-design': 'Voice Design', 'elevenlabs-sfx': 'Sound Effects'}
+    for row in rows:
+        if 'face_name' in row:
+            assert row['face_name'] in row['name'] and len(row['face_name']) < len(row['name']), row['id']
+
+
 async def test_naming_an_engines_face_changes_no_operations_revision(tmp_path, monkeypatch):
     # A saved preparation names each operation's revision, and review turns away one whose
     # operation changed. A face name only words a take's face, so no revision moves with it.
