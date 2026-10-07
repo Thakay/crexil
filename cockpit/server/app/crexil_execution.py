@@ -444,7 +444,8 @@ async def review(stack, did: str, *, compiled: dict | None = None, sequence_id: 
                                  f"{'it' if len(waiting) == 1 else 'them'} ready, or remove "
                                  f"{'it' if len(waiting) == 1 else 'them'} from the run.")
     if maximum > Decimal(str(setup.spending_limit_usd)):
-        global_errors.append(f'The reserved ${maximum} exceeds the ${setup.spending_limit_usd} spending limit.')
+        global_errors.append(f'The reserved {crexil_budget.money(maximum)} exceeds the '
+                             f'{crexil_budget.money(setup.spending_limit_usd)} spending limit.')
     # Everything above depends on the request alone; what follows also depends on
     # spending other work recorded, which the token keeps in its own part.
     request_errors = list(global_errors)

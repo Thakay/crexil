@@ -1,7 +1,9 @@
 """A character package: one delivery's takes in the folders a game engine imports,
 each beside its manifest v4, with original bytes and hashes, a PNG only where an
 engine cannot read the original, the record summary and the decision record, and
-the recovery every delivery has (laws 7, 20, 23).
+the recovery every delivery has (laws 7, 20, 23). What no game engine imports,
+a provider's receipt and a mesh's voxel field, stays in the store with its record
+in the manifest, and no manifest carries a base64 copy of a take or a source.
 
 No engine is installed here, so importability is proven on the formats: real
 parsers read every file's header (PNG, WebP, TIFF, GLB, PCM WAV), the manifests'
@@ -13,6 +15,7 @@ import csv
 import hashlib
 import io
 import json
+import random
 import re
 import struct
 import threading
@@ -24,16 +27,20 @@ import pytest
 from PIL import Image
 
 import fakes
-from app import config, crexil_delivery, decisions, manifests
+from app import config, crexil_delivery, decisions, manifests, wiring
 from app.elevenlabs import ElevenLabsExecutor
+from app.executors import OpenRouterExecutor
+from app.mesh import FIELDS_SUFFIX, fields_sidecar
 from fakes import FakeExecutor, Step
+from test_api_v4 import booted as image_bench
 from test_api_v4 import store
 from test_audio_budget import priced
 from test_audio_contract import PREVIEW, booted_audio, designed, draft, submit
 from test_blind_runs import HOSTED, LOCAL, cast, casting, identity_terms, leaks, revision_of
-from test_crexil import command, project
+from test_crexil import command, imported, project
 from test_crexil_execution import attest
-from test_crexil_hosted import limits
+from test_crexil_execution import reviewed as review_of
+from test_crexil_hosted import ENDPOINT, discover, hosted, limits
 from test_crexil_mesh import draft_mesh
 from test_crexil_restore import backup_upload, restored
 from test_elevenlabs import BASE as ELEVENLABS
@@ -47,6 +54,9 @@ AGENT = {'kind': 'agent', 'name': 'Studio assistant'}
 ORDER = ('art', 'sketch', 'model', 'voice_preview', 'voice_line', 'sound_effect')
 FOLDERS = {'art': 'Art', 'sketch': 'Art', 'model': 'Models', 'voice_preview': 'Audio/Voice/Previews',
            'voice_line': 'Audio/Voice', 'sound_effect': 'Audio/SFX'}
+VOXELS = b'PK\x03\x04 the voxel field TRELLIS.2 keeps for re-extraction' * 64
+# A base64 run this long in a manifest is a copy of media, never a hash or a word.
+COPY = re.compile(r'[A-Za-z0-9+/]{120,}')
 
 
 @pytest.fixture(autouse=True)
@@ -61,6 +71,13 @@ def handoff(tmp_path, monkeypatch):
 def picture(fmt='PNG', size=(12, 8), color=(150, 90, 40, 255)) -> bytes:
     buffer = io.BytesIO()
     Image.new('RGBA', size, color).save(buffer, format=fmt, **({'lossless': True} if fmt == 'WEBP' else {}))
+    return buffer.getvalue()
+
+
+def noise_png(side: int) -> bytes:
+    """A PNG that does not compress, so its size is the size of real pixels."""
+    buffer = io.BytesIO()
+    Image.frombytes('RGB', (side, side), random.Random(7).randbytes(side * side * 3)).save(buffer, format='PNG')
     return buffer.getvalue()
 
 
@@ -121,11 +138,13 @@ def pixels(data: bytes) -> bytes:
 # --- making the takes ---
 
 def booted(tmp_path, monkeypatch, **kw):
-    """The audio bench with a mesh runner. Takes last three seconds, as long as the
-    local voice engine needs a voice to be."""
+    """The audio bench with a mesh runner that keeps a voxel field beside each mesh,
+    as TRELLIS.2 does. Takes last three seconds, as long as the local voice engine
+    needs a voice to be."""
     tone = fakes.tone_wav
     monkeypatch.setattr(fakes, 'tone_wav', lambda **shape: tone(**{'seconds': SECONDS, **shape}))
-    mesh = FakeExecutor('mesh', 'local', default=Step(data=triangle_glb(), filename='mesh.glb'))
+    mesh = FakeExecutor('mesh', 'local', default=Step(data=triangle_glb(), filename='mesh.glb',
+                                                      sidecars={FIELDS_SUFFIX: VOXELS}))
     return booted_audio(tmp_path, monkeypatch, executors={'mesh': mesh}, **kw)
 
 
@@ -236,7 +255,7 @@ async def test_a_character_package_lands_every_medium_where_a_game_engine_import
 
         # package.json lists every other file with its role, path and hash, and the hashes hold.
         listing = json.loads((root / 'package.json').read_bytes())
-        assert (listing['kind'], listing['package_version'], listing['delivery_id']) == ('character_package', 1, delivery['id'])
+        assert (listing['kind'], listing['package_version'], listing['delivery_id']) == ('character_package', 2, delivery['id'])
         assert listing['not_delivered'] == [] and listing['actor'] == {'kind': 'human', 'name': 'Artist'}
         listed = {entry['path']: entry for entry in listing['files']}
         assert sorted([*listed, 'package.json']) == on_disk
@@ -291,6 +310,13 @@ async def test_a_character_package_lands_every_medium_where_a_game_engine_import
         assert {o['node_id'] for o in siblings} == {take['id'] for take in previews} - {takes['voice_preview']['id']}
         assert all(o['file'] is None and o['sha256'] for o in siblings)
         assert sum(path.endswith('.wav') for path in on_disk) == 3
+        # The mesh's voxel field, the 3D engine's own state, stays in the store: its record travels, not its bytes.
+        (field,) = [o for o in written['model']['execution']['outputs'] if o['filename'].endswith(FIELDS_SUFFIX)]
+        assert (field['file'], field['available'], field['role']) == (None, True, 'companion')
+        assert (field['sha256'], field['size_bytes']) == (hashlib.sha256(VOXELS).hexdigest(), len(VOXELS))
+        assert fields_sidecar(takes['model']['output_path']).read_bytes() == VOXELS
+        assert not [path for path in on_disk if path.endswith('.npz') or '_outputs/' in path]
+        assert not [role for role, manifest in written.items() if COPY.search(json.dumps(manifest))]
 
         # Audio manifests carry the measured facts, the words, the voice and the provider's terms.
         line, sound, preview = written['voice_line'], written['sound_effect'], written['voice_preview']
@@ -357,6 +383,90 @@ async def test_an_elevenlabs_sound_lands_in_the_package_as_stereo_at_its_request
             == {'container': 'wav', 'codec': 'pcm_s16le', 'sample_rate': 48000, 'channels': 2, 'duration_s': 2.5}
         assert isinstance(manifest['audio']['loudness_lufs'], float) and isinstance(manifest['audio']['peak_dbfs'], float)
         assert (manifest['turn']['idx'], manifest['slot']['pos'], manifest['take']) == (0, 0, 1)
+        # The provider's receipt stays in the store; the manifest names it by hash and keeps its ids.
+        (receipt,) = [o for o in manifest['execution']['outputs'] if o['role'] == 'provider receipt']
+        assert receipt['file'] is None and receipt['available'] and receipt['sha256'] and receipt['size_bytes']
+        assert (manifest['external']['charge_basis'], manifest['external']['charged_micro_usd']) == ('published_tariff', 0)
+        assert tree(root) == sorted([entry['path'], entry['manifest'], *crexil_delivery.PACKAGE_FILES])
+
+
+async def test_a_hosted_image_travels_once_without_its_receipt_or_a_base64_copy_in_its_manifest(tmp_path, monkeypatch):
+    """A hosted continuation as OpenRouter answers it: its request carries the source
+    as a data URL, and its answer each image as base64, which the store keeps whole."""
+    image = noise_png(160)
+    async with image_bench(tmp_path, monkeypatch) as (client, _):
+        discover()
+        orc = wiring.current.openrouter
+
+        def answer(request):
+            if request.method == 'GET':
+                return httpx.Response(200, json={'endpoints': [ENDPOINT]})
+            return httpx.Response(200, json={'id': 'gen-1', 'created': 42, 'usage': {'cost': .09},
+                                             'data': [{'b64_json': base64.b64encode(image).decode()}] * 2})
+        await orc._client.aclose()
+        orc._client = httpx.AsyncClient(base_url=config.OPENROUTER_URL, transport=httpx.MockTransport(answer))
+        wiring.current.scheduler._executors['openrouter'] = OpenRouterExecutor(orc)
+        wid = (await project(client))['id']
+        source = (await imported(client, wid))['node']
+        run = await hosted(client, wid, action='continue', controls={'n': 2},
+                           references=[{'node_id': source['id'], 'contribution': 'Keep the patina'}])
+        check = await review_of(client, run)
+        assert check['ready'], check['errors']
+        submitted = await client.post(f"/api/crexil/directions/{run['id']}/submit",
+                                      json=command(revision=run['revision'], review_token=check['token']))
+        assert submitted.status_code == 201, submitted.text
+        for _ in range(200):
+            takes = [n for n in await store().list_nodes(wid) if n['turn_id'] == submitted.json()['turn_id']]
+            if len(takes) == 2 and (await store().get_turn(takes[0]['turn_id']))['slots'][0]['status'] == 'landed':
+                break
+            await asyncio.sleep(.01)
+        first = next(take for take in takes if take['output_index'] == 0)
+        # The receipt the store keeps holds the provider's whole answer, base64 included.
+        receipt_row = await store()._one("SELECT o.output_path FROM execution_outputs o JOIN execution_groups g "
+                                         "ON g.id=o.group_id WHERE g.slot_id=? AND o.role='provider receipt'",
+                                         (first['slot_id'],))
+        assert base64.b64encode(image).decode() in Path(receipt_row['output_path']).read_text()
+        _, delivery = await prepared(client, wid, [first['id']])
+        await sent(client, delivery['id'])
+        root = await package_root(delivery['id'])
+    listing = json.loads((root / 'package.json').read_bytes())
+    (entry,) = [e for e in listing['files'] if e.get('asset_id')]
+    assert (root / entry['path']).read_bytes() == image and entry['sha256'] == hashlib.sha256(image).hexdigest()
+    assert tree(root) == sorted([entry['path'], entry['manifest'], *crexil_delivery.PACKAGE_FILES,
+                                 entry['path'].rsplit('.', 1)[0] + '_inputs/source.png'])
+    text = (root / entry['manifest']).read_text()
+    manifest = json.loads(text)
+    # The take travels once: its manifest is smaller than it, and holds no base64 copy of it or its source.
+    assert len(text) < len(image) and not COPY.search(text)
+    outputs = {o['role']: o for o in manifest['execution']['outputs'] if o['node_id'] in (None, first['id'])}
+    copied = {'omitted': 'base64', 'sha256': entry['sha256'], 'size_bytes': len(image)}
+    assert outputs['unclassified']['descriptor']['provider']['b64_json'] == copied
+    assert outputs['provider receipt']['file'] is None and outputs['provider receipt']['sha256']
+    sibling = next(o for o in manifest['execution']['outputs'] if o['node_id'] not in (None, first['id']))
+    assert sibling['file'] is None and sibling['descriptor']['provider']['b64_json'] == copied
+    (reference,) = manifest['external']['request']['input_references']
+    assert reference['image_url']['url'] == {'omitted': 'base64', 'media_type': 'image/png',
+                                             'sha256': manifest['input_images'][0]['sha256'],
+                                             'size_bytes': len(Path(source['output_path']).read_bytes())}
+    assert manifest['external']['generation_id'] == 'gen-1' and manifest['cost']['charged_usd'] == .09
+
+
+async def test_a_mesh_travels_without_its_voxel_field_even_when_the_field_is_gone(tmp_path, monkeypatch):
+    async with booted(tmp_path, monkeypatch) as (client, fakes):
+        attest()
+        fakes['comfy'].default = Step(data=picture())
+        wid = (await project(client))['id']
+        _, (portrait,) = await submit(client, await draft(client, wid, 'testpreset', 'A dwarf blacksmith'))
+        mesh = await mesh_of(client, wid, portrait)
+        fields_sidecar(mesh['output_path']).unlink()
+        _, delivery = await prepared(client, wid, [mesh['id']])
+        assert (await sent(client, delivery['id']))['items'][0]['state'] == 'complete'
+        root = await package_root(delivery['id'])
+    (entry,) = [e for e in json.loads((root / 'package.json').read_bytes())['files'] if e.get('asset_id')]
+    manifest = json.loads((root / entry['manifest']).read_bytes())
+    (field,) = [o for o in manifest['execution']['outputs'] if o['filename'].endswith(FIELDS_SUFFIX)]
+    assert (field['file'], field['available'], field['sha256']) == (None, False, hashlib.sha256(VOXELS).hexdigest())
+    assert not [path for path in tree(root) if path.endswith('.npz')]
 
 
 async def test_review_hashes_each_file_once_outside_the_lock_and_prepare_hashes_nothing(tmp_path, monkeypatch):

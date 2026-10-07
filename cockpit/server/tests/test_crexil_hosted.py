@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import contextlib
 import copy
 import json
 import time
@@ -30,15 +31,23 @@ ENDPOINT = {'provider_tag': 'testvendor', 'provider_name': 'Test vendor',
 
 
 def discover():
-    """The test model in the live catalogue, fetched just now: a fresh catalogue
-    starts no background refresh, so no test's own transport replaces it
-    between a review and its submit."""
+    """The test model in the live catalogue, confirmed a minute ago, with nothing
+    left that could replace it: the refresh the boot started is stopped if it
+    still runs, the snapshot on disk counts as read, and a catalogue this fresh
+    starts no refresh of its own. So no test depends on when, or whether, a
+    refresh lands or what its transport answers, and a small step of the wall
+    clock never reads the facts as confirmed in the future."""
     catalog = wiring.current.provider_catalog
+    if catalog._refresh_task is not None:
+        catalog._refresh_task.cancel()
+    catalog._snapshot_loaded = True
+    confirmed = time.time() - 60
     catalog._live['testvendor/testmodel'] = {'id': 'testvendor/testmodel', 'provider': 'testvendor',
         'label': 'Test Model', 'name': 'Test Model', 'source': 'live', 'supports_seed': True,
-        'endpoints': [copy.deepcopy(ENDPOINT)], 'endpoints_fetched_at': datetime.now(timezone.utc).isoformat(),
+        'endpoints': [copy.deepcopy(ENDPOINT)],
+        'endpoints_fetched_at': datetime.fromtimestamp(confirmed, timezone.utc).isoformat(),
         'endpoint_discovery_error': None}
-    catalog._fetched_at = time.time()
+    catalog._fetched_at = confirmed
 
 
 async def hosted(client, wid, **setup):
@@ -75,18 +84,45 @@ async def test_hard_cap_unknown_controls_changed_prices_and_source_bounds_refuse
                  ({'controls': {'model': 'override'}}, 'not supported'),
                  ({'controls': {'resolution': '4K'}}, 'not accepted'),
                  ({'controls': {'n': 4}}, 'declared range'),
-                 ({'controls': {'n': 3}, 'spending_limit_usd': .1}, 'exceeds')]
+                 ({'controls': {'n': 3}, 'spending_limit_usd': .1},
+                  'The reserved $0.12 exceeds the $0.10 spending limit.')]
         for setup, message in cases:
             check = await reviewed(client, await hosted(client, p['id'], **setup))
             assert not check['ready'] and any(message in error for error in check['errors']), check
         d = await hosted(client, p['id'])
         review = await reviewed(client, d)
+        assert review['ready'], review['errors']
         wiring.current.provider_catalog._live['testvendor/testmodel']['endpoints'][0]['pricing'][0]['cost_usd'] = .05
         rejected = await client.post(f'/api/crexil/directions/{d["id"]}/submit',
             json=command(revision=0, review_token=review['token']))
-        assert rejected.status_code == 409
+        assert rejected.status_code == 409, rejected.text
         assert not fakes['openrouter'].starts
         assert not await store().list_turns(p['id'])
+
+
+async def test_a_refresh_that_lands_after_the_injected_catalogue_never_replaces_it(tmp_path, monkeypatch):
+    # A refresh may still be out when a test injects its model; landing later with
+    # a listing that lacks it would leave only the configuration's pin, unconfirmed.
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        catalog = wiring.current.provider_catalog
+        if catalog._refresh_task is not None:                 # the boot's own refresh settles first
+            with contextlib.suppress(BaseException):
+                await catalog._refresh_task
+        release = asyncio.Event()
+
+        async def nothing_listed():
+            await release.wait()
+            return []
+        monkeypatch.setattr(catalog.client, 'list_models', nothing_listed)
+        refresh = catalog._kick_refresh()
+        await asyncio.sleep(0)                                 # out, waiting for its answer
+        discover()
+        release.set()
+        with contextlib.suppress(asyncio.CancelledError):
+            await refresh
+        assert 'testvendor/testmodel' in catalog._live
+        check = await reviewed(client, await hosted(client, (await project(client))['id']))
+        assert check['ready'], check['errors']
 
 
 async def test_native_continuation_keeps_exact_source_all_outputs_receipt_and_charge(tmp_path, monkeypatch):

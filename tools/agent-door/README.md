@@ -29,14 +29,14 @@ they did not choose.
 |---|---|---|---|
 | `--url` | `CREXIL_URL` | `http://127.0.0.1:8000` | The Crexil server. Loopback addresses only |
 | `--agent-name` | `CREXIL_AGENT_NAME` | `Claude` | Every action is recorded as `agent:<name>` |
-| `--max-run-usd` | `CREXIL_DOOR_MAX_RUN_USD` | `0` | This door's spending ceiling per run. `0` means free local engines only |
+| `--max-run-usd` | `CREXIL_DOOR_MAX_RUN_USD` | `0` | This door's spending ceiling per run. `0` means free work only: the ceiling compares money, not where an engine runs |
 
 ## Tools
 
 | Tool | What it does |
 |---|---|
 | `crexil_status` | Whether Crexil answers, which providers are connected, who the door writes as, its ceiling |
-| `crexil_list_engines` | The engines a run can use: what each makes, whether it can run now and why not, where it runs, what leaves the machine, its price, its controls |
+| `crexil_list_engines` | The engines a run can use: each one's id, label, actions, what it makes, its price and unit, whether it can run now and why not. With a `payload` or an `action`, also where each runs, what leaves the machine, how it is charged, its sources and its controls |
 | `crexil_list_projects`, `crexil_get_project` | The projects; one project's brief, limits, runs and recent decisions |
 | `crexil_create_project` | A new project with a name and a brief |
 | `crexil_prepare_run` | Creates or revises a draft run and returns its review. Never runs anything |
@@ -53,7 +53,11 @@ they did not choose.
   or start a voice session. The server also refuses reveal, delivery and voice sessions to agents.
 - **Money moves only within two caps.** The run's own spending limit, which the server enforces,
   and this door's ceiling, which only the person who launches the door sets. A paid submission
-  must restate the amount its review reserves, or nothing is sent.
+  must restate the amount its review reserves, or nothing is sent. A refusal over the ceiling
+  names `--max-run-usd`, the flag that raises it.
+- **Answers fit a client's tool output.** The unfiltered engine list names each engine by its
+  id, label, actions, payload, price and readiness; a list filtered by payload or action adds
+  each engine's detail and controls, and leaves out a control's unset facts.
 - **Every write names its author** as `agent:<name>` and carries a delivery id. If a response is
   lost, the door sends the same request once more with the same id, and the server answers a
   replay with the work it already did. If the outcome is still unknown, the error names the id

@@ -62,6 +62,14 @@ def test_only_a_server_minted_token_starts_it_and_no_voice_is_recorded():
     assert agent['conversation_config']['agent']['prompt']['enable_parallel_tool_calls'] is False
 
 
+def test_the_providers_call_limits_back_the_installations_minutes_cap():
+    # Crexil's minutes cap stays the guard. ElevenLabs' own limits back it: no burst
+    # conversations past the concurrency limit at the higher rate, and ten a day.
+    limits = {'daily_limit': 10, 'agent_concurrency_limit': 1, 'bursting_enabled': False}
+    assert config()['platform_settings']['call_limits'] == limits
+    assert apply.agent_body(config(), ['tool'] * len(apply.TOOLS))['platform_settings']['call_limits'] == limits
+
+
 def test_the_file_holds_no_secret_and_no_account_id():
     text = (REPO / 'tools/voice-director/agent.json').read_text(encoding='utf-8')
     assert 'xi-api-key' not in text and 'agent_id' not in text and 'tool_ids' not in text

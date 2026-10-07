@@ -22,9 +22,9 @@ run's attempts is refused in one neutral line whatever their price.
 from __future__ import annotations
 
 import json
-from decimal import Decimal
 from typing import Literal
 
+from .crexil_budget import money
 from .crexil_store import Conflict
 
 Scope = Literal['project', 'run', 'sequence']
@@ -246,13 +246,6 @@ def _values(body) -> dict:
     return body.model_dump() if hasattr(body, 'model_dump') else dict(body)
 
 
-def _money(value) -> str:
-    """An amount as the record holds it: cents when it has no finer part,
-    else every digit it has, never rounded into another amount."""
-    amount = Decimal(str(value))
-    return f'${amount:.2f}' if amount == amount.quantize(Decimal('0.01')) else f'${amount.normalize():f}'
-
-
 def _attempts(count: int) -> str:
     return f"{count} held attempt{'' if count == 1 else 's'}"
 
@@ -295,12 +288,12 @@ def _cancel_words(slot: dict, *, hidden: bool) -> str:
         return 'Asked to stop: the local engine stops this attempt. Local work costs no money.'
     sent = 'Its request was already sent, so it keeps its cell: if it still delivers, the take lands here.'
     if slot['charged_usd']:
-        return f"{sent} {_money(slot['charged_usd'])} was charged."
+        return f"{sent} {money(slot['charged_usd'])} was charged."
     if slot['committed_usd'] is None:
         return f'{sent} Its price is unknown, and its charge stays unverified until the provider reports it.'
     if slot['committed_usd'] == 0:
         return f'{sent} It costs nothing.'
-    return (f"{sent} Up to {_money(slot['committed_usd'])} was committed; its charge stays unverified "
+    return (f"{sent} Up to {money(slot['committed_usd'])} was committed; its charge stays unverified "
             'until the provider reports it.')
 
 

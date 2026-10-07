@@ -168,7 +168,8 @@ async def test_a_blind_run_names_no_engine_on_any_read_until_its_authored_reveal
         assert {c['engine'] for c in line['candidates']} == {LOCAL, HOSTED}
         assert {c['provider'] for c in line['candidates']} == {'voice-runner', 'elevenlabs'}
         assert {c['model'] for c in line['candidates']} == set(MODELS)
-        assert all(c['cost_micro_usd'] == 0 for c in line['candidates'])
+        # Each engine's one free attempt states its cost on its first preview only.
+        assert [c['cost_micro_usd'] for c in line['candidates']] == [0, None, None] * 2
         preview = await client.get(f'/api/nodes/{some}/promote-preview')
         assert 'blind run' not in preview.text
         review = (await client.post(f"/api/crexil/projects/{p['id']}/deliveries/review",
@@ -253,6 +254,33 @@ async def test_the_decision_record_is_attributed_and_holds_no_audio(tmp_path, mo
         assert (await client.get('/api/crexil/projects/missing/decisions')).status_code == 404
 
 
+async def test_an_attempts_one_charge_is_stated_once_among_its_takes(tmp_path, monkeypatch):
+    # A Voice Design call returns three previews and is charged once, here below
+    # its reservation: a line states the attempt's charge on the first of its
+    # takes it lists, so a reader's sum counts every call once.
+    from test_audio_budget import priced
+    design = FakeAudioExecutor('elevenlabs', 'external', cost=.009)
+    async with booted_audio(tmp_path, monkeypatch, executors={'elevenlabs': design}) as (client, _):
+        p = await project(client)
+        direction = await priced(client, p['id'], 'audio:voice-design:elevenlabs-voice-design', PROMPT,
+                                 controls={'preview_text': PREVIEW}, count=2)
+        _, takes = await submit(client, direction)
+        ordered = sorted(takes, key=lambda take: (take['slot_pos'], take['output_index']))
+        chosen = await client.put(f"/api/crexil/directions/{direction['id']}/selection", json=command(
+            revision=await revision_of(client, p['id'], direction['id']), node_ids=[ordered[1]['id']],
+            reason='The second preview reads warmest'))
+        assert chosen.status_code == 200, chosen.text
+        assessed = await client.post(f"/api/crexil/projects/{p['id']}/assessments",
+                                     json=command(node_ids=[ordered[2]['id']], reason='Too breathy'))
+        assert assessed.status_code == 201, assessed.text
+        selection, assessment = (await client.get(f"/api/crexil/projects/{p['id']}/decisions")).json()['records']
+    assert len(design.requests) == 2 and len(ordered) == 6
+    assert [c['node_id'] for c in selection['candidates']] == [take['id'] for take in ordered]
+    assert [c['cost_micro_usd'] for c in selection['candidates']] == [9_000, None, None, 9_000, None, None]
+    # A take judged alone states its attempt's charge, never the reservation each of its takes records.
+    assert [c['cost_micro_usd'] for c in assessment['candidates']] == [9_000]
+
+
 async def test_a_choice_made_with_its_reason_carries_it_on_its_selection_line(tmp_path, monkeypatch):
     # The grid's fast pick on a blind run: one choice, its reason given with it.
     async with casting(tmp_path, monkeypatch) as (client, _):
@@ -322,10 +350,10 @@ def test_arrange_decides_one_order_from_system_randomness():
 
 def test_the_masking_rule_keeps_wire_shapes_and_plain_causes():
     event = blind.mask('event', {'seq': 1, 'charged_usd': 0.25, 'turn_id': 't', 'payload': {
-        'engine': 'x', 'cause': 'X refused the key', 'kind': 'dead_key', 'actor': {'kind': 'human', 'name': 'Kay'},
+        'engine': 'x', 'cause': 'X refused the key', 'kind': 'dead_key', 'actor': {'kind': 'human', 'name': 'Ada'},
         'nested': [{'provider': 'x', 'model_id': 'm', 'keep': 1}]}})
     assert event['charged_usd'] is None and event['payload']['identity_hidden'] is True
-    assert event['payload']['nested'] == [{'keep': 1}] and event['payload']['actor']['name'] == 'Kay'
+    assert event['payload']['nested'] == [{'keep': 1}] and event['payload']['actor']['name'] == 'Ada'
     assert event['payload']['cause'] == blind.plain_cause('dead_key') and 'X ' not in event['payload']['cause']
     cell = blind.mask('slot', {'engine': 'x', 'cause': 'X timed out', 'kind': 'timeout', 'pos': 3, 'seed': 7})
     assert cell == {'engine': blind.HIDDEN_ENGINE, 'cause': blind.plain_cause('timeout'), 'kind': 'timeout',

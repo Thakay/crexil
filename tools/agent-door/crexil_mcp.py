@@ -14,9 +14,14 @@ already did, so nothing happens twice.
 
 Money moves only within two caps. The run's own spending limit is enforced by
 the server, and an unknown price counts as over it (law 22). This door adds its
-own per-run ceiling, $0 unless the artist raises it, so by default an agent can
-use free local engines only, and a paid submission must restate the reviewed
-amount.
+own per-run ceiling, its `--max-run-usd` launch flag, $0 unless the artist raises
+it. The ceiling compares money, not where an engine runs, so by default an agent
+can run free work only, and a paid submission must restate the reviewed amount.
+
+The engine listing stays small enough for a client's tool output: without a
+payload or an action it names each engine's id, label, actions, payload, price
+and readiness, and a call that names one adds where each engine runs, what
+leaves the machine, its sources and its controls.
 
 What an agent can do here: discover engines, open or create a project, prepare
 a run, review its price, submit it, read the run, propose picks with a reason,
@@ -55,6 +60,8 @@ LOOPBACK = ('localhost', '127.0.0.1', '::1')
 API = '/api/crexil/'
 MICRO = Decimal(1_000_000)
 WAIT_LIMIT_S = 55
+# Where the artist raises the door's ceiling: the flag the door is launched with.
+CEILING = "this door's ceiling, the --max-run-usd flag it is launched with (CREXIL_DOOR_MAX_RUN_USD)"
 # Cells in these states are still moving; a wait ends when none is left.
 MOVING = {'queued', 'running', 'late', 'retrying'}
 
@@ -85,11 +92,21 @@ class Connection(BaseModel):
     detail: str
 
 
+def _unset(value) -> bool:
+    return value is None
+
+
+def _optional(description: str | None = None) -> Any:
+    """A fact a result leaves out, rather than sending a null, when it has none."""
+    return Field(default=None, exclude_if=_unset, description=description)
+
+
 class Status(BaseModel):
     reachable: bool
     preview: bool = Field(description='An isolated preview generates nothing and spends nothing')
     agent: str = Field(description='The actor this door writes as')
-    door_max_run_usd: float = Field(description="This door's per-run spending ceiling; 0 means free engines only")
+    door_max_run_usd: float = Field(description="This door's per-run spending ceiling, its --max-run-usd launch flag; "
+                                                "0 means free work only")
     connections: list[Connection]
 
 
@@ -101,17 +118,20 @@ class SourceRule(BaseModel):
 
 class Control(BaseModel):
     key: str
-    label: str | None = None
-    type: str | None = None
-    required: bool | None = None
-    default: Any = None
-    choices: list[Any] | None = None
-    min: float | None = None
-    max: float | None = None
-    min_length: int | None = None
-    max_length: int | None = None
-    supported: bool | None = None
-    reason: str | None = None
+    label: str | None = _optional()
+    type: str | None = _optional()
+    required: bool | None = _optional()
+    default: Any = _optional()
+    choices: list[Any] | None = _optional()
+    min: float | None = _optional()
+    max: float | None = _optional()
+    min_length: int | None = _optional()
+    max_length: int | None = _optional()
+    supported: bool | None = _optional()
+    reason: str | None = _optional()
+
+
+DETAIL = 'Listed when the call names a payload or an action'
 
 
 class Engine(BaseModel):
@@ -121,14 +141,15 @@ class Engine(BaseModel):
     produces: str = Field(description='The payload a take of this engine is: image, audio or 3d')
     availability: str = Field(description='verified, unverified, incomplete or unavailable')
     reasons: list[str] = Field(description='Why the engine cannot run now, when it cannot')
-    location: str = Field(description='Where the work runs')
-    data_destination: str = Field(description='What leaves the machine, and to whom')
-    price_usd: float | None = Field(description='Published price per attempt, when one exists')
-    cost_basis: str
-    takes_per_attempt: int
-    attempt_max: int
-    sources: list[SourceRule]
-    controls: list[Control]
+    price_usd: float | None = Field(description='The price the catalogue states, per price_unit; null when it states none')
+    price_unit: str | None = Field(description='What the price counts: attempt, image, 1k_characters, second or generation')
+    location: str | None = _optional(f'Where the work runs. {DETAIL}')
+    data_destination: str | None = _optional(f'What leaves the machine, and to whom. {DETAIL}')
+    cost_basis: str | None = _optional(f'How the price is charged. {DETAIL}')
+    takes_per_attempt: int | None = _optional(DETAIL)
+    attempt_max: int | None = _optional(DETAIL)
+    sources: list[SourceRule] | None = _optional(f'The takes a run of this engine may start from. {DETAIL}')
+    controls: list[Control] | None = _optional(f'Values crexil_prepare_run accepts for this engine. {DETAIL}')
 
 
 class Engines(BaseModel):
@@ -303,7 +324,10 @@ class Candidate(BaseModel):
     provider: str | None
     model: str | None
     seed: int | None
-    cost_usd: float | None
+    cost_usd: float | None = Field(description="What the take's attempt cost, charged when known, else committed. "
+                                               "An attempt is charged once however many takes it returns, so its cost "
+                                               "is on the first of its takes here and null on the others; null too "
+                                               "while a blind run is hidden")
 
 
 class DecisionLine(BaseModel):
@@ -374,7 +398,10 @@ def actor_name(actor: dict | None) -> str | None:
 
 
 def dollars(micro: Decimal) -> str:
-    return f"${(micro / MICRO).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP).normalize():f}"
+    """Micro-dollars as Crexil states money: cents when the amount has no finer
+    part ("$0.00", "$0.60"), else every digit it has ("$0.0336")."""
+    amount = (micro / MICRO).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
+    return f'${amount:.2f}' if amount == amount.quantize(Decimal('0.01')) else f'${amount.normalize():f}'
 
 
 def micro_of(usd: float | int | str) -> Decimal:
@@ -503,6 +530,8 @@ class Door:
                                    for c in setup.get('connections', [])])
 
     async def list_engines(self, payload: str | None = None, action: str | None = None) -> Engines:
+        """Every engine, compactly; with a payload or an action, the engines that
+        match, each with its detail."""
         found = []
         for op in await self._get('operations'):
             if payload and op.get('output_payload') != payload:
@@ -512,14 +541,8 @@ class Door:
             found.append(Engine(
                 id=op['id'], label=op['label'], actions=op.get('actions', []), produces=op.get('output_payload', 'image'),
                 availability=op['availability'], reasons=[plain(r) for r in op.get('reasons', [])],
-                location=plain(op.get('execution_location', '')), data_destination=plain(op.get('data_destination', '')),
-                price_usd=op.get('price_usd'), cost_basis=plain(op.get('cost_basis', '')),
-                takes_per_attempt=op.get('takes_per_attempt', 1), attempt_max=op.get('attempt_max', 16),
-                sources=[SourceRule(role=s['role'], accepts=s.get('accepts', []),
-                                    restrictions=[plain(r) for r in s.get('restrictions', [])])
-                         for s in op.get('sources', [])],
-                controls=[Control(**{k: (plain(v) if k == 'reason' else v) for k, v in c.items()
-                                     if k in Control.model_fields}) for c in op.get('inputs', [])]))
+                price_usd=op.get('price_usd'), price_unit=op.get('price_unit'),
+                **(_engine_detail(op) if payload or action else {})))
         return Engines(engines=found)
 
     async def projects(self) -> Projects:
@@ -551,7 +574,7 @@ class Door:
             step = 'The run cannot be submitted as it is. Fix what the errors name, then prepare it again.'
         elif not within:
             step = (f'It reserves {dollars(reserved)}, over this door\'s ceiling of {dollars(self.ceiling)}. '
-                    'Ask the artist to submit it, or to raise the door\'s ceiling.')
+                    f'Ask the artist to submit it, or to raise {CEILING}.')
         elif reserved > 0:
             step = (f'Submitting reserves {dollars(reserved)}. Ask the artist before spending, then call '
                     'crexil_submit_run with this review_token and confirm_reserved_usd.')
@@ -608,7 +631,7 @@ class Door:
         if limit > self.ceiling:
             raise DoorError('over_door_ceiling',
                             f'This run asks for a {dollars(limit)} spending limit; this door allows {dollars(self.ceiling)} per run.',
-                            'Use free local engines with a $0 limit, or ask the artist to raise the door\'s ceiling. '
+                            f'Run free work with a zero spending limit, or ask the artist to raise {CEILING}. '
                             'Nothing was sent.')
         if not engines:
             raise DoorError('invalid_input', 'Name at least one engine for the run.', 'See crexil_list_engines.')
@@ -653,7 +676,7 @@ class Door:
         if reserved > self.ceiling:
             raise DoorError('over_door_ceiling',
                             f'This run reserves {dollars(reserved)}; this door allows {dollars(self.ceiling)} per run.',
-                            'Ask the artist to submit it, or to raise the door\'s ceiling. Nothing was sent.')
+                            f'Ask the artist to submit it, or to raise {CEILING}. Nothing was sent.')
         try:
             made, delivery_id = await self._write('POST', f'directions/{_id(run_id)}/submit',
                                                   {'revision': expected_revision, 'review_token': review_token},
@@ -662,7 +685,7 @@ class Door:
             if error.conflict == 'spending':
                 again = await self.review(run_id)
                 error.next_move = (f"Spending moved since your review. Reviewed again: ready {str(again.ready).lower()}, "
-                                   f"reserves ${again.reserved_usd:g}, token {again.review_token}"
+                                   f"reserves {dollars(micro_of(again.reserved_usd))}, token {again.review_token}"
                                    + (f", errors: {' '.join(again.errors)}" if again.errors else '')
                                    + '. Submit with those only if the artist still wants the run.')
             raise
@@ -697,6 +720,19 @@ def _id(value: str) -> str:
 def _title(action: str, prompt: str) -> str:
     words = ' '.join(prompt.split())
     return (f'{action}: {words}' if words else action)[:120]
+
+
+def _engine_detail(op: dict) -> dict:
+    """An engine's detail: where it runs, what leaves the machine, how it is
+    charged, its sources and its controls."""
+    return {'location': plain(op.get('execution_location', '')), 'data_destination': plain(op.get('data_destination', '')),
+            'cost_basis': plain(op.get('cost_basis', '')), 'takes_per_attempt': op.get('takes_per_attempt', 1),
+            'attempt_max': op.get('attempt_max', 16),
+            'sources': [SourceRule(role=s['role'], accepts=s.get('accepts', []),
+                                   restrictions=[plain(r) for r in s.get('restrictions', [])])
+                        for s in op.get('sources', [])],
+            'controls': [Control(**{k: (plain(v) if k == 'reason' else v) for k, v in c.items()
+                                    if k in Control.model_fields}) for c in op.get('inputs', [])]}
 
 
 def _decision(d: dict) -> Decision:
@@ -752,15 +788,17 @@ the takes land in one grid, and every decision is recorded with its author and r
 Words: a project holds runs; a run is one brief sent to one or more engines; each attempt lands
 takes, named like 3B. Engines are image, audio (voice-design, speak, sfx) and 3D operations.
 
-Typical flow: crexil_list_engines, crexil_get_project or crexil_create_project,
+Typical flow: crexil_list_engines (with a payload or an action for each engine's controls),
+crexil_get_project or crexil_create_project,
 crexil_prepare_run (creates a draft and reviews it; nothing runs), crexil_submit_run with the
 reviewed token and amount, crexil_get_run with wait_seconds until it settles, then
 crexil_propose to recommend takes with a reason.
 
 Rules: the artist decides. You propose; you never pick, reveal blind runs, deliver or change
-limits. Ask the artist before any paid submission. This door's per-run ceiling is set by the
-artist; with $0 only free local engines can run. Results never contain media or file paths:
-you work from facts, labels and reasons."""
+limits. Ask the artist before any paid submission. This door's per-run ceiling is the
+artist's --max-run-usd launch flag; at $0 only free work can run, since it compares money,
+not where an engine runs. Results never contain media or file paths: you work from facts,
+labels and reasons."""
 
 
 def build_server(door: Door):
@@ -787,8 +825,9 @@ def build_server(door: Door):
         return await call(door.status())
 
     @server.tool(name='crexil_list_engines', annotations=reading,
-                 description='The engines a run can use: what each produces, whether it can run now and why not, '
-                             'where it runs, what leaves the machine, its price and its controls.')
+                 description='The engines a run can use: each one\'s id, label, actions, what it produces, its price '
+                             'and whether it can run now and why not. Name a payload or an action to add where each '
+                             'runs, what leaves the machine, how it is charged, its sources and its controls.')
     async def crexil_list_engines(
             payload: Annotated[Literal['image', 'audio', '3d'] | None, Field(description='Only engines producing this')] = None,
             action: Annotated[str | None, Field(description='Only engines serving this action, such as voice-design')] = None,
@@ -892,7 +931,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--agent-name', default=os.environ.get('CREXIL_AGENT_NAME') or 'Claude',
                         help='Written as agent:<name> on every action (CREXIL_AGENT_NAME)')
     parser.add_argument('--max-run-usd', default=os.environ.get('CREXIL_DOOR_MAX_RUN_USD') or '0',
-                        help="This door's per-run spending ceiling in dollars (CREXIL_DOOR_MAX_RUN_USD); 0 means free engines only")
+                        help="This door's per-run spending ceiling in dollars (CREXIL_DOOR_MAX_RUN_USD); 0 means free work only")
     args = parser.parse_args(argv)
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)   # stdout carries the protocol
     try:

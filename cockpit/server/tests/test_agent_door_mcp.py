@@ -7,17 +7,19 @@ core is tested in tools/agent-door/tests, where the mcp package is installed."""
 import importlib.util
 import json
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import httpx
 import pytest
 
+from app import wiring
 from test_api_v4 import booted, store
 from test_audio_contract import PREVIEW, booted_audio
 from test_blind_runs import LOCAL
 from test_crexil import command
 from test_crexil_execution import reviewed
-from test_crexil_hosted import hosted
+from test_crexil_hosted import discover, hosted
 from test_review_token import IN_FLIGHT, priced_project
 
 pytestmark = pytest.mark.anyio
@@ -30,6 +32,8 @@ _spec.loader.exec_module(door_module)
 Door, DoorError, EngineChoice = door_module.Door, door_module.DoorError, door_module.EngineChoice
 
 AGENT = {'kind': 'agent', 'name': 'Tester'}
+# What an unfiltered engine list says of each engine.
+COMPACT = {'id', 'label', 'actions', 'produces', 'availability', 'reasons', 'price_usd', 'price_unit'}
 # Bytes, routes to a take's file, media file names and machine paths: none may
 # reach an agent's model (ElevenLabs' terms; the run view and record hold none).
 MATERIAL_MARKS = ('data:', 'base64', '/api/crexil/material/', '/api/nodes/', '/outputs/', '/files/', '/thumb',
@@ -90,6 +94,31 @@ async def test_an_agent_drafts_voices_on_the_free_local_engine_and_proposes_one_
     assert not marks(engines, made, prepared, submitted, run, proposed, record, project, found, listed, status, again)
 
 
+async def test_the_unfiltered_engine_list_stays_compact_and_a_filter_adds_each_engines_controls(tmp_path, monkeypatch):
+    # A live catalogue lists dozens of hosted image models. Unfiltered, the list must fit
+    # a client's tool output: Claude Code refused 100,593 characters for 75 engines.
+    async with booted_audio(tmp_path, monkeypatch) as (client, _):
+        discover()
+        catalog = wiring.current.provider_catalog
+        for n in range(65):
+            catalog._live[f'vendor{n}/model-{n}'] = {**catalog._live['testvendor/testmodel'], 'id': f'vendor{n}/model-{n}',
+                                                    'provider': f'vendor{n}', 'label': f'Model {n}', 'name': f'Model {n}'}
+        door = door_over(client)
+        everything = (await door.list_engines()).model_dump(mode='json')
+        voices = (await door.list_engines(action='voice-design')).model_dump(mode='json')
+        images = (await door.list_engines(payload='image')).model_dump(mode='json')
+    assert len(everything['engines']) >= 75 and len(json.dumps(everything)) < 30_000
+    assert all(set(engine) == COMPACT for engine in everything['engines'])
+    priced = {e['id']: (e['price_usd'], e['price_unit']) for e in everything['engines']}
+    assert priced['testvendor/testmodel'] == (0.05, 'image') and priced['vendor7/model-7'] == (None, 'image')
+    assert priced[f'audio:voice-design:{LOCAL}'] == (0, 'attempt')
+    assert {e['id'] for e in voices['engines']} == {f'audio:voice-design:{LOCAL}', 'audio:voice-design:elevenlabs-voice-design'}
+    for engine in voices['engines'] + images['engines']:
+        assert set(engine) > COMPACT and engine['location'] and engine['data_destination'] and engine['controls']
+    preview = next(c for e in voices['engines'] for c in e['controls'] if c['key'] == 'preview_text')
+    assert None not in preview.values() and 'choices' not in preview   # a control's unset facts stay out
+
+
 async def test_revising_a_draft_needs_the_revision_the_agent_read(tmp_path, monkeypatch):
     async with booted_audio(tmp_path, monkeypatch) as (client, _):
         door = door_over(client)
@@ -124,7 +153,9 @@ async def test_the_door_refuses_a_run_over_its_ceiling_before_anything_is_sent(t
                                spending_policy='published_tariff')
         after = (await client.get(f"/api/crexil/projects/{p['id']}")).json()['directions']
     assert refused.value.kind == 'over_door_ceiling'
-    assert '$0.04 spending limit' in str(refused.value) and 'Nothing was sent' in str(refused.value)
+    assert '$0.04 spending limit; this door allows $0.00 per run.' in str(refused.value)
+    # The next move names the launch flag that raises the ceiling.
+    assert '--max-run-usd' in refused.value.next_move and 'Nothing was sent' in str(refused.value)
     assert len(after) == before and not fakes['openrouter'].starts
 
 
@@ -150,9 +181,11 @@ async def test_submit_restates_the_reviewed_amount_and_holds_the_ceiling_against
         with pytest.raises(DoorError) as over:
             await door.submit(prepared.run_id, bigger.revision, bigger.review_token, bigger.reserved_usd)
         sent = fakes['openrouter'].starts
-    assert understated.value.kind == 'refused' and 'You confirmed $0' in str(understated.value)
+    assert understated.value.kind == 'refused' and 'You confirmed $0.00, but this run reserves $0.04.' in str(understated.value)
     assert bigger.reserved_usd == 0.08 and not bigger.within_door_ceiling and "door's ceiling" in bigger.next
+    assert "over this door's ceiling of $0.05" in bigger.next and '--max-run-usd' in bigger.next
     assert over.value.kind == 'over_door_ceiling' and not sent
+    assert 'this door allows $0.05 per run' in over.value.line and '--max-run-usd' in over.value.next_move
 
 
 async def test_a_spending_conflict_comes_back_with_a_fresh_review(tmp_path, monkeypatch):
@@ -290,3 +323,9 @@ def test_a_paid_step_is_never_the_default():
     free = door._review({**base, 'reserved_usd': 0, 'reserved_micro_usd': 0})
     assert 'Ask the artist before spending' in paid.next and 'Free to run' in free.next
     assert paid.reserved_usd == 0.04 and paid.spending_policy == 'published_tariff'
+
+
+def test_the_doors_money_reads_as_crexils_two_decimals_or_every_digit():
+    dollars = door_module.dollars
+    assert [dollars(Decimal(m)) for m in (0, 600_000, 40_000, 1_500_000)] == ['$0.00', '$0.60', '$0.04', '$1.50']
+    assert [dollars(Decimal(m)) for m in (33_600, 4_080, 865_080)] == ['$0.0336', '$0.00408', '$0.86508']

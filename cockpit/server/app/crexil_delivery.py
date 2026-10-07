@@ -10,8 +10,15 @@ bytes are copied exactly. Where a mainstream game engine cannot import an
 image's own format, a PNG of its pixels is written beside it as a separate file,
 which `package.json` names as a conversion with the engines that need it. A
 source or another take of the same attempt that the package also delivers is
-referenced at its package path, never copied twice; another take of the attempt
-that the package does not deliver keeps its record without its bytes. Once
+referenced at its package path, never copied twice.
+
+A package holds what a game engine imports and the record needs. Another take
+of the attempt that the package does not deliver, a take's provider receipt and
+a mesh's voxel field (the 3D engine's own state for re-extraction) keep their
+records in the manifest, hash and size, without their bytes; and a base64 copy
+of media inside a manifest's provider records, such as a hosted image in its
+provider's answer, reads as the SHA-256 and size of the bytes it held. The store
+and its backups keep every file and record whole (law 7). Once
 every planned take is in place, the package gains `records.csv`, the record
 summary; `decisions.json`, the decision record for these takes (authors, reasons
 and candidates, never audio and never a path); and last `package.json`, which
@@ -38,6 +45,8 @@ and record its verified destination bytes after the source is purged.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import csv
 import hashlib
 import io
@@ -58,11 +67,12 @@ from .agent_door import label as grid_label
 from .api_v4_promote import _root
 from .crexil_store import Conflict, CreativeStore
 from .db import new_id, now_iso
+from .mesh import FIELDS_SUFFIX
 
 _locks = WeakKeyDictionary()
 _reviews = WeakKeyDictionary()   # store -> reviewed plans by token, oldest first
 REVIEWS_HELD = 8
-PACKAGE_VERSION = 1
+PACKAGE_VERSION = 2   # changes whenever what a package holds changes
 
 # law 20: each medium's place in a package. (payload, verb) -> (folder, role);
 # a verb of None stands for every other verb of that payload.
@@ -186,13 +196,54 @@ def _members(manifest: dict):
         yield manifest['keep_composite'], 'mask_file'
 
 
-async def _bundle(db, workspace: dict, node: dict, asset_id: str, *, siblings: bool = True,
+def _stays(member: dict, nid: str) -> bool:
+    """Whether a package keeps a related file's record without its bytes: another
+    take of the same attempt, a provider's receipt, or a mesh's voxel field, which
+    no game engine imports."""
+    return (member.get('node_id') not in (None, nid) or member.get('role') == 'provider receipt'
+            or (member.get('filename') or '').endswith(FIELDS_SUFFIX))
+
+
+_DATA_URL = re.compile(r'data:([\w.+-]+/[\w.+-]+);base64,')
+
+
+def _held(key, text: str) -> dict | None:
+    """The SHA-256 and size of the bytes a base64 copy of media holds: an image's
+    `b64_json` or a `data:` URL. None for any other text, or for text that does not
+    decode, which stays as it is."""
+    url = _DATA_URL.match(text)
+    if key != 'b64_json' and url is None:
+        return None
+    try:
+        data = base64.b64decode(text[url.end():] if url else text, validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    return {'omitted': 'base64', **({'media_type': url.group(1)} if url else {}),
+            'sha256': hashlib.sha256(data).hexdigest(), 'size_bytes': len(data)}
+
+
+def _drop_copies(value) -> None:
+    """Replace, in place, every base64 copy of media in a manifest by the SHA-256 and
+    size of the bytes it held. A provider's request or answer can carry the take
+    itself and its sources this way; the package carries those bytes as files."""
+    for key, item in value.items() if isinstance(value, dict) else enumerate(value):
+        if isinstance(item, str):
+            held = _held(key, item)
+            if held is not None:
+                value[key] = held
+        elif isinstance(item, (dict, list)):
+            _drop_copies(item)
+
+
+async def _bundle(db, workspace: dict, node: dict, asset_id: str, *, package: bool = False,
                   seen: dict | None = None) -> dict:
     """One take's portable bundle: its manifest v4 and every file copied beside it,
     named after `asset_id`, each hashed once and checked against the hash the record
-    holds. With `siblings` false, the attempt's other takes keep their records but
-    not their bytes. `seen` gathers the stat fingerprint of every file hashed. A take
-    that cannot travel comes back refused, with its reason in plain words."""
+    holds. A package's bundle copies what a game engine imports and the record needs:
+    the files `_stays` names keep their records without their bytes, so their absence
+    refuses nothing, and the manifest names each base64 copy of media by hash.
+    `seen` gathers the stat fingerprint of every file hashed. A take that cannot
+    travel comes back refused, with its reason in plain words."""
     nid = node['id']
     # A hidden take is refused before anything of it is read, and named as every
     # read names it: the file name its engine gave it would tell the engine apart.
@@ -216,12 +267,16 @@ async def _bundle(db, workspace: dict, node: dict, asset_id: str, *, siblings: b
             workspace=workspace, node=node, turn=turn, slot=slot,
             parents=[p for p in parents if p], turntable=orbit if orbit.is_file() else None)
         outputs = (manifest.get('execution') or {}).get('outputs', [])
-        required = ((node.get('dials') or {}).get('crexil') or {}).get('output_ports', [])
-        absent = [member['filename'] for member in outputs if (not member['available'] or member.get('error'))
-                  and member['descriptor'].get('declared_output', {}).get('required', member['role'] == 'companion')]
         related = (manifest.get('material') or {}).get('related_files', [])
+
+        def kept(member: dict) -> bool:
+            return not (package and _stays(member, nid))
+        required = ((node.get('dials') or {}).get('crexil') or {}).get('output_ports', [])
+        absent = [member['filename'] for member in outputs
+                  if kept(member) and (not member['available'] or member.get('error'))
+                  and member['descriptor'].get('declared_output', {}).get('required', member['role'] == 'companion')]
         absent += [member['filename'] for member in related
-                   if member['required'] and (not member['available'] or member.get('error'))]
+                   if kept(member) and member['required'] and (not member['available'] or member.get('error'))]
         for port in required:
             if port.get('required') and not any(
                 member['available'] and not member.get('error')
@@ -231,11 +286,12 @@ async def _bundle(db, workspace: dict, node: dict, asset_id: str, *, siblings: b
         if absent:
             raise ValueError('Required related material is unavailable: ' + ', '.join(absent)
                              + '. Collect the missing files, then review this material again.')
-        if not siblings:
-            for output in outputs:
-                if output.get('node_id') not in (None, nid) and output.get('file'):
-                    extras = [(path, relative) for path, relative in extras if relative != output['file']]
-                    output['file'] = None
+        for member in outputs + related:
+            if not kept(member) and member.get('file'):
+                extras = [(path, relative) for path, relative in extras if relative != member['file']]
+                member['file'] = None
+        if package:
+            await asyncio.to_thread(_drop_copies, manifest)
         manifest['created_at'] = None  # Filled once when the intent is accepted.
         primary = f"{asset_id}{Path(node['output_path']).suffix or '.png'}"
         for index, (path, relative) in enumerate([(Path(node['output_path']), primary), *extras]):
@@ -258,7 +314,7 @@ async def _bundle(db, workspace: dict, node: dict, asset_id: str, *, siblings: b
         for member in outputs + related:
             if member['available'] and member.get('node_id'):
                 item['source_nodes'].append(member['node_id'])
-            if not member['available'] and (siblings or member.get('node_id') in (None, nid)):
+            if not member['available'] and kept(member):
                 item['missing'].append(f"Related file {member['filename']} is unavailable; its record will be included.")
     except (OSError, ValueError, promote.PromoteMaterialError) as exc:
         item.update(state='incomplete', error=str(exc), requires_review=True, files=[])
@@ -427,7 +483,7 @@ async def _plan(db, wid: str, body) -> dict:
     did = new_id()
     package = f"{_words(workspace['name'], 32) or 'project'}_{did}"
     seen: dict[str, list[int]] = {}
-    items = [await _bundle(db, workspace, node, new_id(), siblings=False, seen=seen) for node in nodes]
+    items = [await _bundle(db, workspace, node, new_id(), package=True, seen=seen) for node in nodes]
     taken: set[tuple[str, str]] = set()
     members: dict[str, str] = {}
     for node, item in zip(nodes, items, strict=True):
