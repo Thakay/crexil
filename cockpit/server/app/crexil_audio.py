@@ -186,7 +186,7 @@ def cost_basis(price: dict | None) -> str:
 
 
 def catalogue(stack) -> list[dict]:
-    from .crexil_execution import digest
+    from .crexil_execution import digest, revision_row
     results = []
     for row in audio.engines().values():
         for verb in row.get('verbs', []):
@@ -197,7 +197,7 @@ def catalogue(stack) -> list[dict]:
             free = price is not None and price.get('micro_usd') == 0
             results.append({'id': f"audio:{verb}:{row['id']}", 'engine_id': row['id'], 'audio_verb': verb,
                 'label': f"{LABELS[verb]} · {row['name']}",
-                'revision': digest([row, verb, specs, notes, destination(row.get('provider'))])[:16],
+                'revision': digest([revision_row(row), verb, specs, notes, destination(row.get('provider'))])[:16],
                 'actions': [verb], 'inputs': specs, 'source_limit': len(ROLES.get(verb, [])),
                 'source_roles': ROLES.get(verb, []),
                 'sources': [{'role': role, 'accepts': ['audio'], 'restrictions': restrictions(row),

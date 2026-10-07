@@ -745,7 +745,12 @@ class DecisionCandidate(BaseModel):
     provider: str | None
     model: str | None
     seed: int | None
-    cost_micro_usd: int | None         # charged when known, else committed
+    # The attempt's cost, charged when known, else committed; on the first of its takes
+    # among the candidates, null on the others and while hidden.
+    cost_micro_usd: int | None
+    # The attempt that made the take, shared by its takes; null for material from no run
+    # and while the run is hidden.
+    attempt_id: str | None = None
 
 
 class DecisionRecord(BaseModel):

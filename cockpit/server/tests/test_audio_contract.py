@@ -129,6 +129,31 @@ def test_audio_rows_are_well_formed_enabled_only_with_their_adapter_and_route_to
             for verb in rows[i]['verbs']} == {'voice-design': 1, 'speak': 1, 'sfx': 2}
 
 
+async def test_naming_an_engines_face_changes_no_operations_revision(tmp_path, monkeypatch):
+    # A saved preparation names each operation's revision, and review turns away one whose
+    # operation changed. A face name only words a take's face, so no revision moves with it.
+    async with booted_audio(tmp_path, monkeypatch) as (client, _):
+        shipped = config.CONFIGS_DIR
+
+        async def revisions(face):
+            configs = tmp_path / f'configs-{face or "unnamed"}'
+            shutil.copytree(shipped, configs)
+            matrix = json.loads((configs / 'engines.json').read_text())
+            for row in matrix['engines']:
+                row.pop('face_name', None)
+                if face:
+                    row['face_name'] = face
+            (configs / 'engines.json').write_text(json.dumps(matrix))
+            monkeypatch.setattr(config, 'CONFIGS_DIR', configs)
+            return {op['id']: op['revision'] for op in (await client.get('/api/crexil/operations')).json()
+                    if op['id'].startswith(('audio:', 'mesh:'))}
+
+        unnamed, named = await revisions(None), await revisions('Named on its face')
+    assert named == unnamed
+    assert {'audio:voice-design:elevenlabs-voice-design', 'audio:sfx:elevenlabs-sfx'} <= set(unnamed)
+    assert any(op.startswith('mesh:') for op in unnamed)
+
+
 def test_every_engine_kind_routes_by_its_declared_source(tmp_path, monkeypatch):
     monkeypatch.setattr(config, 'CONFIGS_DIR', REPO / 'configs')
     expected = {'elevenlabs-v4': ('elevenlabs', 'external'), 'elevenlabs-sfx': ('elevenlabs', 'external'),

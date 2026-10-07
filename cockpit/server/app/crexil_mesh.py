@@ -99,7 +99,7 @@ def limitations(engine: str, kind: str) -> list[str]:
 
 def catalogue(stack) -> list[dict]:
     from .api_v4_mesh import _matrix_engines
-    from .crexil_execution import digest
+    from .crexil_execution import digest, revision_row
     benches = stack.scheduler.snapshot()['benches']
     results = []
     for engine in _matrix_engines().values():
@@ -111,7 +111,7 @@ def catalogue(stack) -> list[dict]:
             unavailable = config.CREXIL_PREVIEW or 'lane:local' in benches or f"engine:{engine['id']}" in benches
             results.append({'id': f"mesh:{kind}:{engine['id']}", 'engine_id': engine['id'], 'mesh_kind': kind,
                 'label': f"{LABELS[kind]} · {engine['name']}",
-                'revision': digest([engine, kind, specs, notes, config.THREED_URL])[:16],
+                'revision': digest([revision_row(engine), kind, specs, notes, config.THREED_URL])[:16],
                 'actions': [action], 'inputs': specs, 'source_limit': len(ROLES[kind]),
                 'source_roles': ROLES[kind], 'output_payload': '3d', 'limitations': notes,
                 'sources': [{'role': role, 'accepts': ['image' if role in ('image', 'appearance') else '3d']}

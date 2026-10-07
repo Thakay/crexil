@@ -328,6 +328,9 @@ class Candidate(BaseModel):
                                                "An attempt is charged once however many takes it returns, so its cost "
                                                "is on the first of its takes here and null on the others; null too "
                                                "while a blind run is hidden")
+    attempt_id: str | None = Field(default=None, description='The attempt that made the take, shared by all its '
+                                                             'takes; null for material from no run and while a blind '
+                                                             'run is hidden')
 
 
 class DecisionLine(BaseModel):
@@ -746,7 +749,8 @@ def _decision_line(r: dict) -> DecisionLine:
         verb=r.get('verb'), brief=r.get('brief', ''),
         candidates=[Candidate(take_id=c['node_id'], position=c['position'], engine=c['engine'], provider=c.get('provider'),
                               model=c.get('model'), seed=c.get('seed'),
-                              cost_usd=None if c.get('cost_micro_usd') is None else c['cost_micro_usd'] / 1_000_000)
+                              cost_usd=None if c.get('cost_micro_usd') is None else c['cost_micro_usd'] / 1_000_000,
+                              attempt_id=c.get('attempt_id'))
                     for c in r.get('candidates', [])],
         chosen=r.get('chosen', []), reason=r.get('reason'), author=actor_name(r.get('author')),
         blind=bool(r.get('blind')), decided_at=r['decided_at'])

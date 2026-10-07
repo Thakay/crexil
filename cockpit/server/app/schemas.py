@@ -635,6 +635,10 @@ class Engine(BaseModel):
     `verbs` empty: its handles are the preset's `inputs`."""
     id: str
     name: str
+    # the name a take's face gives the engine when `name` would not fit its
+    # line: the part of `name` that names the model, never its maker; every
+    # other surface keeps `name`
+    face_name: str | None = None
     lane: Literal["local", "external"]
     payload: Literal["image", "3d", "audio"]
     # the adapter the engine is reached through (PRD §2); audio rows name it

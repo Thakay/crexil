@@ -85,6 +85,9 @@ async def test_an_agent_drafts_voices_on_the_free_local_engine_and_proposes_one_
         events = await events_of(made.project_id)
     assert record.count == 1 and record.records[0].kind == 'assessment' and record.records[0].author == 'agent:Tester'
     assert record.records[0].chosen == [] and record.purpose
+    # The judged preview names the attempt that made it: the first cell's first attempt.
+    (judged,) = record.records[0].candidates
+    assert judged.take_id == takes[1].take_id and judged.attempt_id.endswith(f':{run.cells[0].attempt}')
     assert project.runs[0].takes == 6 and project.recent_decisions[0].author == 'agent:Tester'
     assert found.decisions and found.decisions[0].reason == 'Warmest growl, clearest consonants'
     assert any(p.project_id == made.project_id for p in listed.projects) and status.agent == 'agent:Tester'

@@ -2308,6 +2308,8 @@ export interface components {
          * @description One take the decision was made among, as the record states it.
          */
         DecisionCandidate: {
+            /** Attempt Id */
+            attempt_id?: string | null;
             /** Cost Micro Usd */
             cost_micro_usd: number | null;
             /** Engine */
@@ -2677,6 +2679,8 @@ export interface components {
             capabilities: {
                 [key: string]: components["schemas"]["EngineCapability"];
             };
+            /** Face Name */
+            face_name?: string | null;
             /** Id */
             id: string;
             /**

@@ -15,7 +15,10 @@ A candidate's cost is its attempt's: the charge when it is known, else what the
 attempt committed. An attempt is charged once however many takes it returns (a
 Voice Design call returns three previews), so a line states that cost on the
 first of the attempt's takes among its candidates, and the attempt's other takes
-read null: summing a line's candidates counts each attempt once.
+read null: summing a line's candidates counts each attempt once. Each candidate
+names its attempt (`attempt_id`, the cell and its attempt number), so a reader
+groups an attempt's takes without the grid; material from no run, and a hidden
+run's takes until its reveal, name none.
 """
 
 from __future__ import annotations
@@ -71,11 +74,12 @@ def _attempt_costs(nodes) -> dict:
 def _candidate(node: dict, position: int, hidden: frozenset[str], cost: float | None) -> dict:
     if node['turn_id'] in hidden:
         return {'node_id': node['id'], 'position': position, 'engine': blind.HIDDEN_ENGINE,
-                'provider': None, 'model': None, 'seed': None, 'cost_micro_usd': None}
+                'provider': None, 'model': None, 'seed': None, 'cost_micro_usd': None, 'attempt_id': None}
     engine = node['engine']
     return {'node_id': node['id'], 'position': position, 'engine': engine or 'imported',
             'provider': wiring.route_engine(engine) if engine else None,
-            'model': _model(node) if engine else None, 'seed': node['seed'], 'cost_micro_usd': _micro_usd(cost)}
+            'model': _model(node) if engine else None, 'seed': node['seed'], 'cost_micro_usd': _micro_usd(cost),
+            'attempt_id': None if node['slot_id'] is None else f"{node['slot_id']}:{node['take']}"}
 
 
 def _candidates(considered: list[dict], hidden: frozenset[str], costs: dict) -> list[dict]:
