@@ -82,7 +82,7 @@ test("promote: the words before the hold, the hold, and the mark after", async (
   await expect(plinth(page)).toContainText(PROMOTED);
   await expect(plinth(page)).toContainText("2 FILES");
   await expect(plinth(page)).toContainText(
-    "This take cost no money — it ran on your own card.",
+    "This take cost no money: it ran on your own card.",
   );
   await expect(plinth(page)).toContainText("cannot be un-happened");
   await expect(plinth(page)).toContainText("HOLD TO PROMOTE");

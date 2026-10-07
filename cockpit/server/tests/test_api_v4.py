@@ -7,6 +7,7 @@ explicitly — boot failures (the archive refusal) surface as exceptions on
 entry, exactly as they would kill a real deploy."""
 
 import json
+import shutil
 import sqlite3
 from contextlib import asynccontextmanager
 
@@ -852,6 +853,22 @@ async def test_dial_and_engine_tables_serve_as_authored(tmp_path, monkeypatch):
         r = await client.get("/api/dials")
         assert r.status_code == 503
         assert "configs/dials.json" in r.json()["detail"]
+
+
+async def test_an_engine_row_may_carry_the_name_its_faces_give_it(tmp_path, monkeypatch):
+    """`face_name` is the row's own, served as written for the take faces;
+    a row without one serves null, and its faces read its `name`."""
+    configs = tmp_path / "configs"
+    shutil.copytree(config.REPO_ROOT / "configs", configs)
+    matrix = json.loads((configs / "engines.json").read_text())
+    matrix["engines"][0]["face_name"] = "Klein 4B"
+    (configs / "engines.json").write_text(json.dumps(matrix))
+    monkeypatch.setattr(config, "CONFIGS_DIR", configs)
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        served = (await client.get("/api/engines")).json()["engines"]
+    written = {row["id"]: row.get("face_name") for row in matrix["engines"]}
+    assert {row["id"]: row["face_name"] for row in served} == written
+    assert written[matrix["engines"][0]["id"]] == "Klein 4B" and None in written.values()
 
 
 async def test_take_overrides_give_each_slot_its_own_dials(

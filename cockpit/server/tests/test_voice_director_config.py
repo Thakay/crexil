@@ -1,8 +1,8 @@
 """The voice director's configuration and its apply script, checked without a key or a
 network: the file names exactly the client tools the panel handles, ends a session at the
-installation's session maximum, requires a server-minted token, records no voice, and holds
-no secret. A dry run validates and prints its plan, and never reads a key or opens a
-connection."""
+installation's session maximum, requires a server-minted token, records no voice, allows no
+burst calls, and holds no secret. A dry run validates and prints its plan, and never reads a
+key or opens a connection."""
 
 import importlib.util
 import json
@@ -92,6 +92,10 @@ def test_every_tool_waits_for_its_answer_and_describes_every_parameter():
     (lambda c: c['conversation_config']['agent']['prompt'].update(enable_parallel_tool_calls=True), 'Parallel tool calls must be off'),
     (lambda c: c['conversation_config']['agent']['prompt'].update(tool_ids=['t1']), 'tool_ids belong to an installation'),
     (lambda c: c.update(note='sk_live0123456789abcdef'), 'no key and no account id'),
+    # ElevenLabs allows burst calls by default, so a file that does not refuse them allows them.
+    (lambda c: c['platform_settings']['call_limits'].update(bursting_enabled=True), 'Burst calls must be off'),
+    (lambda c: c['platform_settings']['call_limits'].pop('bursting_enabled'), 'Burst calls must be off'),
+    (lambda c: c['platform_settings'].pop('call_limits'), 'Burst calls must be off'),
 ])
 def test_a_configuration_that_breaks_a_rule_is_refused(change, words):
     broken = config()

@@ -46,6 +46,13 @@ def digest(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+def revision_row(row: dict) -> dict:
+    """An engine row as an operation's revision digests it: all of it but `face_name`,
+    the words a take's face shows, so naming a face changes no operation and turns away
+    no preparation saved before it."""
+    return {key: value for key, value in row.items() if key != 'face_name'}
+
+
 class SpendingChanged(Conflict):
     """Spending or its limits moved since review while the request stayed the same.
     Answered as a 409 whose `X-Crexil-Conflict` header says `spending`, so a

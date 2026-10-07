@@ -406,9 +406,11 @@ async def test_live_catalogue_matches_direct_fetch(tmp_path, monkeypatch):
     """The core clause against the real service (keyless, since discovery
     is public, and $0): every id from a direct fetch is served and marked
     live; sampled prices equal a direct recompute through the same rules;
-    pins only float/annotate."""
+    pins only float/annotate. The session is sealed (hermetic.py), so the
+    check names the public address itself."""
     from app.openrouter import OpenRouterClient
     monkeypatch.setattr(config, "STAGING_DIR", tmp_path)  # spare repo snapshot
+    monkeypatch.setattr(config, "OPENROUTER_URL", "https://openrouter.ai/api/v1")
     async with httpx.AsyncClient(base_url=config.OPENROUTER_URL,
                                  timeout=30.0) as direct:
         resp = await direct.get("/images/models")

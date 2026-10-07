@@ -146,6 +146,8 @@ async def test_a_blind_run_names_no_engine_on_any_read_until_its_authored_reveal
         line = exported['records'][-1]
         assert line['blind'] is True and line['chosen'] == [some] and len(line['candidates']) == 6
         assert {c['engine'] for c in line['candidates']} == {blind.HIDDEN_ENGINE}
+        # Which takes share a call would hint at their engine, so a hidden run names no attempt.
+        assert {c['attempt_id'] for c in line['candidates']} == {None}
 
         body = command(reason='Done listening')
         revealed = await client.post(f"/api/crexil/turns/{turn['id']}/reveal", json=body)
@@ -170,6 +172,8 @@ async def test_a_blind_run_names_no_engine_on_any_read_until_its_authored_reveal
         assert {c['model'] for c in line['candidates']} == set(MODELS)
         # Each engine's one free attempt states its cost on its first preview only.
         assert [c['cost_micro_usd'] for c in line['candidates']] == [0, None, None] * 2
+        attempts = [c['attempt_id'] for c in line['candidates']]
+        assert len(set(attempts)) == 2 and attempts == [attempts[0]] * 3 + [attempts[3]] * 3
         preview = await client.get(f'/api/nodes/{some}/promote-preview')
         assert 'blind run' not in preview.text
         review = (await client.post(f"/api/crexil/projects/{p['id']}/deliveries/review",
@@ -240,9 +244,13 @@ async def test_the_decision_record_is_attributed_and_holds_no_audio(tmp_path, mo
         assert selection['brief'] == PROMPT and selection['verb'] == 'voice-design'
         assert [c['position'] for c in selection['candidates']] == [0, 1, 2]
         assert {c['node_id'] for c in selection['candidates']} == {take['id'] for take in takes}
-        assert all(set(c) == {'node_id', 'position', 'engine', 'provider', 'model', 'seed', 'cost_micro_usd'}
+        assert all(set(c) == {'node_id', 'position', 'engine', 'provider', 'model', 'seed', 'cost_micro_usd',
+                              'attempt_id'}
                    and c['engine'] == LOCAL and c['provider'] == 'voice-runner' and c['model'] == MODELS[0]
                    for c in selection['candidates'])
+        # One attempt made the three previews, so they name one attempt: its cell and number.
+        assert {c['attempt_id'] for c in selection['candidates']} == {f"{take['slot_id']}:{take['take']}" for take in takes}
+        assert len({c['attempt_id'] for c in selection['candidates']}) == 1
         assert assessment['chosen'] == [] and [c['node_id'] for c in assessment['candidates']] == [takes[0]['id']]
         assert assessment['author'] == {'kind': 'human', 'name': 'Artist'} and assessment['reason'] == 'Too bright'
         text = json.dumps(exported)
@@ -277,6 +285,10 @@ async def test_an_attempts_one_charge_is_stated_once_among_its_takes(tmp_path, m
     assert len(design.requests) == 2 and len(ordered) == 6
     assert [c['node_id'] for c in selection['candidates']] == [take['id'] for take in ordered]
     assert [c['cost_micro_usd'] for c in selection['candidates']] == [9_000, None, None, 9_000, None, None]
+    # The six previews name the two calls that made them, so a reader groups them without the grid.
+    attempts = [c['attempt_id'] for c in selection['candidates']]
+    assert attempts == [f"{take['slot_id']}:{take['take']}" for take in ordered]
+    assert len(set(attempts)) == 2 and attempts == [attempts[0]] * 3 + [attempts[3]] * 3
     # A take judged alone states its attempt's charge, never the reservation each of its takes records.
     assert [c['cost_micro_usd'] for c in assessment['candidates']] == [9_000]
 

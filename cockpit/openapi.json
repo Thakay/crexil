@@ -1009,6 +1009,17 @@
       "DecisionCandidate": {
         "description": "One take the decision was made among, as the record states it.",
         "properties": {
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
           "cost_micro_usd": {
             "anyOf": [
               {
@@ -2150,6 +2161,17 @@
             },
             "title": "Capabilities",
             "type": "object"
+          },
+          "face_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Face Name"
           },
           "id": {
             "title": "Id",

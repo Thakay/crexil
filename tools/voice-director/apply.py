@@ -67,6 +67,10 @@ def problems(config: dict, session_max: int = SESSION_MAX_S) -> list[str]:
         found.append('The agent must require authentication, so only a server-minted token starts it.')
     if (settings.get('privacy') or {}).get('record_voice') is not False:
         found.append('Voice recording must be off.')
+    # ElevenLabs allows burst calls unless told not to, so a missing value allows them.
+    if (settings.get('call_limits') or {}).get('bursting_enabled') is not False:
+        found.append('Burst calls must be off (call_limits.bursting_enabled false), so no conversation runs '
+                     'past the concurrency limit at the burst price.')
     tools = config.get('client_tools') or []
     names = [tool.get('name') for tool in tools]
     if sorted(names) != sorted(TOOLS) or len(names) != len(set(names)):

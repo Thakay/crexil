@@ -14,8 +14,9 @@ import json
 import pytest
 
 from app import blind, wiring
+from app import db as store_module
 from app.executors import EngineFailure
-from fakes import FakeAudioExecutor, Step, tone_wav
+from fakes import FakeAudioExecutor, SteppingClock, Step, tone_wav
 from test_api_v4 import booted, settle_turn, store
 from test_audio_contract import PREVIEW, booted_audio, draft, free_design_row, operation
 from test_crexil import command, image_bytes, project
@@ -552,8 +553,12 @@ async def test_set_aside_and_restore_answer_a_hidden_take_with_its_runs_time(tmp
 
 async def test_every_list_keeps_a_blind_runs_grid_order_whatever_order_its_takes_land_in(tmp_path, monkeypatch):
     # The local engine's attempts sit first in the grid and land last: the
-    # hosted takes land while the local engine is held at a gate.
+    # hosted takes land while the local engine is held at a gate, and the
+    # machine's clock steps back before the local takes land, so they carry
+    # the earlier stamps. Neither order may reach a list.
     monkeypatch.setattr(blind, 'arrange', lambda specs: sorted(specs, key=lambda spec: spec['engine'] != LOCAL))
+    clock = SteppingClock()
+    monkeypatch.setattr(store_module, 'now_iso', clock)
     gate = asyncio.Event()
     local = FakeAudioExecutor('voice-runner', 'local', data=tone_wav(seconds=3.5), gate=gate)
     async with casting(tmp_path, monkeypatch, **{**LONG, 'voice-runner': local}) as (client, _):
@@ -568,12 +573,15 @@ async def test_every_list_keeps_a_blind_runs_grid_order_whatever_order_its_takes
             return [s['status'] for s in slots] == ['running', 'queued', 'landed', 'landed']
 
         await until(hosted_landed)
+        clock.step_back(5)
         gate.set()
         turn = await settle_turn(turn_id, until={'landed'})
-        stored = await store()._all('SELECT * FROM nodes WHERE turn_id=? ORDER BY created_at', (turn_id,))
+        # A take's node is written as it lands, so the store's row order is the landing order.
+        stored = await store()._all('SELECT * FROM nodes WHERE turn_id=? ORDER BY rowid', (turn_id,))
         positions = {slot['id']: slot['pos'] for slot in turn['slots']}
         landing = [positions[n['slot_id']] for n in stored]
         assert set(landing[:6]) == {2, 3} and set(landing[6:]) == {0, 1}      # the hosted takes landed first
+        assert max(n['created_at'] for n in stored[6:]) < min(n['created_at'] for n in stored[:6])  # stamped earlier
         grid = [n['id'] for n in sorted(stored, key=lambda n: (positions[n['slot_id']], n['output_index']))]
         aside = grid[3:]                       # the tray lists the second local attempt's takes and the hosted ones
 

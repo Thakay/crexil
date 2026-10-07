@@ -26,6 +26,7 @@ from app import audio, audio_executors, config, crexil_audio, crexil_budget, ele
 from app.elevenlabs import ElevenLabsExecutor
 from app.executors import DispatchRequest, EngineFailure, SourceImage
 from fakes import tone_wav
+from hermetic import EXPORTED
 
 pytestmark = pytest.mark.anyio
 
@@ -704,8 +705,11 @@ async def test_designed_voices_land_speak_and_sound_through_the_server(tmp_path,
 
 # --- live, opt-in ---
 
-@pytest.mark.skipif(os.environ.get('LIVE_ELEVENLABS') != '1' or not os.environ.get('ELEVENLABS_API_KEY'),
-                    reason='a live ElevenLabs call is opt-in: LIVE_ELEVENLABS=1 with ELEVENLABS_API_KEY (about $0.001)')
+# The session is sealed (hermetic.py), so this check names the public address itself and
+# takes the key the shell exported, never one from a `.env`.
+@pytest.mark.skipif(os.environ.get('LIVE_ELEVENLABS') != '1' or not EXPORTED.get('ELEVENLABS_API_KEY'),
+                    reason='a live ElevenLabs call is opt-in: LIVE_ELEVENLABS=1 with ELEVENLABS_API_KEY exported '
+                           '(about $0.001)')
 async def test_live_sound_effect_round_trip(tmp_path, monkeypatch):
     configs = tmp_path / 'configs'
     shutil.copytree(REPO / 'configs', configs)
@@ -715,7 +719,8 @@ async def test_live_sound_effect_round_trip(tmp_path, monkeypatch):
             row['enabled'] = True
     (configs / 'engines.json').write_text(json.dumps(matrix))
     monkeypatch.setattr(config, 'CONFIGS_DIR', configs)
-    monkeypatch.setattr(config, 'ELEVENLABS_API_KEY', os.environ['ELEVENLABS_API_KEY'])
+    monkeypatch.setattr(config, 'ELEVENLABS_URL', 'https://api.elevenlabs.io')
+    monkeypatch.setattr(config, 'ELEVENLABS_API_KEY', EXPORTED['ELEVENLABS_API_KEY'])
     live = ElevenLabsExecutor(base_url=config.ELEVENLABS_URL)
     env = envelope('elevenlabs-sfx', 'sfx', 'A single hammer strike on an anvil', {'duration_seconds': 0.5},
                    seed=None)

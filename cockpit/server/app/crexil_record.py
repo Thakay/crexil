@@ -105,11 +105,11 @@ async def prompt_hits(db, wid: str, tokens: list[str]) -> list[set[str]]:
 
 async def record(db, wid: str, *, q='', node_id=None, direction_id=None, turn_id=None, before=None, limit=50):
     async with db._locked():
-        await CreativeStore(db).project(wid)
+        creative = CreativeStore(db)
+        await creative.project(wid)
         history = await decisions(db, wid)
         nodes = await db.list_nodes(wid, include_purged=True)
-        directions = [await CreativeStore(db).direction(row['id']) for row in await db._all(
-            'SELECT id FROM directions WHERE workspace_id=? ORDER BY row_idx,created_at,id', (wid,))]
+        directions = [await creative.direction(did) for did in await creative.direction_ids(wid)]
         turns = await db.list_turns(wid)
         files = {row['node_id']: dict(row) for row in await db._all(
             'SELECT m.* FROM material_info m JOIN nodes n ON n.id=m.node_id WHERE n.workspace_id=?', (wid,))}

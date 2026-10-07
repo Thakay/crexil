@@ -1,8 +1,10 @@
 """Scripted fake executors, shared by the scheduler suite and the API tests,
-which wire them through the real app via `wiring.EXECUTOR_FACTORY`."""
+which wire them through the real app via `wiring.EXECUTOR_FACTORY`, and a
+stepping clock for the store."""
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from app.executors import (CollectedOutput, DispatchRequest, EngineFailure, ExecutionResult,
                            Handle, Reconciliation)
@@ -254,3 +256,18 @@ class FakeAudioExecutor:
     async def collect_existing(self, slot, *, request=None):
         self.collected.append(slot['id'])
         return Reconciliation('failed', cause='The scripted provider has nothing to collect.', failure_kind='error')
+
+
+class SteppingClock:
+    """The store's clock (`app.db.now_iso`): ten milliseconds a tick, set back when
+    told, as a time correction sets back a machine's clock."""
+
+    def __init__(self):
+        self.now = datetime(2026, 10, 7, 1, 19, 17, tzinfo=timezone.utc)
+
+    def __call__(self) -> str:
+        self.now += timedelta(milliseconds=10)
+        return self.now.isoformat()
+
+    def step_back(self, seconds: float = 1.0):
+        self.now -= timedelta(seconds=seconds)
