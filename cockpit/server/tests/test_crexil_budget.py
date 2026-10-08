@@ -157,7 +157,7 @@ def test_money_reads_cents_or_every_digit_it_has_never_rounded():
 
 
 def test_a_limit_refusal_states_its_amounts_with_two_decimals_or_more():
-    # The project cap a live run refused over (J7): $0.60 against $0.36 charged and $0.50508 asked.
+    # The project cap a live run refused over: $0.60 against $0.36 charged and $0.50508 asked.
     spent = {'attempts': 0, 'charged_usd': 0.36, 'reserved_usd': 0.0, 'unresolved_attempts': 0,
              'unbounded_attempts': 0, 'tariff_attempts': 0}
     limits = {'spending_limit_usd': 0.6, 'spending_policy': 'published_tariff'}
