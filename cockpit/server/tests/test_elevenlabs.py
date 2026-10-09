@@ -242,7 +242,7 @@ async def test_voice_design_sends_its_frozen_request_and_lands_three_designed_ta
     (request,) = fake.requests
     assert sends == ['voice-design']                       # the dispatch guard ran once, before sending
     assert request.headers['xi-api-key'] == KEY and dict(request.url.params) == {'output_format': 'pcm_24000'}
-    assert json.loads(request.content) == {'voice_description': DESCRIPTION, 'model_id': 'eleven_multilingual_ttv_v2',
+    assert json.loads(request.content) == {'voice_description': DESCRIPTION, 'model_id': 'eleven_ttv_v3',
                                            'text': PREVIEW, 'auto_generate_text': False, 'loudness': 0.5, 'seed': 123}
     assert [o.identity for o in outputs] == ['provider:receipt', 'take:0', 'take:1', 'take:2']
     for index, take in enumerate(outputs[1:]):
@@ -252,7 +252,7 @@ async def test_voice_design_sends_its_frozen_request_and_lands_three_designed_ta
         assert take.descriptor['audio']['text'] == PREVIEW
         assert take.descriptor['audio']['voice'] == {
             'provider': 'elevenlabs', 'kind': 'designed', 'generated_voice_id': f'gen-{index}',
-            'description': DESCRIPTION, 'model_id': 'eleven_multilingual_ttv_v2'}
+            'description': DESCRIPTION, 'model_id': 'eleven_ttv_v3'}
     expected = math.ceil(len(PREVIEW) * 80000 / 1000)       # list price of the preview text, once per attempt
     assert prices.calls == [(design_envelope()['tariff'], {'characters': len(PREVIEW)})]
     assert result.primary_identity == 'take:0' and result.payload == 'audio'

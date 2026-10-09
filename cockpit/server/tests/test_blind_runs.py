@@ -17,7 +17,7 @@ pytestmark = pytest.mark.anyio
 
 LOCAL, HOSTED = 'qwen3-tts', 'test-elevenlabs-design'
 PROMPT = 'A gruff dwarf blacksmith, low and warm'
-MODELS = ('Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign', 'eleven_multilingual_ttv_v2')
+MODELS = ('Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign', 'eleven_ttv_v3')
 
 
 @pytest.fixture(autouse=True)
