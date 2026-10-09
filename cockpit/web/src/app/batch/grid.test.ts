@@ -287,6 +287,25 @@ test("law 5: a paid failure states the dollars either way — charged, or not", 
   );
 });
 
+test("law 5: a paid failure whose answer was lost says its charge is not confirmed until one is recorded", () => {
+  for (const kind of ["timeout", "restart", "uncertain"]) {
+    const failed = (over: Partial<Slot>, paid = true) =>
+      costLine(cellOf({ status: "failed", kind, ...over }, paid), [], NOW);
+    // no charge recorded: what it committed stays reserved against the caps
+    expect(failed({}), kind).toBe("charge not confirmed · $0.06 reserved");
+    expect(failed({ committed_usd: 0.0032 }), kind).toBe("charge not confirmed · $0.0032 reserved");
+    expect(failed({ committed_usd: null }), kind).toBe("charge not confirmed");
+    // a recorded charge reads as it is, and a recorded zero as nothing charged
+    expect(failed({ charged_usd: 0.04 }), kind).toBe("$0.04 was charged");
+    expect(failed({ charged_usd: 0 }), kind).toBe("nothing was charged");
+    // local work states its GPU time, never money
+    expect(failed({ started_at: T0, finished_at: T4 }, false), kind).toBe("4s of GPU time spent");
+  }
+  // a paid failure the provider refused, or that never reached it, still says nothing was charged
+  for (const kind of ["preflight", "moderation", "dead_key", "unreachable", "rate_limit", "model_down", "error"])
+    expect(costLine(cellOf({ status: "failed", kind }, true), [], NOW), kind).toBe("nothing was charged");
+});
+
 test("law 5, the invariant: money is named only where money was in play", () => {
   for (const status of STATUSES) {
     const local = costLine(cellOf({ status, started_at: T0 }), [], NOW);

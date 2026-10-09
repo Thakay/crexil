@@ -26,6 +26,11 @@ function ctx(fields: Partial<AttemptContext> = {}, slots: object[] = []): Attemp
 }
 /** Each remedy as [id, label, primary, price]. */
 const moves = (face: AttemptFaceVM) => face.remedies.map(r => [r.id, r.label, r.primary, r.price]);
+/** The server's lines for an answer lost to a timeout and for a call cut off by a restart. */
+const LOST = 'The answer from ElevenLabs v4 was lost before it arrived. Its charge is unverified; collecting looks for the take '
+  + 'without generating it again';
+const RESTARTED = 'The cockpit restarted during the external call. Its outcome and charge are unverified. Collect existing files '
+  + 'to look for its result; nothing is generated again.';
 
 afterEach(() => {cleanup(); setCatalogue(new Map());});
 
@@ -105,6 +110,38 @@ describe('attemptFace: what happened · what it cost · what to do next (laws 3,
     const face = attemptFace(slot({kind: 'uncertain', engine: 'elevenlabs-tts', committed_usd: .0032}), ctx());
     expect(face).toMatchObject({title: 'OUTCOME UNCERTAIN', tone: 'dead', cost: 'charge not confirmed · $0.0032 reserved'});
     expect(face.remedies[0]).toMatchObject({id: 'collect', primary: true, label: 'COLLECT FILES'});
+  });
+  it('a paid attempt whose answer was lost or cut off by a restart says its charge is not confirmed, never that nothing was charged (law 5)', () => {
+    const timeout = attemptFace(slot({kind: 'timeout', engine: 'elevenlabs-tts', committed_usd: .0032, cause: LOST}), ctx());
+    expect(timeout).toMatchObject({title: 'FAILED', tone: 'dead', cost: 'charge not confirmed · $0.0032 reserved', cause: LOST});
+    const restart = attemptFace(slot({kind: 'restart', engine: 'openai/gpt-image-2', committed_usd: .04, cause: RESTARTED}), ctx());
+    expect(restart).toMatchObject({title: 'FAILED', tone: 'dead', cost: 'charge not confirmed · $0.04 reserved', cause: RESTARTED});
+    for (const face of [timeout, restart]) {
+      expect(JSON.stringify(face)).not.toMatch(/nothing was charged/i);
+      expect(moves(face)).toEqual([['collect', 'COLLECT FILES', true, null], ['reuse', 'REUSE SETUP', false, null]]);
+    }
+    // the uncertain outcome's words, also where nothing was committed
+    expect(attemptFace(slot({kind: 'restart', engine: 'openai/gpt-image-2', committed_usd: null}), ctx()).cost).toBe('charge not confirmed');
+  });
+  it('a lost answer whose charge is recorded says it: the amount, or nothing at a recorded zero (law 5)', () => {
+    for (const kind of ['timeout', 'restart', 'uncertain']) {
+      expect(attemptFace(slot({kind, engine: 'elevenlabs-tts', committed_usd: .0032, charged_usd: .0032}), ctx()).cost).toBe('$0.0032 was charged');
+      expect(attemptFace(slot({kind, engine: 'elevenlabs-tts', committed_usd: .0032, charged_usd: 0}), ctx()).cost).toBe('nothing was charged');
+    }
+  });
+  it('keeps every other money line as it is: local work, a blind run, a request never sent, a skipped attempt (law 5)', () => {
+    for (const kind of ['timeout', 'restart']) {
+      expect(attemptFace(slot({kind}), ctx()).cost).toBe('12s of GPU time spent');
+      expect(attemptFace(slot({kind, engine: 'hidden', identity_hidden: true, committed_usd: .04}), ctx()).cost)
+        .toBe('Its cost shows after the reveal');
+    }
+    // a restart before the paid call settles at a known zero, said once
+    expect(attemptFace(slot({kind: 'preflight', engine: 'openai/gpt-image-2', committed_usd: .04, charged_usd: 0,
+      cause: 'The cockpit restarted before this request was sent. Nothing was charged.'}), ctx()))
+      .toMatchObject({cost: 'nothing was charged', cause: 'The cockpit restarted before this request was sent.'});
+    expect(attemptFace(slot({status: 'skipped', kind: null}), ctx()).cost).toBe('no GPU time spent; its turn was given back');
+    expect(attemptFace(slot({status: 'skipped', kind: null, engine: 'openai/gpt-image-2', committed_usd: .04}), ctx()).cost)
+      .toBe('nothing was charged');
   });
   it('sends a dead key or an unreachable engine to Connections first', () => {
     for (const kind of ['dead_key', 'unreachable', 'model_down'])
@@ -317,6 +354,14 @@ describe('AttemptFace', () => {
     expect(cancel).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(cancel);
     expect(onRemedy).not.toHaveBeenCalled();
+  });
+  it("draws a lost answer's unconfirmed charge on line two and never says nothing was charged (law 5)", () => {
+    render(<AttemptFace face={attemptFace(slot({kind: 'timeout', engine: 'elevenlabs-tts', committed_usd: .0032, cause: LOST}), ctx())}
+      onRemedy={() => {}}/>);
+    const group = screen.getByRole('group', {name: 'Attempt 0A · failed'});
+    expect(within(group).getByText('charge not confirmed · $0.0032 reserved')).toBeVisible();
+    expect(within(group).getByText(LOST)).toBeVisible();
+    expect(group).not.toHaveTextContent(/nothing was charged/i);
   });
   it('keeps the raw engine text behind DETAILS (law 3)', () => {
     render(<AttemptFace face={attemptFace(slot({cause: 'It failed.', detail: 'HTTP 500: boom'}), ctx())} onRemedy={() => {}}/>);

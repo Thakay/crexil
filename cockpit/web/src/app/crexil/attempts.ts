@@ -202,10 +202,8 @@ export function attemptFace(slot: Slot, ctx: AttemptContext): AttemptFaceVM {
     case 'failed': {
       face.tone = 'dead';
       face.title = uncertain ? 'OUTCOME UNCERTAIN' : 'FAILED';
-      if (hidden) face.cost = 'Its cost shows after the reveal';
-      else if (uncertain && paid) face.cost = (slot.charged_usd ?? 0) > 0 ? `${money(slot.charged_usd!)} was charged`
-        : (slot.committed_usd ?? 0) > 0 ? `charge not confirmed · ${money(slot.committed_usd!)} reserved` : 'charge not confirmed';
-      else face.cost = costLine(cell, turn.slots, nowMs);
+      // A lost answer's charge reads as not confirmed until one is recorded (`costLine`, law 5).
+      face.cost = hidden ? 'Its cost shows after the reveal' : costLine(cell, turn.slots, nowMs);
       if (face.cause && face.cost === 'nothing was charged') face.cause = causeWithoutCharge(face.cause);
       if (slot.kind === 'charged_blank') {
         if (!hidden) face.receipt = receipt(slot, turn.prompt, label);

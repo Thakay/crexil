@@ -387,6 +387,14 @@ function spent(ms: number): string {
   return ms < 1000 ? "under a second" : elapsedLabel(ms).toLowerCase();
 }
 
+// The failure kinds whose outcome, and so whose charge, the server could not
+// confirm: an answer lost to a timeout, a call cut off by a restart, an
+// outcome its runtime could not place. A paid one stays reserved until a
+// charge is recorded, so until then its line says the charge is not
+// confirmed, never "nothing was charged" (law 5). A recorded charge, zero
+// included, is said as it is.
+const UNCONFIRMED: ReadonlySet<string> = new Set(["timeout", "restart", "uncertain"]);
+
 // Law 5: line 2 states cost — seconds and takes for a local take, dollars
 // for a paid one. Money is named ONLY where money was plausibly in play: a
 // "nothing charged" that fires on every free failure trains the artist to
@@ -400,10 +408,15 @@ export function costLine(
   const paid = cell.external;
   switch (cell.status) {
     case "failed": {
-      if (paid)
-        return cell.chargedUsd !== null && cell.chargedUsd > 0
-          ? `${money(cell.chargedUsd)} was charged`
-          : "nothing was charged";
+      if (paid) {
+        if (cell.chargedUsd !== null && cell.chargedUsd > 0)
+          return `${money(cell.chargedUsd)} was charged`;
+        if (cell.chargedUsd === null && cell.kind !== null && UNCONFIRMED.has(cell.kind))
+          return cell.committedUsd !== null && cell.committedUsd > 0
+            ? `charge not confirmed · ${money(cell.committedUsd)} reserved`
+            : "charge not confirmed";
+        return "nothing was charged";
+      }
       const gpu =
         cell.startedAt === null
           ? "some GPU time spent"
