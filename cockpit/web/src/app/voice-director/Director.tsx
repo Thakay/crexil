@@ -1,5 +1,5 @@
-// The voice director's conversation: an ElevenLabs Agents session in the column its door opens
-// (VoiceDirectorPanel.tsx), never a modal (law 2). The server starts each session and hands
+// The voice director, a voice agent built on ElevenAgents: its conversation in the column its door
+// opens (VoiceDirectorPanel.tsx), never a modal (law 2). The server starts each session and hands
 // over a conversation token once, so the key never reaches the browser (law 18). Minutes are
 // counted from the moment the conversation connects and the session ends at its maximum (laws
 // 17 and 22). The agent's tools prepare and propose; a run that costs money or leaves this

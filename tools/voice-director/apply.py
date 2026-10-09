@@ -11,7 +11,7 @@ prints the line to put in `.env`:
 
 `--dry-run` never reads a key and never opens a connection. A live run reads
 ELEVENLABS_API_KEY from the environment only, never from a file, never prints it,
-and sends it in one header to the ElevenLabs API. Nothing retries silently (law 9):
+and sends it in one header to ElevenAPI. Nothing retries silently (law 9):
 a refused call stops the run with ElevenLabs' status and Crexil's plain words, and
 everything already created is named so a second run updates it instead.
 """

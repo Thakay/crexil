@@ -149,7 +149,7 @@ Door errors give the server's plain line, then the next move, then a stable kind
 
 ## The voice director
 
-The voice director is the second agent door: an ElevenLabs Agents conversation in a column at the right of
+The voice director, a voice agent built on ElevenAgents, is the second agent door: a conversation in a column at the right of
 the project surface, opened from `VOICE DIRECTOR ›` in the top bar and configured in `tools/voice-director/`. Its tools call the same shared actions as
 `agent:voice-director`; a run starts on its request only when it is free and every engine it chose runs on
 this machine, and any other run, and a pick, wait for the artist's click. Under Docker, `compose.yaml` points the

@@ -20,8 +20,8 @@ browser or a network could reach. Read this before you expose it anywhere.
 - **Every program you run is trusted.** Anything running as you on this machine can call the API. A
   client states its own author (`human:` or `agent:`), and the server records it as stated. The agent
   limits below are rules for agent clients that say who they are, such as the MCP server and the
-  voice director, which cannot write as a person. They are not a sandbox against a hostile program
-  on your machine.
+  voice director (a voice agent built on ElevenAgents), which cannot write as a person. They are not
+  a sandbox against a hostile program on your machine.
 
 ### Keys
 
@@ -130,13 +130,13 @@ client loads no outside script or font. Each destination, and what it receives:
   engines are ready and to find a saved voice by its label, and reads your speech history to recover
   a lost take. These reads carry your key and no project data. Your ElevenLabs account has its own
   data-use setting; check it on ElevenLabs' side.
-- **The voice director** (ElevenLabs Agents), in the panel's own words: "While a session runs, your
+- **The voice director** (ElevenAgents), in the panel's own words: "While a session runs, your
   microphone audio goes to ElevenLabs and the director's language model, and so does what the
   director reads about this project: the brief, run prompts, take labels and reasons. ElevenLabs
   keeps each conversation for 7 days. Take audio never goes: the microphone mutes before any take
-  plays." The language model is `claude-haiku-4-5`, reached through ElevenLabs. Running
-  `tools/voice-director/apply.py` sends the agent's configuration, its prompt and its tools, to your
-  ElevenLabs account.
+  plays." The language model is Anthropic's Claude Haiku 4.5 (`claude-haiku-4-5`), chosen inside
+  ElevenAgents and reached through ElevenLabs. Running `tools/voice-director/apply.py` sends the
+  agent's configuration, its prompt and its tools, to your ElevenLabs account.
 - **OpenRouter** (`openrouter.ai`): the prompt, any source images and the run's settings, which
   OpenRouter passes on to the model's provider under that provider's data policy. Your OpenRouter
   account's settings decide whether prompts are logged or used for training. Crexil also reads

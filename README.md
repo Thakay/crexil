@@ -17,9 +17,10 @@ engine, or out to a hand-off folder as a character package for a game team.
 
 Every act lands in an append-only record with its author, and a pick with the artist's reason, so
 later the record still answers why each asset exists. People and agents use the same actions. An MCP server
-lets Claude Code, or any MCP client, prepare runs and propose picks, and a voice director built on
-ElevenLabs Agents does the same by conversation. Agents prepare and propose; spending limits, reveals
-and deliveries stay the artist's, and the voice director's paid runs wait for the artist's click.
+lets Claude Code, or any MCP client, prepare runs and propose picks, and the voice director, a voice
+agent built on ElevenAgents, does the same by conversation. Agents prepare and propose; spending
+limits, reveals and deliveries stay the artist's, and the voice director's paid runs wait for the
+artist's click.
 
 Crexil is the front door and the record, never the workbench. It is not a node-graph editor, a chat
 app or a DCC tool.
@@ -74,8 +75,10 @@ To make real takes, copy `.env.example` to `.env` and give the installation its 
 `OPENROUTER_API_KEY` for hosted images, `ELEVENLABS_API_KEY` for ElevenLabs voices and sounds,
 `VOICE_RUNNER_URL` for the local voice runner ([tools/tts](tools/tts/README.md)), `THREED_URL` for
 the 3D runner and `COMFYUI_URL` for ComfyUI. Deliveries land in `PROMOTE_DIR`, by default
-`crexil-handoff` in your home folder, which you create. The voice director needs an ElevenLabs agent
-([tools/voice-director](tools/voice-director/README.md)) and a minutes cap.
+`crexil-handoff` in your home folder, which you create. The voice director needs an agent on
+ElevenAgents and a minutes cap. `tools/voice-director/apply.py` creates the agent from `agent.json`
+and prints the id to put in `ELEVENLABS_VOICE_AGENT_ID`. While `CREXIL_VOICE_MINUTES_CAP` is 0, the
+default, no session starts. The steps are in [tools/voice-director](tools/voice-director/README.md).
 `scripts/seed_demo_project.py` builds the demo's project through the HTTP API: it reviews every run
 and prints its price, and it spends only with `--live` and the exact total it reviewed.
 
@@ -118,8 +121,8 @@ suites and the known traps.
 |---|---|
 | Server | Python 3.12, FastAPI and SQLite, with one append-only event record; uv |
 | Client | React, TypeScript and Vite; three.js for meshes; the ElevenLabs React SDK for the voice director |
-| Engines | ComfyUI and OpenRouter for images; the ElevenLabs API for voices and sounds, over plain HTTP so no SDK retries a paid call; a small runner for Qwen3-TTS; a runner for the 3D engines |
-| Agent door | An MCP server over stdio (`tools/agent-door/`) and the voice director on ElevenLabs Agents (`tools/voice-director/`) |
+| Engines | ComfyUI and OpenRouter for images; ElevenAPI for voices and sounds, over plain HTTP so no SDK retries a paid call; a small runner for Qwen3-TTS; a runner for the 3D engines |
+| Agent door | An MCP server over stdio (`tools/agent-door/`) and the voice director on ElevenAgents (`tools/voice-director/`) |
 
 `scripts/check.sh` runs ruff, more than 2,000 server and client tests (pytest and vitest) and the
 TypeScript checks, with no GPU, engine or key: engines are faked or scripted. `scripts/e2e.sh` runs

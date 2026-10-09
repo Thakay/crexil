@@ -1,9 +1,10 @@
 # Voice director
 
-The voice director is an ElevenLabs Agents conversation inside Crexil. The artist talks, and the
-agent lists engines, prepares audio runs, plays takes and proposes picks, all through the same
-shared actions the artist uses. The panel is `cockpit/web/src/app/voice-director/`. This folder
-holds the agent's configuration and the one command that applies it to an ElevenLabs account.
+The voice director is a voice agent built on ElevenAgents. Inside Crexil it is a conversation: the
+artist talks, and the agent lists engines, prepares audio runs, plays takes and proposes picks, all
+through the same shared actions the artist uses. The panel is `cockpit/web/src/app/voice-director/`.
+This folder holds the agent's configuration and the one command that applies it to an ElevenLabs
+account.
 
 ## What the agent may and may not do
 
@@ -18,7 +19,8 @@ Every write the agent makes is recorded as `agent:voice-director`. Every write t
 confirms in the panel is recorded under the artist's name.
 
 ElevenLabs' policy forbids using its output as input to any machine learning, and the language
-model behind the agent is one. So no take audio, URL or file address ever reaches the agent.
+model behind the agent, Anthropic's Claude Haiku 4.5 chosen inside ElevenAgents, is one. So no take
+audio, URL or file address ever reaches the agent.
 Before any take plays, whoever starts it, the panel mutes the microphone and turns the agent's voice down; the
 microphone stays muted 400 ms after the take stops, and no take plays while a session connects.
 
@@ -80,8 +82,8 @@ Minutes are capped in three places (law 22):
   higher rate (`bursting_enabled` false). Apply the file again after changing them. `apply.py` refuses a
   file that leaves `bursting_enabled` true or unset.
 
-ElevenLabs lists agent minutes at $0.08 each beyond a plan's included minutes, with the
-language model billed on top. The panel shows this as an estimate, never as a promise (law 17).
+ElevenLabs lists ElevenAgents call minutes at $0.08 each beyond a plan's included minutes, with
+the language model billed on top. The panel shows this as an estimate, never as a promise (law 17).
 
 ## Confirmed on the first live run
 

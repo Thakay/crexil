@@ -212,9 +212,9 @@ Every variable read in `cockpit/server/app/config.py`. `<root>` is `COCKPIT_REPO
 | `OPENROUTER_URL` | `https://openrouter.ai/api/v1` | OpenRouter base URL. Override it to use a mock |
 | `OPENROUTER_API_KEY` | empty | Secret. Empty turns the hosted image lane off, unless a key is saved through the setup route |
 | `ELEVENLABS_API_KEY` | empty | Secret, read from the environment only and never stored. Empty turns the ElevenLabs audio engines off |
-| `ELEVENLABS_URL` | `https://api.elevenlabs.io` | ElevenLabs API base URL. Override it to use a mock |
+| `ELEVENLABS_URL` | `https://api.elevenlabs.io` | ElevenAPI base URL. Override it to use a mock |
 | `VOICE_RUNNER_URL` | `http://127.0.0.1:8190` | Local voice runner base URL |
-| `ELEVENLABS_VOICE_AGENT_ID` | empty | The voice director's ElevenLabs agent, printed by `tools/voice-director/apply.py` |
+| `ELEVENLABS_VOICE_AGENT_ID` | empty | The id of the voice director, a voice agent built on ElevenAgents; `tools/voice-director/apply.py` prints it |
 | `CREXIL_VOICE_MINUTES_CAP` | `0` | Voice director minutes the installation allows. 0 starts no session |
 | `CREXIL_VOICE_SESSION_MAX_S` | `300` | The longest voice session; keep it equal to the agent's `max_duration_seconds` |
 | `COCKPIT_BUILD_ID` | `dev` | Build id shown by `/api/health` and the UI footer |
