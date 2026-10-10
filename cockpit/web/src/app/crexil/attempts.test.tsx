@@ -27,7 +27,7 @@ function ctx(fields: Partial<AttemptContext> = {}, slots: object[] = []): Attemp
 /** Each remedy as [id, label, primary, price]. */
 const moves = (face: AttemptFaceVM) => face.remedies.map(r => [r.id, r.label, r.primary, r.price]);
 /** The server's lines for an answer lost to a timeout and for a call cut off by a restart. */
-const LOST = 'The answer from ElevenLabs v4 was lost before it arrived. Its charge is unverified; collecting looks for the take '
+const LOST = 'The answer from Eleven v4 was lost before it arrived. Its charge is unverified; collecting looks for the take '
   + 'without generating it again';
 const RESTARTED = 'The cockpit restarted during the external call. Its outcome and charge are unverified. Collect existing files '
   + 'to look for its result; nothing is generated again.';

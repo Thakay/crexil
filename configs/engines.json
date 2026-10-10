@@ -503,7 +503,7 @@
     },
     {
       "id": "elevenlabs-v4",
-      "name": "ElevenLabs v4",
+      "name": "Eleven v4",
       "lane": "external",
       "payload": "audio",
       "provider": "elevenlabs",

@@ -20,7 +20,7 @@ describe('termsRefusal', () => {
   });
 });
 
-const V4 = 'ElevenLabs v4 speaks only with voices designed or saved at ElevenLabs.';
+const V4 = 'Eleven v4 speaks only with voices designed or saved at ElevenLabs.';
 const voiceRole = (voices: {providers: string[]; reason: string} | null) => ({role: 'voice', accepts: ['audio'], restrictions: [], voices});
 const voice = (provider: string | null) => ({id: `v-${provider}`, payload: 'audio', material: null,
   audio: {voice: provider ? {provider, kind: 'designed'} : null}}) as never;

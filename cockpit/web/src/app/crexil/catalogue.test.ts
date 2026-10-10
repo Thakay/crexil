@@ -20,7 +20,7 @@ const OPERATIONS = [
 const ENGINES = [
   {id: 'elevenlabs-voice-design', name: 'ElevenLabs Voice Design', face_name: 'Voice Design', lane: 'external' as const},
   {id: 'elevenlabs-sfx', name: 'ElevenLabs Sound Effects', face_name: 'Sound Effects', lane: 'external' as const},
-  {id: 'elevenlabs-v4', name: 'ElevenLabs v4', face_name: null, lane: 'external' as const},
+  {id: 'elevenlabs-v4', name: 'Eleven v4', face_name: null, lane: 'external' as const},
   {id: 'qwen3-tts', name: 'Qwen3-TTS 1.7B', lane: 'local' as const}];
 const take = (engine: string, identity_hidden: boolean | null = null) => ({engine, identity_hidden, material: null});
 
@@ -42,7 +42,7 @@ describe('engineFaceName: the name a face gives an engine', () => {
   it('keeps a name without a vendor or a face name whole, hosted or local', () => {
     setCatalogue(catalogueFrom(OPERATIONS, ENGINES));
     expect(engineFaceName('google/gemini-2.5-flash-image')).toBe('Nano Banana');
-    expect(engineFaceName('elevenlabs-v4')).toBe('ElevenLabs v4');
+    expect(engineFaceName('elevenlabs-v4')).toBe('Eleven v4');
     expect(engineFaceName('raw-flux2')).toBe('Raw · FLUX.2 klein');
     expect(engineFaceName('qwen3-tts')).toBe('Qwen3-TTS 1.7B');
   });

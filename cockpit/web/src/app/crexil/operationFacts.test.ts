@@ -55,7 +55,7 @@ describe('priceLine and the tariff offer (laws 5 and 22)', () => {
     expect(tariffPriced(op({}))).toBe(false);
     expect(tariffOffer([paid])).toBe('Design voice · ElevenLabs Voice Design is priced by its published tariff, with no hard ceiling. '
       + 'A hard cap refuses it before anything is sent.');
-    expect(tariffOffer([paid, op({label: 'Speak · ElevenLabs v4'})])).toMatch(/^Design voice · ElevenLabs Voice Design and Speak · ElevenLabs v4 are priced/);
+    expect(tariffOffer([paid, op({label: 'Speak · Eleven v4'})])).toMatch(/^Design voice · ElevenLabs Voice Design and Speak · Eleven v4 are priced/);
   });
 });
 

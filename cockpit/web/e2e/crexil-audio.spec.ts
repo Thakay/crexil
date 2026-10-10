@@ -199,7 +199,7 @@ test('an ElevenLabs take offered to the local engine stays visible, de-emphasise
   const drawer=page.getByRole('region',{name:'Preparation',exact:true});
   const local=drawer.locator('[data-standing="blocked"]').filter({has:page.getByText('Speak · Qwen3-TTS 1.7B',{exact:true})});
   await expect(local).toContainText("ElevenLabs' terms do not allow its audio as input to another AI model.");
-  await expect(drawer.locator('[data-standing="ready"]').filter({has:page.getByText('Speak · ElevenLabs v4',{exact:true})})).toBeVisible();
+  await expect(drawer.locator('[data-standing="ready"]').filter({has:page.getByText('Speak · Eleven v4',{exact:true})})).toBeVisible();
 });
 
 type Snap={turns:{id:string;idx:number;slots:{id:string;committed_usd:number|null}[]}[];nodes:{id:string;turn_id:string|null}[]};
@@ -313,12 +313,12 @@ test('an attempt that returns three takes is charged once: its other takes read 
   await expect(page.getByText(/^Grid · Turn 0$/)).toBeVisible();
 });
 
-test('a local voice offered to ElevenLabs v4 is marked before it is chosen, with its reason (law 12)',async({page,request})=>{
+test('a local voice offered to Eleven v4 is marked before it is chosen, with its reason (law 12)',async({page,request})=>{
   const health=await(await request.get('/api/health')).json();
   test.skip(Boolean(health.preview),'The isolated preview cannot run audio.');
   const ops:Op[]=await(await request.get('/api/crexil/operations')).json();
   const local=ops.find(op=>op.id==='audio:voice-design:qwen3-tts')!;
-  test.skip(!ops.some(op=>op.id==='audio:speak:elevenlabs-v4'&&op.availability!=='unavailable'),'ElevenLabs v4 needs its placeholder key.');
+  test.skip(!ops.some(op=>op.id==='audio:speak:elevenlabs-v4'&&op.availability!=='unavailable'),'Eleven v4 needs its placeholder key.');
   const project=await(await request.post('/api/crexil/projects',{data:{...command(),name:`Voice rule ${Date.now()}`}})).json();
   await landed(request,project.id,await sent(request,project.id,0,'Voice',{action:'voice-design',prompt:'A gruff dwarf blacksmith.',
     spending_policy:'hard_cap',spending_limit_usd:0},[[local,1,{preview_text:LINE}]]),3);
@@ -327,9 +327,9 @@ test('a local voice offered to ElevenLabs v4 is marked before it is chosen, with
   await page.getByRole('button',{name:/^Act on 0A, audio/}).click();
   await page.getByRole('region',{name:'Actions on material',exact:true}).getByRole('button',{name:'Speak with this voice · L',exact:true}).click();
   const drawer=page.getByRole('region',{name:'Preparation',exact:true});
-  const v4=drawer.locator('[data-standing]').filter({has:page.getByText('Speak · ElevenLabs v4',{exact:true})});
+  const v4=drawer.locator('[data-standing]').filter({has:page.getByText('Speak · Eleven v4',{exact:true})});
   await expect(v4).toHaveAttribute('data-standing','blocked');
-  await expect(v4).toContainText('ElevenLabs v4 speaks only with voices designed or saved at ElevenLabs.');
+  await expect(v4).toContainText('Eleven v4 speaks only with voices designed or saved at ElevenLabs.');
   const qwen=drawer.locator('[data-standing]').filter({has:page.getByText('Speak · Qwen3-TTS 1.7B',{exact:true})});
   await expect(qwen).toHaveAttribute('data-standing','ready');
   // Counts agree in number.

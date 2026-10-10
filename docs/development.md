@@ -131,7 +131,7 @@ scripted audio takes are four-second tones. The harness suite sets a placeholder
 `ELEVENLABS_API_KEY`, with `ELEVENLABS_URL` on a closed port, so the ElevenLabs operations are
 ready; the scripted executors never call ElevenLabs. It also checks that the digits reach the voices of a
 row whose images come first, that an attempt returning three takes shows its one charge once, and that a
-local voice marks ElevenLabs v4 before it is chosen, and that after the reveal each face names its engine's
+local voice marks Eleven v4 before it is chosen, and that after the reveal each face names its engine's
 model ("Voice Design"), the take carrying the charge whole at 1440 and 1920.
 
 Playwright runs specs without type-checking them. `scripts/check.sh` type-checks the specs,

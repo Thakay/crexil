@@ -193,7 +193,7 @@ async def test_operations_publish_typed_audio_contracts(tmp_path, monkeypatch):
         # The voices v4 speaks with are data, so the roster badges another voice before it is chosen
         # (law 12), in the sentence the review refuses it with.
         assert speak['sources'][0]['voices'] == {'providers': ['elevenlabs'],
-            'reason': 'ElevenLabs v4 speaks only with voices designed or saved at ElevenLabs.'}
+            'reason': 'Eleven v4 speaks only with voices designed or saved at ElevenLabs.'}
         local_speak = ops['audio:speak:qwen3-tts']
         assert local_speak['sources'][0]['restrictions'] == ["ElevenLabs' terms do not allow its audio as input to another AI model."]
         assert local_speak['sources'][0]['voices'] is None
@@ -309,7 +309,7 @@ async def test_speech_takes_a_voice_take_and_refuses_restricted_or_wrong_sources
         wrong_voice = await reviewed(client, await draft(client, p['id'], 'audio:speak:elevenlabs-v4', 'Ore.',
                                                          refs=[voice['id']], policy='published_tariff'))
         # The review refuses another provider's voice in the sentence the roster badges it with.
-        assert ('ElevenLabs v4 speaks only with voices designed or saved at ElevenLabs. '
+        assert ('Eleven v4 speaks only with voices designed or saved at ElevenLabs. '
                 'Choose such a take, or a local voice engine.') in ' '.join(wrong_voice['errors'])
         image = (await imported(client, p['id']))['node']
         not_audio = await reviewed(client, await draft(client, p['id'], 'audio:speak:qwen3-tts', 'Ore.', refs=[image['id']]))

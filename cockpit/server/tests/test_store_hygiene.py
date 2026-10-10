@@ -253,7 +253,7 @@ STATUS_CODE = re.compile(r"\b[1-5]\d\d\b")
     ("oom", "local", "qwen3-tts", "voice-runner", "voice-design",
      "Qwen3-TTS 1.7B ran out of video memory: free the card (close what else is holding it) and try again"),
     ("error", "external", "elevenlabs-v4", "elevenlabs", "speak",
-     "ElevenLabs v4 failed: the engine, not your text"),
+     "Eleven v4 failed: the engine, not your text"),
     ("error", "external", "elevenlabs-voice-design", "elevenlabs", "voice-design",
      "ElevenLabs Voice Design failed: the engine, not your description"),
     ("error", "external", "elevenlabs-sfx", "elevenlabs", "sfx",
@@ -266,7 +266,7 @@ STATUS_CODE = re.compile(r"\b[1-5]\d\d\b")
      "ElevenLabs Sound Effects took the job and billed it, but no audio came back"),
     # a lost answer says what its charge and its next move are (laws 3, 4 and 5)
     ("timeout", "external", "elevenlabs-v4", "elevenlabs", "speak",
-     "The answer from ElevenLabs v4 was lost before it arrived. Its charge is unverified; collecting looks for the take "
+     "The answer from Eleven v4 was lost before it arrived. Its charge is unverified; collecting looks for the take "
      "without generating it again"),
     ("timeout", "external", "elevenlabs-voice-design", "elevenlabs", "voice-design",
      "The answer from ElevenLabs Voice Design was lost before it arrived. Its charge is unverified, and this take cannot "
