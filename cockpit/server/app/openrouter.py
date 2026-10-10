@@ -7,9 +7,13 @@ before the next output is fetched. HTTPS output retrieval never carries the
 OpenRouter key and rejects private destinations and redirects.
 
 Legacy generate returns one verified PNG. Errors retain the request, response
-and reported charge when available; transport failure never proves no charge.
-This adapter supplies no spending guarantee: tariff selection, authorization
-and reservations belong to the caller before dispatch.
+and reported charge when available. A transport error is `unreachable`, with a
+known zero charge, only when OpenRouter cannot have received the whole request:
+the connection never opened, or the request was never fully written. Every
+other transport error is a lost answer to a request that may have gone out:
+`timeout`, with an unknown charge. Of the two, only `unreachable` is safe to
+send again. This adapter supplies no spending guarantee: tariff selection,
+authorization and reservations belong to the caller before dispatch.
 """
 
 from __future__ import annotations
@@ -54,6 +58,11 @@ _STATUS_KINDS = {
     503: ("model_down", "no provider currently serves this model"),
 }
 
+# The transport errors raised before OpenRouter received the whole request:
+# nothing can have been charged.
+_NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout,
+             httpx.UnsupportedProtocol, httpx.WriteError, httpx.WriteTimeout)
+
 
 class ExternalJobError(Exception):
     def __init__(self, kind: str, message: str, status: int | None = None,
@@ -64,7 +73,8 @@ class ExternalJobError(Exception):
         super().__init__(message)
         self.kind = kind
         self.status = status
-        self.charged_usd = charged_usd   # charged_blank: what the response said
+        # what the response reported; 0 when nothing was sent; None when unknown
+        self.charged_usd = charged_usd
         self.job_id = job_id             # the generation id, when one came back
         self.retry_after_s = retry_after_s   # B2: the provider's own window
         self.receipt = receipt or {}
@@ -301,12 +311,14 @@ class OpenRouterClient:
                  payload["model"], len(payload["prompt"]), payload.get("seed"))
         try:
             response = await self._client.post("/images", json=payload)
-        except httpx.TimeoutException as exc:
-            raise ExternalJobError("timeout", f"no response within the read timeout: {exc}",
-                                   receipt=receipt)
+        except _NOT_SENT as exc:
+            raise ExternalJobError("unreachable", "OpenRouter never received the whole request. "
+                                   f"Nothing was charged. {exc!r}", charged_usd=0, receipt=receipt)
         except httpx.HTTPError as exc:
-            raise ExternalJobError("unreachable", f"OpenRouter unreachable: {exc}",
-                                   receipt=receipt)
+            # A read timeout, a dropped connection, an unreadable answer: any
+            # error that cannot prove OpenRouter never received the request.
+            raise ExternalJobError("timeout", "The answer from OpenRouter was lost before it arrived. "
+                                   f"Its charge is unverified. {exc!r}", receipt=receipt)
 
         try:
             body = response.json()

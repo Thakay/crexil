@@ -143,21 +143,31 @@ async def test_non_json_response_has_raw_receipt(client_factory, status):
     assert exc.value.charged_usd is None
 
 
-@pytest.mark.parametrize("failure,kind", [(httpx.ReadTimeout("late"), "timeout"),
-                                         (httpx.ConnectError("down"), "unreachable")])
-async def test_ambiguous_transport_error_keeps_request_and_unknown_charge(client_factory, failure, kind):
+# Raised before OpenRouter received the whole request: nothing can have been charged.
+NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout,
+            httpx.UnsupportedProtocol, httpx.WriteError, httpx.WriteTimeout)
+# Raised after the request went out: the answer is lost and the charge unknown.
+LOST = (httpx.ReadError, httpx.RemoteProtocolError, httpx.ReadTimeout)
+
+
+@pytest.mark.parametrize("failure,kind,charge", [*((f, "unreachable", 0) for f in NOT_SENT),
+                                                 *((f, "timeout", None) for f in LOST)])
+async def test_transport_error_charges_zero_only_when_openrouter_never_received_the_request(
+        client_factory, failure, kind, charge):
+    sent = []
+
     async def handle(req):
-        raise failure
+        sent.append(json.loads(req.content))
+        raise failure("scripted transport failure", request=req)
 
     client = await client_factory(handle)
     request = {"model": "m", "prompt": "p"}
     with pytest.raises(ExternalJobError) as exc:
         await client.generate_frozen(request)
-    assert exc.value.kind == kind
+    assert (exc.value.kind, exc.value.charged_usd) == (kind, charge)
     assert exc.value.receipt["request"] == request
     assert exc.value.receipt["response"] is None
-    assert exc.value.charged_usd is None
-    assert client.requests_total == 1
+    assert sent == [request] and client.requests_total == 1   # one request, never sent again
 
 
 async def test_prior_output_collected_before_download_cancellation(client_factory, monkeypatch):

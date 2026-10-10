@@ -292,6 +292,32 @@ async def test_known_charge_survives_timeout_during_later_image_collection(tmp_p
         assert snap['turns'][0]['slots'][0]['status'] == 'landed'
 
 
+@pytest.mark.parametrize('drop', [httpx.ReadError, httpx.RemoteProtocolError])
+async def test_a_connection_dropped_after_the_paid_send_keeps_the_charge_unverified_and_sends_once(
+        tmp_path, monkeypatch, drop):
+    async with booted(tmp_path, monkeypatch) as (client, _):
+        discover()
+        sent = []
+        def transport(request):
+            if request.method == 'GET':
+                return httpx.Response(200, json={'endpoints': [ENDPOINT]})
+            sent.append(json.loads(request.content))
+            raise drop('the connection dropped before the answer arrived', request=request)
+        orc = wiring.current.openrouter
+        await orc._client.aclose()
+        orc._client = httpx.AsyncClient(base_url=config.OPENROUTER_URL, transport=httpx.MockTransport(transport))
+        wiring.current.scheduler._executors['openrouter'] = OpenRouterExecutor(orc)
+        p = await project(client)
+        await submit(client, await hosted(client, p['id']))
+        slot = (await settled(p['id']))[0]['slots'][0]
+        assert (slot['kind'], slot['attempt'], slot['charged_usd']) == ('timeout', 1, None)
+        assert len(sent) == 1 and orc.requests_total == 1          # never sent again
+        unverified = [e for e in await store().slot_events(slot['id']) if e['type'] == 'slot.charge_unverified']
+        assert [(e['payload']['reason'], e['payload']['committed_usd']) for e in unverified] == [('timeout', .04)]
+        snap = (await client.get(f'/api/crexil/projects/{p["id"]}')).json()
+        assert snap['charged_usd'] == 0 and snap['accounting']['reserved_usd'] == .04
+
+
 async def test_partial_output_failure_keeps_good_material_and_charges_once(tmp_path, monkeypatch):
     async with booted(tmp_path, monkeypatch) as (client, _):
         discover()

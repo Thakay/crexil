@@ -10,6 +10,9 @@ test with scripted fake executors:
 - a mid-batch restart recovers (a NEW Scheduler over the same DB)
 - retries are visible and permanent (law 9); the slot set never changes
   (law 8)
+- through the real OpenRouter executor over a scripted transport, a hosted
+  request retries only when it never reached OpenRouter, and one whose
+  answer is lost is sent once, its charge unverified and still reserved
 
 Ordering matters: turns are created AFTER the scheduler starts (the
 production flow) — a turn created before start() is deliberately adopted by
@@ -20,11 +23,13 @@ import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 
+import httpx
 import pytest
 
 from app.db import Database
-from app.executors import DispatchRequest, ExecutionResult, Reconciliation
+from app.executors import DispatchRequest, ExecutionResult, OpenRouterExecutor, Reconciliation
 from app.crexil_budget import accounting
+from app.openrouter import OpenRouterClient
 from app.scheduler import ORPHAN_COPY, UNSENT_COPY, RetryRule, Scheduler
 from fakes import FakeExecutor, Probe, Step, fail
 
@@ -781,6 +786,71 @@ async def test_retry_history_is_permanent_in_slot_events(tmp_path):
         assert types == ["slot.prepared", "slot.dispatched", "slot.provider_sending", "slot.retrying",
                          "slot.queued", "slot.dispatched", "slot.provider_sending", "execution.output_discovered",
                          "node.collected", "execution.output_collected", "node.landed"]
+
+
+# A hosted image request through the real OpenRouter adapter, in the older
+# canvas's form: its slot freezes no `automatic_retry`, so the default policy
+# applies and `unreachable` retries once.
+
+@asynccontextmanager
+async def openrouter(handler):
+    """The real OpenRouter executor, its HTTP answered by `handler`."""
+    client = OpenRouterClient(base_url="https://router.example", api_key="test-key")
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(base_url="https://router.example",
+                                       transport=httpx.MockTransport(handler))
+    try:
+        yield client, OpenRouterExecutor(client)
+    finally:
+        await client.close()
+
+
+async def test_a_hosted_request_that_never_reached_openrouter_retries_once_at_a_known_zero(tmp_path):
+    sent = []
+
+    def refuse(request):
+        sent.append(request)
+        raise httpx.ConnectError("connection refused", request=request)
+
+    async with opened(tmp_path) as db, openrouter(refuse) as (_, ex):
+        ws = await db.create_workspace("A")
+        async with running(db, tmp_path, [ex], {"acme/image": "openrouter"}) as s:
+            turn, reqs = await make_batch(db, ws, [("acme/image", "external")], committed=0.04)
+            await s.submit_turn(turn["id"], reqs)
+            done = await settle(db, turn["id"])
+        slot = done["slots"][0]
+        assert (slot["status"], slot["kind"], slot["attempt"]) == ("failed", "unreachable", 2)
+        assert len(sent) == 2                                      # the one visible retry (law 9)
+        assert [e["charged_usd"] for e in await events_of(db, "slot.retrying")] == [0]
+        assert slot["charged_usd"] == 0 and await events_of(db, "slot.charge_unverified") == []
+        money = await accounting(db, ws["id"])
+        assert (money["reserved_usd"], money["unresolved_attempts"]) == (0, 0)
+
+
+@pytest.mark.parametrize("drop", [httpx.ReadError, httpx.RemoteProtocolError])
+async def test_a_hosted_request_whose_connection_drops_after_the_send_is_sent_once(tmp_path, drop):
+    sent = []
+
+    def lose(request):
+        sent.append(request)
+        raise drop("the connection dropped before the answer arrived", request=request)
+
+    async with opened(tmp_path) as db, openrouter(lose) as (client, ex):
+        ws = await db.create_workspace("A")
+        async with running(db, tmp_path, [ex], {"acme/image": "openrouter"}) as s:
+            turn, reqs = await make_batch(db, ws, [("acme/image", "external")], committed=0.04)
+            await s.submit_turn(turn["id"], reqs)
+            done = await settle(db, turn["id"])
+        slot = done["slots"][0]
+        assert (slot["status"], slot["kind"], slot["attempt"]) == ("failed", "timeout", 1)
+        assert len(sent) == 1 and client.requests_total == 1        # never sent again
+        assert await events_of(db, "slot.retrying") == []
+        (unverified,) = await events_of(db, "slot.charge_unverified")
+        assert unverified["payload"]["reason"] == "timeout"
+        assert unverified["payload"]["committed_usd"] == 0.04
+        assert slot["charged_usd"] is None                          # no charge is invented
+        money = await accounting(db, ws["id"])
+        assert (money["reserved_usd"], money["unresolved_attempts"]) == (0.04, 1)
 
 
 # --- restart recovery: a mid-batch restart recovers ---
