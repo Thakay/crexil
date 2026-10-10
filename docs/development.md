@@ -131,7 +131,7 @@ scripted audio takes are four-second tones. The harness suite sets a placeholder
 `ELEVENLABS_API_KEY`, with `ELEVENLABS_URL` on a closed port, so the ElevenLabs operations are
 ready; the scripted executors never call ElevenLabs. It also checks that the digits reach the voices of a
 row whose images come first, that an attempt returning three takes shows its one charge once, and that a
-local voice marks Eleven v4 before it is chosen, and that after the reveal each face names its engine's
+local voice offered to Eleven v4 is marked before it is chosen, and that after the reveal each face names its engine's
 model ("Voice Design"), the take carrying the charge whole at 1440 and 1920.
 
 Playwright runs specs without type-checking them. `scripts/check.sh` type-checks the specs,
@@ -257,7 +257,8 @@ forbid commercial use.** See [third-party.md](third-party.md). `scripts/models-m
 records a licence note per entry, which the downloader prints; nothing enforces it.
 
 Audio engines are rows of `configs/engines.json` with payload `audio`, each naming its provider.
-They ship disabled; set `enabled` when an installation can reach them. A row states per verb how many
+They ship enabled. One the installation cannot reach, or has no key for, is benched at startup with a
+line saying why; set `enabled` to false to turn one off. A row states per verb how many
 interleaved channels a raw PCM answer carries, `pcm_channels` (1 unless stated). It sits beside `fixed`, never in
 it, because `fixed` fields are sent to the provider. ElevenLabs Sound Effects answers `pcm_48000` in stereo, so its
 row says 2; speech and Voice Design answer in mono.
