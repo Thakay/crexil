@@ -482,7 +482,7 @@
           "A preview you speak with becomes a saved voice in your ElevenLabs account and uses one of its voice slots."
         ]
       },
-      "seed_range": [0, 4294967295],
+      "seed_range": [0, 2147483647],
       "capabilities": {
         "seed": {
           "value": true,
@@ -497,7 +497,7 @@
         "textLimit": {
           "value": 1000,
           "state": "unverified",
-          "note": "The preview line takes 100 to 1,000 characters. The description's limit is not published; it waits for a live key to confirm it."
+          "note": "The preview line takes 100 to 1,000 characters, and the description 20 to 1,000, as ElevenLabs publishes them."
         }
       }
     },

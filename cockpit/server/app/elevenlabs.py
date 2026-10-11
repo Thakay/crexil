@@ -47,9 +47,11 @@ Never: uses the ElevenLabs SDK (it retries silently), follows a redirect, sends
 or records the key, sends another engine's audio to ElevenLabs, deletes a voice,
 or turns on `should_enhance` or `played_not_selected_voice_ids` on its own.
 
-ElevenLabs accepts seeds from 0 to 4294967295. The engine rows declare that
-range, so freeze never records a seed outside it; a seed outside it is sent
-reduced modulo 2**32, and the receipt records the seed actually sent.
+ElevenLabs' speech accepts seeds from 0 to 4294967295, and Voice Design on
+`eleven_ttv_v3` from 0 to 2147483647 (it answers 422 above that). The engine
+rows declare each range, so freeze never records a seed outside it; a seed
+outside 0 to 4294967295 is sent reduced modulo 2**32, and the receipt records
+the seed actually sent.
 """
 
 from __future__ import annotations

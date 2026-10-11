@@ -290,6 +290,17 @@ async def test_a_seed_beyond_elevenlabs_range_is_sent_reduced_and_recorded(rows,
     assert receipt_of(outputs)[1]['request']['body']['seed'] == big % 2 ** 32
 
 
+def test_voice_design_takes_only_the_seeds_its_v3_model_accepts():
+    # eleven_ttv_v3 answers 422 to a seed above 2147483647: the row's range ends there, so freeze draws
+    # inside it and review refuses a fixed seed past it.
+    matrix = json.loads((REPO / 'configs' / 'engines.json').read_text())
+    row = next(r for r in matrix['engines'] if r['id'] == 'elevenlabs-voice-design')
+    assert crexil_audio.seed_range(row) == (0, 2 ** 31 - 1)
+    crexil_audio.check_seeds(row, 2 ** 31 - 1, 1)
+    with pytest.raises(ValueError, match='takes seeds from 0 to 2147483647'):
+        crexil_audio.check_seeds(row, 2 ** 31, 1)
+
+
 async def test_an_empty_design_answer_is_a_charged_blank_with_its_receipt(rows, prices):
     fake = FakeElevenLabs().on('POST', '/v1/text-to-voice/design', designed(0))
     outputs = []

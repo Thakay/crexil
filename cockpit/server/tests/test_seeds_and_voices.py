@@ -30,7 +30,8 @@ from test_elevenlabs import (LINE, FakeElevenLabs, designed, designed_voice, exe
 
 pytestmark = pytest.mark.anyio
 
-ELEVEN_TOP = 2 ** 32 - 1
+ELEVEN_TOP = 2 ** 32 - 1     # speech
+DESIGN_TOP = 2 ** 31 - 1     # Voice Design on eleven_ttv_v3, which answers 422 above it
 SAVE = '/v1/text-to-voice'
 LABELLED = {'voices': [{'voice_id': 'voice-1', 'name': 'Crexil gen-0',
                         'labels': {'source': 'crexil', 'crexil_gen_voice_id': 'gen-0'}}]}
@@ -47,15 +48,15 @@ async def test_seeded_audio_engines_publish_their_seed_range(tmp_path, monkeypat
         ops = {o['id']: o for o in (await client.get('/api/crexil/operations')).json()}
     seed = {op: next((i for i in ops[op]['inputs'] if i['key'] == 'seed'), None)
             for op in (ELEVEN_DESIGN, ELEVEN_SPEECH, LOCAL_DESIGN, 'audio:sfx:elevenlabs-sfx')}
-    assert (seed[ELEVEN_DESIGN]['min'], seed[ELEVEN_DESIGN]['max']) == (0, ELEVEN_TOP)
+    assert (seed[ELEVEN_DESIGN]['min'], seed[ELEVEN_DESIGN]['max']) == (0, DESIGN_TOP)
     assert (seed[ELEVEN_SPEECH]['min'], seed[ELEVEN_SPEECH]['max']) == (0, ELEVEN_TOP)
     assert (seed[LOCAL_DESIGN]['min'], seed[LOCAL_DESIGN]['max']) == (0, presets.MAX_SEED - 1)
     assert seed['audio:sfx:elevenlabs-sfx'] is None                                # the sound endpoint takes none
 
 
 async def test_a_drawn_seed_stays_inside_the_engines_range_and_is_the_seed_elevenlabs_receives(tmp_path, monkeypatch):
-    # The highest draw the range allows. A draw above 2**32 - 1 would be sent reduced, and the
-    # record would show a seed ElevenLabs never received.
+    # The highest draw the range allows. A draw above it would be refused by the design model, or
+    # sent reduced, and the record would show a seed ElevenLabs never received.
     monkeypatch.setattr(crexil_audio.secrets, 'randbelow', lambda n: n - 1)
     fake = FakeElevenLabs().on('POST', '/v1/text-to-voice/design', designed())
     async with boot(tmp_path, monkeypatch, fake) as (client, fakes):
@@ -66,18 +67,18 @@ async def test_a_drawn_seed_stays_inside_the_engines_range_and_is_the_seed_eleve
                                                       [(LOCAL_DESIGN, 1, seeded(mode='random'))]))
     (slot,) = turn['slots']
     sent = json.loads(fake.calls('POST', '/v1/text-to-voice/design')[0].content)['seed']
-    assert slot['seed'] == slot['external']['seed'] == sent == ELEVEN_TOP
-    assert {take['seed'] for take in takes} == {ELEVEN_TOP}                         # every take says the seed sent
+    assert slot['seed'] == slot['external']['seed'] == sent == DESIGN_TOP
+    assert {take['seed'] for take in takes} == {DESIGN_TOP}                         # every take says the seed sent
     assert local['slots'][0]['seed'] == fakes['voice-runner'].requests[0].external['seed'] == presets.MAX_SEED - 1
 
 
 @pytest.mark.parametrize('seed, count, refused', [
-    ({'mode': 'fixed', 'value': ELEVEN_TOP + 1}, 1, f'seed {ELEVEN_TOP + 1} is outside it. Choose a seed in that range.'),
-    ({'mode': 'locked', 'value': ELEVEN_TOP + 1}, 2, f'seed {ELEVEN_TOP + 1} is outside it. Choose a seed in that range.'),
-    ({'mode': 'fixed', 'value': ELEVEN_TOP}, 2,
-     f'2 attempts from seed {ELEVEN_TOP} reach {ELEVEN_TOP + 1}. Choose a lower seed or fewer attempts.'),
-    ({'mode': 'locked', 'value': ELEVEN_TOP}, 3, None),
-    ({'mode': 'fixed', 'value': ELEVEN_TOP - 2}, 3, None),
+    ({'mode': 'fixed', 'value': DESIGN_TOP + 1}, 1, f'seed {DESIGN_TOP + 1} is outside it. Choose a seed in that range.'),
+    ({'mode': 'locked', 'value': DESIGN_TOP + 1}, 2, f'seed {DESIGN_TOP + 1} is outside it. Choose a seed in that range.'),
+    ({'mode': 'fixed', 'value': DESIGN_TOP}, 2,
+     f'2 attempts from seed {DESIGN_TOP} reach {DESIGN_TOP + 1}. Choose a lower seed or fewer attempts.'),
+    ({'mode': 'locked', 'value': DESIGN_TOP}, 3, None),
+    ({'mode': 'fixed', 'value': DESIGN_TOP - 2}, 3, None),
 ], ids=['fixed beyond', 'locked beyond', 'sequence passes the top', 'locked at the top', 'sequence ends at the top'])
 async def test_review_refuses_a_seed_whose_attempts_would_leave_the_range_in_plain_words(
         tmp_path, monkeypatch, seed, count, refused):
@@ -88,7 +89,7 @@ async def test_review_refuses_a_seed_whose_attempts_would_leave_the_range_in_pla
     if refused is None:
         assert check['ready'], check['errors']
         return
-    words = f'ElevenLabs Voice Design takes seeds from 0 to {ELEVEN_TOP}; {refused}'
+    words = f'ElevenLabs Voice Design takes seeds from 0 to {DESIGN_TOP}; {refused}'
     assert not check['ready'] and any(words in error for error in check['errors']), check['errors']
     assert fakes['elevenlabs'].requests == []
 
@@ -98,10 +99,10 @@ async def test_fixed_seeds_up_to_the_top_of_the_range_are_recorded_as_sent(tmp_p
     async with boot(tmp_path, monkeypatch, fake) as (client, _):
         p = await project(client)
         turn, _ = await landed(client, await prepare(client, p['id'], 'voice-design', DESCRIPTION,
-                                                     [(ELEVEN_DESIGN, 2, seeded(ELEVEN_TOP - 1))]))
+                                                     [(ELEVEN_DESIGN, 2, seeded(DESIGN_TOP - 1))]))
     recorded = sorted(slot['seed'] for slot in turn['slots'])
     sent = sorted(json.loads(call.content)['seed'] for call in fake.calls('POST', '/v1/text-to-voice/design'))
-    assert recorded == sent == [ELEVEN_TOP - 1, ELEVEN_TOP]
+    assert recorded == sent == [DESIGN_TOP - 1, DESIGN_TOP]
 
 
 # --- saved voices ---
