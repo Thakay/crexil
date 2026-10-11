@@ -70,6 +70,14 @@ def test_the_providers_call_limits_back_the_installations_minutes_cap():
     assert apply.agent_body(config(), ['tool'] * len(apply.TOOLS))['platform_settings']['call_limits'] == limits
 
 
+def test_the_director_waits_out_a_playing_take_before_it_speaks_up():
+    # The panel mutes the microphone while a take plays, and a designed voice's preview runs
+    # 10 to 13 seconds, so the director waits ElevenAgents' longest silence, 30 seconds,
+    # before it takes the turn again.
+    assert config()['conversation_config']['turn']['turn_timeout'] == 30
+    assert apply.agent_body(config(), ['tool'] * len(apply.TOOLS))['conversation_config']['turn']['turn_timeout'] == 30
+
+
 def test_the_director_states_a_prepared_run_as_prepare_run_returns_it():
     # It once said "one attempt for two takes at zero point zero zero four dollars" before
     # prepare_run answered with two attempts reserving $0.008: what a run reserves is prepare_run's

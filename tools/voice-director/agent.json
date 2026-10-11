@@ -16,6 +16,9 @@
     "tts": {
       "model_id": "eleven_v4_turbo"
     },
+    "turn": {
+      "turn_timeout": 30
+    },
     "conversation": {
       "max_duration_seconds": 300
     }
