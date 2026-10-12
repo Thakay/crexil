@@ -15,6 +15,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 TOOLS_TS = REPO / 'cockpit/web/src/app/voice-director/tools.ts'
 CONFIG_PY = REPO / 'cockpit/server/app/config.py'
+ENGINES = REPO / 'configs/engines.json'
 
 
 def load_apply():
@@ -94,6 +95,59 @@ def test_the_director_states_a_prepared_run_as_prepare_run_returns_it():
     prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
     assert prepare['description'].endswith("It returns the run's attempts and reserved_usd, the whole run's reservation, "
                                            'or its cost when the run is free: say those as returned.')
+
+
+def test_the_director_writes_the_preview_line_itself_and_prepares_at_once():
+    # Every voice a design attempt makes speaks the whole preview line, and ElevenLabs bills the
+    # line by its characters, so the director writes it at about 100 to 150 characters (10 to 13
+    # seconds a voice) and keeps it for the next attempt, so the voices compare. It prepares in
+    # the same turn it states the plan: the run card's cap and priced Run, never a spoken yes, are
+    # where the artist approves a paid run.
+    agent = config()
+    prompt = agent['conversation_config']['agent']['prompt']['prompt']
+    assert 'Then prepare it at once, in the same turn.' in prompt
+    assert ("For voice design, write the preview line yourself, in the character's voice, about 100 to 150 characters: "
+            'the engine accepts 100 to 1000, and each character costs. Never ask the artist to approve the line. '
+            'Keep the same line for the next attempt after a note, so the voices compare.') in prompt
+    assert 'Voice design needs a preview line' not in prompt
+    prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
+    assert ('Say the engines, the takes and the cap to the artist first, but no price, then call this in the same '
+            'turn without asking for approval.') in prepare['description']
+    assert prepare['parameters']['properties']['preview_line']['description'] == (
+        "voice-design only: the words every preview speaks. Write it yourself in the character's voice, about 100 to "
+        '150 characters (100 to 1000 accepted, and each character costs). Keep the same line for the next attempt '
+        'after a note, so the voices compare.')
+
+
+def test_the_line_the_director_aims_for_is_one_every_voice_design_engine_accepts():
+    # The prompt's numbers follow configs/engines.json: the range it says the engine accepts is
+    # the one every voice design engine accepts, and the length it aims for lies inside it.
+    prompt = config()['conversation_config']['agent']['prompt']['prompt']
+    aim = re.search(r'about (\d+) to (\d+) characters', prompt)
+    stated = re.search(r'accepts (\d+) to (\d+)', prompt)
+    assert aim and stated, 'the prompt states the length it aims for and the range the engine accepts'
+    rows = json.loads(ENGINES.read_text(encoding='utf-8'))['engines']
+    lines = [row['params']['voice-design']['preview_text'] for row in rows
+             if 'preview_text' in (row.get('params') or {}).get('voice-design', {})]
+    assert lines, 'configs/engines.json lists a voice design engine that takes a preview line'
+    accepted = (max(line['min_length'] for line in lines), min(line['max_length'] for line in lines))
+    assert tuple(map(int, stated.groups())) == accepted
+    shortest, longest = map(int, aim.groups())
+    assert accepted[0] <= shortest < longest <= accepted[1]
+
+
+def test_with_no_cap_named_the_director_sets_the_smallest_round_cap_that_covers_the_run():
+    # A cap the artist did not name is the smallest round one that covers the run, said with the
+    # plan before preparing, so it stays close to what the run can spend: ten cents covers one
+    # voice design attempt.
+    agent = config()
+    prompt = agent['conversation_config']['agent']['prompt']['prompt']
+    assert ('If the artist names no cap, set the smallest round one that covers the run, like ten cents for one '
+            'voice design attempt.') in prompt
+    prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
+    assert prepare['parameters']['properties']['spending_limit_usd']['description'] == (
+        "The run's cap in US dollars: the artist's, or if they name none, the smallest round cap that covers the run, "
+        'like 0.1 for one voice-design attempt. Tell the artist this number before preparing.')
 
 
 def test_the_file_holds_no_secret_and_no_account_id():
