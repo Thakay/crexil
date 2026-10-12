@@ -540,3 +540,19 @@ test('the log keeps its newest line in view as the room above it changes, and a 
   resized(log);
   expect(log.scrollTop).toBe(40);
 });
+
+test('the log keeps following when the room above it changes before the browser reports its move to the foot', async () => {
+  await connected();
+  const log = screen.getByRole('log', {name: 'Conversation'});
+  const lines = laidOut(log, 20, 200);
+  const said = fake.sdk.options.onMessage as unknown as (message: {message: string; role: string}) => void;
+  act(() => {for (let line = 1; line <= 12; line++) said({message: `Line ${line}.`, role: 'agent'});});
+  // a card takes room above the log in the frame its newest line arrived: the browser then
+  // reports the log's own move to its foot, and the new size after it
+  lines.size.height = 120;
+  fireEvent.scroll(log);
+  resized(log);
+  expect(log.scrollTop).toBe(lines.foot());
+  act(() => said({message: 'Line 13.', role: 'agent'}));
+  expect(log.scrollTop).toBe(lines.foot());
+});

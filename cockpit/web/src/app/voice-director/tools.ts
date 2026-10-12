@@ -172,7 +172,7 @@ export function createTools(projectId: string, door: Door, handoff: Handoff): Re
         status: review.ready ? 'awaiting_confirmation' : 'not_ready', run_id: run.id,
         attempts: review.ready_attempts, reserved_usd: review.reserved_usd, cap_usd: cap, errors,
         ...(free ? {cost: 'free: nothing is reserved'} : {}),
-        next: !review.ready ? 'Nothing was sent. Fix what the errors say, then prepare again.'
+        next: !review.ready ? 'Nothing was sent. Fix what the errors say, then prepare again; a cap the artist named changes only when they name another.'
           : free ? `It is free, but it sends ${sentBy(verb)} off this machine, so the artist runs it with a click in the panel. Tell them why it waits.`
           : 'The artist runs it with a click in the panel. Tell them the price.',
       });

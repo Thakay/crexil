@@ -61,8 +61,12 @@ type Unrecorded = {sessionId: string; elapsed: number; conversationId: string | 
 const POLL_MS = 4000;    // how often a queued run's progress is read for the agent
 const FOOT_PX = 4;       // how near its foot the log still counts as at it: a zoomed page scrolls by fractions of a pixel
 const VERB_WORDS = {'voice-design': 'Voice design', speak: 'Speech', sfx: 'Sound effect'} as const;
-/** Shows a box's foot, where the newest card or line is, at once. */
-const toFoot = (box: HTMLElement | null) => {if (box) box.scrollTop = box.scrollHeight;};
+/** Shows a box's foot at once, where the newest card or line is, and returns the box's offset there. */
+const toFoot = (box: HTMLElement | null) => {
+  if (!box) return null;
+  box.scrollTop = box.scrollHeight;
+  return box.scrollTop;
+};
 const short = (text: string, limit = 90) => text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
 /** A run card whose engines have no price and whose review reserves nothing: its Run is free and
  *  wears the primary frame, as the drawer's free Run does; any other wears money gold (law 6). */
@@ -99,8 +103,10 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, 
   const holding = useRef(false);
   const cardBox = useRef<HTMLElement>(null);
   const logBox = useRef<HTMLOListElement>(null);
-  // Whether the log follows its newest line: it does while the reader is at its foot.
+  // Whether the log follows its newest line: it does while the reader is at its foot. `placed`
+  // is where the log's own last move to its foot left it.
   const following = useRef(true);
+  const placed = useRef<number | null>(null);
 
   const note = useCallback((role: Line['role'], text: string) => {
     setLines(current => [...current, {id: ++lineId.current, role, text}].slice(-60));
@@ -191,16 +197,16 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, 
   // so the newest is at the foot of their box, its price and Run last; acting on a card moves
   // nothing.
   const newest = cards.at(-1)?.id;
-  useLayoutEffect(() => toFoot(cardBox.current), [newest]);
+  useLayoutEffect(() => {toFoot(cardBox.current);}, [newest]);
 
   // The log shows its newest line as each line comes and whenever the log's box grows or shrinks
   // (a card or a notice takes room above it, a session ends), unless the reader scrolled up to
   // read: then they stay where they are.
-  useLayoutEffect(() => {if (following.current) toFoot(logBox.current);}, [lines]);
+  useLayoutEffect(() => {if (following.current) placed.current = toFoot(logBox.current);}, [lines]);
   useEffect(() => {
     const box = logBox.current;
     if (!box) return;
-    const observer = new ResizeObserver(() => {if (following.current) toFoot(box);});
+    const observer = new ResizeObserver(() => {if (following.current) placed.current = toFoot(box);});
     observer.observe(box);
     return () => observer.disconnect();
   }, []);
@@ -461,6 +467,10 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, 
 
     <ol ref={logBox} className={css.log} role="log" aria-live="polite" aria-label="Conversation" onScroll={event => {
       const box = event.currentTarget;
+      // The browser reports the log's own move a frame later, when the room above it may have
+      // changed: a scroll that finds the log where that move left it is not the reader's.
+      if (box.scrollTop === placed.current) return;
+      placed.current = null;
       following.current = box.scrollHeight - box.scrollTop - box.clientHeight <= FOOT_PX;
     }}>
       {lines.length === 0 && <li className={css.empty}>The conversation appears here.</li>}

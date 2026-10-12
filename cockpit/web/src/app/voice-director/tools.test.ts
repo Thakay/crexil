@@ -200,6 +200,15 @@ describe('preparing a run', () => {
     expect(door.submit).not.toHaveBeenCalled();
     expect(handoff.runCard).toHaveBeenCalledWith(expect.objectContaining({ready: false}));
   });
+
+  test('a run refused over its cap tells the agent that a cap the artist named changes only when they name another', async () => {
+    const overCap = 'The reserved $0.031 exceeds the $0.01 spending limit.';
+    const {call, door} = setup({review: async () => review({ready: false, ready_attempts: 0, errors: [overCap]})});
+    expect(await call('prepare_run', {...paidDesign, spending_limit_usd: 0.01})).toMatchObject({status: 'not_ready', cap_usd: 0.01,
+      errors: [overCap],
+      next: 'Nothing was sent. Fix what the errors say, then prepare again; a cap the artist named changes only when they name another.'});
+    expect(door.submit).not.toHaveBeenCalled();
+  });
 });
 
 describe('takes', () => {
