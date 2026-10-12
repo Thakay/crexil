@@ -15,6 +15,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 TOOLS_TS = REPO / 'cockpit/web/src/app/voice-director/tools.ts'
 CONFIG_PY = REPO / 'cockpit/server/app/config.py'
+ENGINES = REPO / 'configs/engines.json'
 
 
 def load_apply():
@@ -37,6 +38,18 @@ def no_network(monkeypatch):
 
 def config() -> dict:
     return apply.load()
+
+
+def voice_design_rows() -> list[dict]:
+    """The rows of configs/engines.json whose voice design takes a preview line."""
+    rows = json.loads(ENGINES.read_text(encoding='utf-8'))['engines']
+    return [row for row in rows if ((row.get('params') or {}).get('voice-design') or {}).get('preview_text')]
+
+
+def preview_line_range(row: dict) -> tuple[int, int]:
+    """The shortest and longest preview line a row accepts; a length it leaves out is unbounded."""
+    line = row['params']['voice-design']['preview_text']
+    return line.get('min_length') or 0, line.get('max_length') or 10**9
 
 
 def test_the_shipped_configuration_is_valid():
@@ -71,18 +84,16 @@ def test_the_providers_call_limits_back_the_installations_minutes_cap():
 
 
 def test_the_director_waits_out_a_playing_take_before_it_speaks_up():
-    # The panel mutes the microphone while a take plays, and a designed voice's preview runs
-    # 10 to 13 seconds, so the director waits ElevenAgents' longest silence, 30 seconds,
-    # before it takes the turn again.
+    # The panel mutes the microphone while a take plays, so the director waits ElevenAgents'
+    # longest silence, 30 seconds, before it takes the turn again.
     assert config()['conversation_config']['turn']['turn_timeout'] == 30
     assert apply.agent_body(config(), ['tool'] * len(apply.TOOLS))['conversation_config']['turn']['turn_timeout'] == 30
 
 
 def test_the_director_states_a_prepared_run_as_prepare_run_returns_it():
-    # It once said "one attempt for two takes at zero point zero zero four dollars" before
-    # prepare_run answered with two attempts reserving $0.008: what a run reserves is prepare_run's
-    # to state, for the whole run and as a reservation (the charge can come in lower), or that
-    # the run is free; never per attempt and never worked out by the director.
+    # What a run reserves is prepare_run's to state, for the whole run and as a reservation (the
+    # charge can come in lower), or that the run is free; never per attempt and never worked out
+    # by the director.
     agent = config()
     prompt = agent['conversation_config']['agent']['prompt']['prompt']
     assert ('Before preparing a run, say which engines and how many takes, and the cap you will set, '
@@ -94,6 +105,69 @@ def test_the_director_states_a_prepared_run_as_prepare_run_returns_it():
     prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
     assert prepare['description'].endswith("It returns the run's attempts and reserved_usd, the whole run's reservation, "
                                            'or its cost when the run is free: say those as returned.')
+
+
+def test_the_director_writes_the_preview_line_unless_the_artist_gives_one_and_prepares_in_the_same_turn():
+    # Every voice a design attempt makes speaks the whole preview line, and ElevenLabs bills the
+    # line by its characters, so unless the artist gives one, the director writes it at about 120
+    # to 150 characters and keeps it for the next attempt, so the voices compare. It prepares in
+    # the same turn it states the plan: the run card's cap and priced Run, never a spoken yes, are
+    # where the artist approves a paid run.
+    agent = config()
+    prompt = agent['conversation_config']['agent']['prompt']['prompt']
+    assert 'Then prepare it in the same turn.' in prompt
+    assert ("For voice design, unless the artist gives a preview line, write one yourself in the character's voice, "
+            'about 120 to 150 characters, 25 to 30 words: the engine accepts 100 to 1000, and each character costs. '
+            'Never ask the artist to approve the line. Keep the same line for the next attempt after a note, so the '
+            'voices compare.') in prompt
+    assert 'Voice design needs a preview line' not in prompt
+    prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
+    assert ('Say the engines, the takes and the cap to the artist first, but no price, then call this in the same '
+            'turn without asking for approval.') in prepare['description']
+    assert prepare['parameters']['properties']['preview_line']['description'] == (
+        "voice-design only: the words every preview speaks. Unless the artist gives one, write it yourself in the "
+        "character's voice, about 120 to 150 characters, 25 to 30 words (100 to 1000 accepted, and each character "
+        'costs). Keep the same line for the next attempt after a note, so the voices compare.')
+
+
+def test_the_line_the_director_aims_for_is_one_every_voice_design_engine_accepts():
+    # The director's numbers follow configs/engines.json: the prompt and preview_line state the
+    # range every voice design engine accepts, and the length they aim for sits inside it, above
+    # the shortest line accepted, so a line that comes out a little short still passes review.
+    agent = config()
+    prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
+    ranges = [preview_line_range(row) for row in voice_design_rows()]
+    assert ranges, 'configs/engines.json lists a voice design engine that takes a preview line'
+    accepted = (max(low for low, _ in ranges), min(high for _, high in ranges))
+    for text in (agent['conversation_config']['agent']['prompt']['prompt'],
+                 prepare['parameters']['properties']['preview_line']['description']):
+        stated = re.search(r'accepts (\d+) to (\d+)|(\d+) to (\d+) accepted', text)
+        aim = re.search(r'about (\d+) to (\d+) characters', text)
+        assert stated and aim, text
+        assert tuple(int(number) for number in stated.groups() if number) == accepted, text
+        shortest, longest = map(int, aim.groups())
+        assert accepted[0] < shortest < longest <= accepted[1], text
+
+
+def test_with_no_cap_named_the_director_sets_ten_cents_for_each_attempt_and_keeps_a_named_cap():
+    # The director never guesses a price before prepare_run answers, so a cap the artist did not
+    # name is a fixed ten cents for each attempt, which covers one attempt of the longest line any
+    # voice design engine accepts, by its tariff. A cap the artist named stays theirs: a run that
+    # needs more waits for the artist to name another.
+    agent = config()
+    prompt = agent['conversation_config']['agent']['prompt']['prompt']
+    assert ('If the artist names no cap, set a ten-cent cap for each attempt. Keep a cap the artist named; if the run '
+            'needs more, say so and let them name another. Before preparing a run,') in prompt
+    assert 'smallest round' not in prompt
+    prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
+    assert prepare['parameters']['properties']['spending_limit_usd']['description'] == (
+        "The run's cap in US dollars: the artist's, or 0.1 for each attempt when they name none. Keep a cap the artist "
+        'named. Tell the artist this number before preparing.')
+    for row in voice_design_rows():
+        tariff = (row.get('tariffs') or {}).get('voice-design') or {}
+        assert tariff.get('unit') in ('1k_characters', 'attempt'), f"{row['id']}: check that ten cents covers its attempt"
+        per_attempt = tariff['micro_usd'] * (preview_line_range(row)[1] / 1000 if tariff['unit'] == '1k_characters' else 1)
+        assert per_attempt <= 100_000, row['id']
 
 
 def test_the_file_holds_no_secret_and_no_account_id():

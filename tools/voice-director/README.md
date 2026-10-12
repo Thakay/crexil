@@ -28,7 +28,7 @@ microphone stays muted 400 ms after the take stops, and no take plays while a se
 
 | File | Holds |
 |---|---|
-| `agent.json` | The agent: name, tag, prompt (it names no price before `prepare_run` answers, then the run's attempts and reserved total as returned), language model, voice model, how long it waits in silence before it speaks up (30 s, so a playing take never prompts it), the session's longest duration, privacy, the provider's call limits, and the six client tools. No key, no account id |
+| `agent.json` | The agent: name, tag, prompt (it writes a voice design's preview line of about 120 to 150 characters unless the artist gives one, and keeps it for the next attempt; it keeps a cap the artist names, or sets ten cents for each attempt; it names no price before `prepare_run` answers, then the run's attempts and reserved total as returned), language model, voice model, how long it waits in silence before it speaks up (30 s, the longest ElevenAgents allows), the session's longest duration, privacy, the provider's call limits, and the six client tools. No key, no account id |
 | `apply.py` | Validates `agent.json` and creates or updates the agent and its tools |
 
 The six tool names in `agent.json` must match the panel's handlers in
