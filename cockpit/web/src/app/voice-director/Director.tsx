@@ -10,7 +10,7 @@
 // microphone mutes before any take plays (microphone.ts), and no take starts while a session
 // connects.
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { player, usePlayer } from '../audio';
 import { artist as browserArtist, count, message, money, type Actor } from '../crexil/api';
 import { door as httpDoor, type Door, type VoiceSession, type VoiceUsage } from './door';
@@ -59,7 +59,10 @@ type Card =
 type Unrecorded = {sessionId: string; elapsed: number; conversationId: string | null};
 
 const POLL_MS = 4000;    // how often a queued run's progress is read for the agent
+const FOOT_PX = 4;       // how near its foot the log still counts as at it: a zoomed page scrolls by fractions of a pixel
 const VERB_WORDS = {'voice-design': 'Voice design', speak: 'Speech', sfx: 'Sound effect'} as const;
+/** Shows a box's foot, where the newest card or line is, at once. */
+const toFoot = (box: HTMLElement | null) => {if (box) box.scrollTop = box.scrollHeight;};
 const short = (text: string, limit = 90) => text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
 /** A run card whose engines have no price and whose review reserves nothing: its Run is free and
  *  wears the primary frame, as the drawer's free Run does; any other wears money gold (law 6). */
@@ -94,6 +97,10 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, 
   const guard = useRef<Guard>({muted: false, ducked: false});
   const mutedByArtist = useRef(false);
   const holding = useRef(false);
+  const cardBox = useRef<HTMLElement>(null);
+  const logBox = useRef<HTMLOListElement>(null);
+  // Whether the log follows its newest line: it does while the reader is at its foot.
+  const following = useRef(true);
 
   const note = useCallback((role: Line['role'], text: string) => {
     setLines(current => [...current, {id: ++lineId.current, role, text}].slice(-60));
@@ -179,6 +186,24 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, 
   }, () => holding.current ? CONNECTING : null), [microphone]);
 
   useEffect(() => {onLive?.(live);}, [live, onLive]);
+
+  // A card comes into view as it arrives, before it is drawn. Cards keep the order they came in,
+  // so the newest is at the foot of their box, its price and Run last; acting on a card moves
+  // nothing.
+  const newest = cards.at(-1)?.id;
+  useLayoutEffect(() => toFoot(cardBox.current), [newest]);
+
+  // The log shows its newest line as each line comes and whenever the log's box grows or shrinks
+  // (a card or a notice takes room above it, a session ends), unless the reader scrolled up to
+  // read: then they stay where they are.
+  useLayoutEffect(() => {if (following.current) toFoot(logBox.current);}, [lines]);
+  useEffect(() => {
+    const box = logBox.current;
+    if (!box) return;
+    const observer = new ResizeObserver(() => {if (following.current) toFoot(box);});
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
 
   const update = useCallback((id: string, change: Partial<Card>) => {
     setCards(current => current.map(card => card.id === id ? {...card, ...change} as Card : card));
@@ -398,7 +423,7 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, 
 
     {error && <p className={css.error} role="alert">{error}</p>}
 
-    {shown.length > 0 && <section className={css.cards} aria-label="Runs and proposals">
+    {shown.length > 0 && <section ref={cardBox} className={css.cards} aria-label="Runs and proposals">
       {shown.map(card => card.kind === 'run' ? <article key={card.id} className={css.card} aria-label={`Prepared run: ${card.title}`}>
         <p className={css.eyebrow}>Prepared by the voice director</p>
         <p className={css.what}>{VERB_WORDS[card.action]}: “{short(card.prompt)}”</p>
@@ -434,7 +459,10 @@ function Session({projectId, artist = browserArtist(), door = httpDoor, onLive, 
       </article>)}
     </section>}
 
-    <ol className={css.log} role="log" aria-live="polite" aria-label="Conversation">
+    <ol ref={logBox} className={css.log} role="log" aria-live="polite" aria-label="Conversation" onScroll={event => {
+      const box = event.currentTarget;
+      following.current = box.scrollHeight - box.scrollTop - box.clientHeight <= FOOT_PX;
+    }}>
       {lines.length === 0 && <li className={css.empty}>The conversation appears here.</li>}
       {lines.map(line => <li key={line.id} className={css[line.role]}>
         {line.role !== 'note' && <span className={css.who}>{line.role === 'director' ? 'Director' : 'You'}</span>}{line.text}
