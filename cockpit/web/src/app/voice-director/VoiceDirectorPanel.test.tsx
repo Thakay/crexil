@@ -43,8 +43,13 @@ const startSession = async () => {
 beforeEach(() => {
   sdk.start.mockClear();
   sdk.end.mockClear();
+  // The log watches its own size; this page lays nothing out.
+  vi.stubGlobal('ResizeObserver', class {observe() {} unobserve() {} disconnect() {}});
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 test('the door opens a column beside the work, focus moves in, and closing returns it to the door', async () => {
   render(<VoiceDirectorPanel projectId="p1" door={fakeDoor()}/>);

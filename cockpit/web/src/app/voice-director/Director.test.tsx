@@ -2,8 +2,9 @@
 // player driving a fake media element: the token reaches only the SDK, paid runs, free runs that
 // leave this machine and picks wait for the artist's click, a run that changed since it was
 // prepared goes to the drawer, the meter ends the session at its limit and records the minutes,
-// the panel says what leaves the machine before a session, and the microphone mutes before any
-// take sounds, whoever starts it, so the agent never hears one.
+// the panel says what leaves the machine before a session, the microphone mutes before any take
+// sounds, whoever starts it, so the agent never hears one, and the newest card and the log's
+// newest line come into view without the artist scrolling.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { audioUrl, player } from '../audio';
@@ -68,6 +69,33 @@ vi.mock('../audio', async () => {
 
 type Tools = Record<string, (parameters: object) => Promise<string>>;
 
+/** The boxes the panel watches for size; `resized(box)` reports a change in one, as a browser does. */
+const watched = new Map<Element, () => void>();
+const resized = (box: Element) => watched.get(box)?.();
+
+/** A scrolling box as a browser lays it out, `rowPx` per child and `size.height` px in view; it
+ *  scrolls only within its bounds. This page lays nothing out, so the test gives the box its sizes. */
+function laidOut(box: HTMLElement, rowPx: number, height: number) {
+  let top = 0;
+  const size = {height};
+  const content = () => Math.max(box.children.length * rowPx, size.height);
+  Object.defineProperties(box, {
+    clientHeight: {configurable: true, get: () => size.height},
+    scrollHeight: {configurable: true, get: content},
+    scrollTop: {configurable: true, get: () => top, set: (offset: number) => {top = Math.max(0, Math.min(offset, content() - size.height));}},
+  });
+  return {
+    size,
+    /** The offset that shows the box's foot. */
+    foot: () => content() - size.height,
+    /** The reader scrolls the box to `offset`. */
+    scroll: (offset: number) => {
+      box.scrollTop = offset;
+      fireEvent.scroll(box);
+    },
+  };
+}
+
 test('a director line keeps its words and loses its audio tags', () => {
   expect(shownWords('[ready] Ready to run two takes.')).toBe('Ready to run two takes.');
   expect(shownWords('Sure. [laughs] Let\'s go.')).toBe("Sure. Let's go.");
@@ -87,11 +115,20 @@ beforeEach(() => {
   fake.sdk.open = false;
   player.release();
   fake.log.length = 0;
+  watched.clear();
+  vi.stubGlobal('ResizeObserver', class {
+    report: () => void;
+    constructor(report: () => void) {this.report = report;}
+    observe(box: Element) {watched.set(box, () => this.report());}
+    unobserve() {}
+    disconnect() {}
+  });
 });
 
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 async function opened(door = fakeDoor()) {
@@ -426,4 +463,96 @@ test('each tool the director uses is shown in the conversation', async () => {
   const {tools} = await connected();
   await act(async () => {await tools.list_engines({payload: 'audio'});});
   expect(screen.getByRole('log', {name: 'Conversation'})).toHaveTextContent('Director used list engines');
+});
+
+test('each card comes into view as it arrives, its price and Run at the foot of the cards box, after the cards before it', async () => {
+  let reviews = 0;
+  // the first preparation is refused at review; the next is ready and runs, and a third is offered
+  const door = fakeDoor({review: async () => ++reviews === 1
+    ? review({ready: false, errors: ['The preview line needs 100 to 1,000 characters.']}) : review()});
+  const {tools} = await connected(door);
+  await act(async () => {await tools.prepare_run(paid);});
+  const box = screen.getByRole('region', {name: 'Runs and proposals'});
+  const cards = laidOut(box, 240, 400);
+  await act(async () => {await tools.prepare_run(paid);});
+  expect(box.scrollTop).toBe(cards.foot());
+  await act(async () => {fireEvent.click(within(box).getByRole('button', {name: `Run · up to ${money(0.031)}`}));});
+  expect(await within(box).findByText('Queued 2 attempts.')).toBeInTheDocument();
+  await act(async () => {await tools.prepare_run({...paid, prompt: 'An old sailor, salt in every word'});});
+  expect(box.scrollTop).toBe(cards.foot());
+  const newest = within(box).getAllByRole('article').at(-1)!;
+  expect(newest).toHaveAccessibleName(/An old sailor, salt in every word$/);
+  expect(within(newest).getByText(`Cap ${money(0.5)} · reserves up to ${money(0.031)} · by the published price; the final provider charge is not capped`))
+    .toBeInTheDocument();
+  expect(within(newest).getByRole('button', {name: `Run · up to ${money(0.031)}`})).not.toHaveFocus();
+  await act(async () => {await tools.propose_pick({run_id: 'run-2', takes: ['2B'], reason: 'Warmest.'});});
+  expect(box.scrollTop).toBe(cards.foot());
+  expect(within(box).getAllByRole('article').map(card => card.getAttribute('aria-label'))).toEqual([
+    'Prepared run: Voice director · voice design · A gruff dwarf blacksmith',
+    'Prepared run: Voice director · voice design · A gruff dwarf blacksmith',
+    'Prepared run: Voice director · voice design · An old sailor, salt in every word',
+    'Proposal: 2B',
+  ]);
+});
+
+test('acting on a card leaves the cards box where the artist scrolled it', async () => {
+  const {tools} = await connected();
+  await act(async () => {await tools.prepare_run(paid);});
+  const box = screen.getByRole('region', {name: 'Runs and proposals'});
+  const cards = laidOut(box, 240, 400);
+  await act(async () => {await tools.prepare_run({...paid, prompt: 'An old sailor, salt in every word'});});
+  cards.scroll(0);
+  fireEvent.click(within(within(box).getAllByRole('article')[0]).getByRole('button', {name: 'Discard'}));
+  expect(within(box).getByText('Discarded. The draft stays in the project.')).toBeInTheDocument();
+  expect(box.scrollTop).toBe(0);
+});
+
+test('the log follows its newest line, unless the reader scrolled up to read', async () => {
+  await connected();
+  const log = screen.getByRole('log', {name: 'Conversation'});
+  const lines = laidOut(log, 20, 100);
+  const said = fake.sdk.options.onMessage as unknown as (message: {message: string; role: string}) => void;
+  act(() => {for (let line = 1; line <= 8; line++) said({message: `Line ${line}.`, role: 'agent'});});
+  expect(log.scrollTop).toBe(lines.foot());
+  // a reader who scrolled up stays where they are as lines arrive
+  lines.scroll(20);
+  act(() => said({message: 'Line 9.', role: 'agent'}));
+  expect(log).toHaveTextContent('Line 9.');
+  expect(log.scrollTop).toBe(20);
+  // back at the foot, the log follows again
+  lines.scroll(lines.foot());
+  act(() => said({message: 'Line 10.', role: 'user'}));
+  expect(log.scrollTop).toBe(lines.foot());
+});
+
+test('the log keeps its newest line in view as the room above it changes, and a reader who scrolled up keeps their place', async () => {
+  await connected();
+  const log = screen.getByRole('log', {name: 'Conversation'});
+  const lines = laidOut(log, 20, 200);
+  const said = fake.sdk.options.onMessage as unknown as (message: {message: string; role: string}) => void;
+  act(() => {for (let line = 1; line <= 12; line++) said({message: `Line ${line}.`, role: 'agent'});});
+  // a card, a notice or the session's end takes room above the log
+  lines.size.height = 120;
+  resized(log);
+  expect(log.scrollTop).toBe(lines.foot());
+  lines.scroll(40);
+  lines.size.height = 100;
+  resized(log);
+  expect(log.scrollTop).toBe(40);
+});
+
+test('the log keeps following when the room above it changes before the browser reports its move to the foot', async () => {
+  await connected();
+  const log = screen.getByRole('log', {name: 'Conversation'});
+  const lines = laidOut(log, 20, 200);
+  const said = fake.sdk.options.onMessage as unknown as (message: {message: string; role: string}) => void;
+  act(() => {for (let line = 1; line <= 12; line++) said({message: `Line ${line}.`, role: 'agent'});});
+  // a card takes room above the log in the frame its newest line arrived: the browser then
+  // reports the log's own move to its foot, and the new size after it
+  lines.size.height = 120;
+  fireEvent.scroll(log);
+  resized(log);
+  expect(log.scrollTop).toBe(lines.foot());
+  act(() => said({message: 'Line 13.', role: 'agent'}));
+  expect(log.scrollTop).toBe(lines.foot());
 });
