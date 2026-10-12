@@ -1,0 +1,374 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "From brief to delivery: where an agent stops",
+    "output": "docs/agentic-map/diagrams/authority-gates.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Thakay/crexil",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+    }
+  },
+  "lanes": [
+    {
+      "id": "agents",
+      "label": "Any agent: voice director, MCP server, CLI as agent"
+    },
+    {
+      "id": "server",
+      "label": "Crexil server: review, caps, record"
+    },
+    {
+      "id": "artist",
+      "label": "Artist: human:<name>"
+    }
+  ],
+  "phases": [
+    {
+      "id": "prepare",
+      "label": "Prepare",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "spend",
+      "label": "Spend",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "security"
+    },
+    {
+      "id": "decide",
+      "label": "Decide and release",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "emphasis"
+    }
+  ],
+  "mainPath": [
+    "a-project",
+    "a-prepare",
+    "s-review",
+    "a-submit",
+    "s-run",
+    "a-propose",
+    "h-pick",
+    "h-deliver"
+  ],
+  "nodes": [
+    {
+      "id": "a-project",
+      "lane": "agents",
+      "col": 0,
+      "type": "backend",
+      "label": "Create project",
+      "sublabel": "MCP server or CLI",
+      "width": 140,
+      "sources": [
+        {
+          "path": "docs/agents.md",
+          "line": 64,
+          "label": "agents may create projects"
+        }
+      ]
+    },
+    {
+      "id": "a-prepare",
+      "lane": "agents",
+      "col": 1,
+      "type": "backend",
+      "label": "Prepare run",
+      "sublabel": "draft, never sends",
+      "width": 140,
+      "sources": [
+        {
+          "path": "tools/agent-door/crexil_mcp.py",
+          "line": 625,
+          "end_line": 668,
+          "label": "prepare never dispatches"
+        }
+      ]
+    },
+    {
+      "id": "s-review",
+      "lane": "server",
+      "col": 1,
+      "type": "security",
+      "label": "Review",
+      "sublabel": "price, token, cap check",
+      "width": 150,
+      "sources": [
+        {
+          "path": "docs/agents.md",
+          "line": 40,
+          "end_line": 51,
+          "label": "review, then submit"
+        },
+        {
+          "path": "docs/PRD.md",
+          "line": 192,
+          "end_line": 194,
+          "label": "law 22: cap before dispatch"
+        }
+      ]
+    },
+    {
+      "id": "a-submit",
+      "lane": "agents",
+      "col": 2,
+      "type": "backend",
+      "label": "Submit as agent",
+      "sublabel": "free, or within limits",
+      "width": 150,
+      "sources": [
+        {
+          "path": "cockpit/web/src/app/voice-director/tools.ts",
+          "line": 158,
+          "end_line": 166,
+          "label": "director: free and local only"
+        },
+        {
+          "path": "tools/agent-door/crexil_mcp.py",
+          "line": 670,
+          "end_line": 697,
+          "label": "MCP: restate amount, per-run limit"
+        }
+      ]
+    },
+    {
+      "id": "h-confirm",
+      "lane": "artist",
+      "col": 2,
+      "type": "frontend",
+      "label": "Confirm run",
+      "sublabel": "price on the button",
+      "width": 150,
+      "sources": [
+        {
+          "path": "cockpit/web/src/app/voice-director/Director.tsx",
+          "line": 300,
+          "end_line": 333,
+          "label": "card confirm"
+        }
+      ]
+    },
+    {
+      "id": "s-run",
+      "lane": "server",
+      "col": 3,
+      "type": "backend",
+      "label": "Engines run",
+      "sublabel": "takes land in the grid",
+      "width": 150,
+      "sources": [
+        {
+          "path": "cockpit/server/app/agent_door.py",
+          "line": 152,
+          "end_line": 217,
+          "label": "run view for agents"
+        }
+      ]
+    },
+    {
+      "id": "a-propose",
+      "lane": "agents",
+      "col": 4,
+      "type": "backend",
+      "label": "Propose a pick",
+      "sublabel": "with a reason",
+      "width": 140,
+      "sources": [
+        {
+          "path": "tools/agent-door/crexil_mcp.py",
+          "line": 699,
+          "end_line": 714,
+          "label": "never changes the pick"
+        }
+      ]
+    },
+    {
+      "id": "x-refused",
+      "lane": "server",
+      "col": 5,
+      "type": "security",
+      "label": "403 to agents",
+      "sublabel": "the artist's act",
+      "width": 150,
+      "sources": [
+        {
+          "path": "cockpit/server/app/api_crexil.py",
+          "line": 87,
+          "end_line": 110,
+          "label": "human_only, limits"
+        },
+        {
+          "path": "SECURITY.md",
+          "line": 56,
+          "end_line": 61,
+          "label": "full refusal list"
+        }
+      ]
+    },
+    {
+      "id": "h-pick",
+      "lane": "artist",
+      "col": 4,
+      "type": "frontend",
+      "label": "Pick and reveal",
+      "sublabel": "reason kept when given",
+      "width": 150,
+      "sources": [
+        {
+          "path": "docs/PRD.md",
+          "line": 195,
+          "end_line": 197,
+          "label": "law 23: every decision has an author"
+        },
+        {
+          "path": "cockpit/server/app/crexil_schemas.py",
+          "line": 282,
+          "end_line": 285,
+          "label": "pick: reason may be empty"
+        },
+        {
+          "path": "cockpit/server/app/api_crexil.py",
+          "line": 249,
+          "end_line": 256,
+          "label": "reveal: the artist's act"
+        }
+      ]
+    },
+    {
+      "id": "h-deliver",
+      "lane": "artist",
+      "col": 5,
+      "type": "frontend",
+      "label": "Deliver",
+      "sublabel": "character package",
+      "width": 150,
+      "sources": [
+        {
+          "path": "cockpit/server/app/crexil_delivery.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "delivery"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "project-prepare",
+      "from": "a-project",
+      "to": "a-prepare",
+      "variant": "emphasis"
+    },
+    {
+      "id": "prepare-review",
+      "from": "a-prepare",
+      "to": "s-review",
+      "label": "draft",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "review-submit",
+      "from": "s-review",
+      "to": "a-submit",
+      "label": "within caps",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "review-confirm",
+      "from": "s-review",
+      "to": "h-confirm",
+      "label": "else: click",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "submit-run",
+      "from": "a-submit",
+      "to": "s-run",
+      "label": "as agent",
+      "variant": "emphasis"
+    },
+    {
+      "id": "confirm-run",
+      "from": "h-confirm",
+      "to": "s-run",
+      "label": "as artist",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "run-propose",
+      "from": "s-run",
+      "to": "a-propose",
+      "label": "facts only",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "propose-pick",
+      "from": "a-propose",
+      "to": "h-pick",
+      "label": "proposal",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight"
+    },
+    {
+      "id": "propose-refused",
+      "from": "a-propose",
+      "to": "x-refused",
+      "label": "tries to reveal",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "right",
+      "toSide": "top"
+    },
+    {
+      "id": "pick-deliver",
+      "from": "h-pick",
+      "to": "h-deliver",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One set of gates for every agent",
+      "items": [
+        "The voice director, the MCP server and a CLI run as agent all meet the same server rules",
+        "The record names the author of every step: human:<name> or agent:<name>"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What 'within caps' means for each",
+      "items": [
+        "Voice director: free, and every engine on this machine; anything else becomes a card",
+        "MCP server: up to --max-run-usd ($0 default), restating the reviewed amount, and paid work only where the artist set a project limit",
+        "CLI as agent: the server's caps, and paid work only where the artist set a project limit"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What stays the artist's",
+      "items": [
+        "403: reveal, deliver, change limits",
+        "403: start or end a voice session, resume held paid work",
+        "Pick: recorded under whoever makes it (law 23); no agent tool offers one"
+      ]
+    }
+  ]
+}

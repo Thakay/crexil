@@ -8,7 +8,8 @@ recover from errors.
 Crexil is a local server that owns one append-only record. The artist's interface, the CLI and
 the agent door are all clients of the same shared actions. Each action is recorded with its
 author, so the record shows what a person did and what an agent did. The product contract and
-its laws are in [PRD.md](PRD.md).
+its laws are in [PRD.md](PRD.md). [The agent map](agentic-map/README.md) draws these rules: who
+can do what through each way in, and where every agent stops.
 
 ## Run the server
 

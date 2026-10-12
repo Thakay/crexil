@@ -1,0 +1,298 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Voice director, part 1: start and ask for a run",
+    "output": "docs/agentic-map/diagrams/voice-director-1-ask.html",
+    "viewBox": [
+      1085,
+      700
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Thakay/crexil",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+    }
+  },
+  "participants": [
+    {
+      "id": "artist",
+      "type": "external",
+      "label": "Artist",
+      "sublabel": "speaks and clicks",
+      "icon": "person",
+      "sources": [
+        {
+          "path": "tools/voice-director/README.md",
+          "line": 9,
+          "end_line": 17,
+          "label": "may and never"
+        }
+      ]
+    },
+    {
+      "id": "panel",
+      "type": "frontend",
+      "label": "Panel",
+      "sublabel": "browser · client tools",
+      "sources": [
+        {
+          "path": "cockpit/web/src/app/voice-director/Director.tsx",
+          "line": 259,
+          "end_line": 351,
+          "label": "start, confirm, pick"
+        },
+        {
+          "path": "cockpit/web/src/app/voice-director/tools.ts",
+          "line": 113,
+          "end_line": 179,
+          "label": "prepare_run"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "cloud",
+      "label": "ElevenAgents",
+      "sublabel": "Claude Haiku 4.5",
+      "sources": [
+        {
+          "path": "tools/voice-director/agent.json",
+          "line": 1,
+          "end_line": 40,
+          "label": "agent config"
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Crexil server",
+      "sublabel": "the only writer",
+      "sources": [
+        {
+          "path": "cockpit/server/app/agent_door.py",
+          "line": 284,
+          "end_line": 370,
+          "label": "token and sessions"
+        },
+        {
+          "path": "cockpit/server/app/api_crexil.py",
+          "line": 296,
+          "end_line": 330,
+          "label": "voice-session routes"
+        }
+      ]
+    },
+    {
+      "id": "engines",
+      "type": "backend",
+      "label": "Audio engines",
+      "sublabel": "ElevenLabs · Qwen3-TTS",
+      "sources": [
+        {
+          "path": "configs/engines.json",
+          "line": 414,
+          "end_line": 420,
+          "label": "ElevenLabs Voice Design"
+        },
+        {
+          "path": "configs/engines.json",
+          "line": 692,
+          "end_line": 698,
+          "label": "Qwen3-TTS"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 153,
+      "to": 289,
+      "label": "Start"
+    },
+    {
+      "from": 303,
+      "to": 579,
+      "label": "Ask for a run"
+    }
+  ],
+  "messages": [
+    {
+      "id": "click-start",
+      "from": "artist",
+      "to": "panel",
+      "y": 165,
+      "label": "click Start · up to the price"
+    },
+    {
+      "id": "start-session",
+      "from": "panel",
+      "to": "server",
+      "y": 193,
+      "label": "start session, as the artist",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ask-token",
+      "from": "server",
+      "to": "agent",
+      "y": 221,
+      "label": "ask a token with the key",
+      "variant": "security"
+    },
+    {
+      "id": "token-once",
+      "from": "server",
+      "to": "panel",
+      "y": 249,
+      "label": "token, handed over once",
+      "variant": "return"
+    },
+    {
+      "id": "open-webrtc",
+      "from": "panel",
+      "to": "agent",
+      "y": 277,
+      "label": "WebRTC + 6 client tools",
+      "variant": "emphasis"
+    },
+    {
+      "id": "speak",
+      "from": "artist",
+      "to": "agent",
+      "y": 315,
+      "label": "speaks a request (mic audio)"
+    },
+    {
+      "id": "call-prepare",
+      "from": "agent",
+      "to": "panel",
+      "y": 343,
+      "label": "tool call: prepare_run",
+      "variant": "emphasis"
+    },
+    {
+      "id": "draft-review",
+      "from": "panel",
+      "to": "server",
+      "y": 371,
+      "label": "draft + review, as agent"
+    },
+    {
+      "id": "review-back",
+      "from": "server",
+      "to": "panel",
+      "y": 399,
+      "label": "ready · reserved_usd · token",
+      "variant": "return"
+    },
+    {
+      "id": "auto-submit",
+      "from": "panel",
+      "to": "server",
+      "y": 427,
+      "label": "if free and local: submit as agent"
+    },
+    {
+      "id": "run-card",
+      "from": "panel",
+      "to": "artist",
+      "y": 455,
+      "label": "else: run card with price",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tool-answer",
+      "from": "panel",
+      "to": "agent",
+      "y": 483,
+      "label": "answer: status, price, no media",
+      "variant": "return"
+    },
+    {
+      "id": "click-run",
+      "from": "artist",
+      "to": "panel",
+      "y": 511,
+      "label": "click Run · up to $",
+      "variant": "emphasis"
+    },
+    {
+      "id": "submit-artist",
+      "from": "panel",
+      "to": "server",
+      "y": 539,
+      "label": "review again, submit as artist",
+      "variant": "emphasis"
+    },
+    {
+      "id": "send-attempts",
+      "from": "server",
+      "to": "engines",
+      "y": 567,
+      "label": "send attempts"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "panel",
+      "from": 165,
+      "to": 573,
+      "type": "frontend"
+    },
+    {
+      "participant": "server",
+      "from": 193,
+      "to": 255,
+      "type": "backend"
+    },
+    {
+      "participant": "agent",
+      "from": 277,
+      "to": 489,
+      "type": "cloud"
+    },
+    {
+      "participant": "server",
+      "from": 371,
+      "to": 573,
+      "type": "backend"
+    },
+    {
+      "participant": "engines",
+      "from": 567,
+      "to": 573,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "What the director decides",
+      "items": [
+        "Engines, attempts per engine, and the cap it states aloud",
+        "Starts a run alone only when it is free and every engine runs on this machine"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What waits for the artist",
+      "items": [
+        "Starting the session: the artist's act, refused to agents",
+        "Any paid run, or a free one that leaves the machine: a card with the price on the button"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What stays off the model",
+      "items": [
+        "The ElevenLabs key: the browser gets only a short-lived token, handed over once",
+        "File names, URLs and routes: tool answers are scrubbed or withheld"
+      ]
+    }
+  ]
+}

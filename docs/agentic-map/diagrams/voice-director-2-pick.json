@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Voice director, part 2: listen, propose, pick",
+    "output": "docs/agentic-map/diagrams/voice-director-2-pick.html",
+    "viewBox": [
+      1085,
+      700
+    ],
+    "column_fit": "spread",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Thakay/crexil",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+    }
+  },
+  "participants": [
+    {
+      "id": "artist",
+      "type": "external",
+      "label": "Artist",
+      "sublabel": "speaks and clicks",
+      "icon": "person",
+      "sources": [
+        {
+          "path": "tools/voice-director/README.md",
+          "line": 9,
+          "end_line": 17,
+          "label": "may and never"
+        }
+      ]
+    },
+    {
+      "id": "panel",
+      "type": "frontend",
+      "label": "Panel",
+      "sublabel": "browser · client tools",
+      "sources": [
+        {
+          "path": "cockpit/web/src/app/voice-director/Director.tsx",
+          "line": 259,
+          "end_line": 351,
+          "label": "start, confirm, pick"
+        },
+        {
+          "path": "cockpit/web/src/app/voice-director/tools.ts",
+          "line": 199,
+          "end_line": 236,
+          "label": "play_take, propose_pick"
+        }
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "cloud",
+      "label": "ElevenAgents",
+      "sublabel": "Claude Haiku 4.5",
+      "sources": [
+        {
+          "path": "tools/voice-director/agent.json",
+          "line": 1,
+          "end_line": 40,
+          "label": "agent config"
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Crexil server",
+      "sublabel": "the only writer",
+      "sources": [
+        {
+          "path": "cockpit/server/app/agent_door.py",
+          "line": 284,
+          "end_line": 370,
+          "label": "token and sessions"
+        },
+        {
+          "path": "cockpit/server/app/api_crexil.py",
+          "line": 296,
+          "end_line": 330,
+          "label": "voice-session routes"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 153,
+      "to": 289,
+      "label": "Listen"
+    },
+    {
+      "from": 303,
+      "to": 495,
+      "label": "Propose and pick"
+    },
+    {
+      "from": 509,
+      "to": 561,
+      "label": "End"
+    }
+  ],
+  "messages": [
+    {
+      "id": "progress",
+      "from": "panel",
+      "to": "agent",
+      "y": 165,
+      "label": "run progress, as context",
+      "variant": "dashed"
+    },
+    {
+      "id": "call-play",
+      "from": "agent",
+      "to": "panel",
+      "y": 193,
+      "label": "tool call: play_take 2B"
+    },
+    {
+      "id": "take-plays",
+      "from": "panel",
+      "to": "artist",
+      "y": 221,
+      "label": "mic muted, then the take plays",
+      "variant": "security"
+    },
+    {
+      "id": "played",
+      "from": "panel",
+      "to": "agent",
+      "y": 249,
+      "label": "answer: played, no audio",
+      "variant": "return"
+    },
+    {
+      "id": "heard",
+      "from": "artist",
+      "to": "agent",
+      "y": 277,
+      "label": "says what they heard (mic audio)"
+    },
+    {
+      "id": "call-propose",
+      "from": "agent",
+      "to": "panel",
+      "y": 315,
+      "label": "tool call: propose_pick",
+      "variant": "emphasis"
+    },
+    {
+      "id": "assessment",
+      "from": "panel",
+      "to": "server",
+      "y": 343,
+      "label": "assessment with reason, as agent"
+    },
+    {
+      "id": "proposed",
+      "from": "panel",
+      "to": "agent",
+      "y": 371,
+      "label": "answer: proposed",
+      "variant": "return"
+    },
+    {
+      "id": "proposal-card",
+      "from": "panel",
+      "to": "artist",
+      "y": 399,
+      "label": "proposal card"
+    },
+    {
+      "id": "click-pick",
+      "from": "artist",
+      "to": "panel",
+      "y": 427,
+      "label": "click Pick (reason editable)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "selection",
+      "from": "panel",
+      "to": "server",
+      "y": 455,
+      "label": "pick with reason, as artist",
+      "variant": "emphasis"
+    },
+    {
+      "id": "told",
+      "from": "panel",
+      "to": "agent",
+      "y": 483,
+      "label": "\"the artist picked 2B\", as context",
+      "variant": "dashed"
+    },
+    {
+      "id": "click-end",
+      "from": "artist",
+      "to": "panel",
+      "y": 521,
+      "label": "End session (or the limit hits)"
+    },
+    {
+      "id": "end-minutes",
+      "from": "panel",
+      "to": "server",
+      "y": 549,
+      "label": "end: minutes recorded",
+      "variant": "emphasis"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "panel",
+      "from": 165,
+      "to": 555,
+      "type": "frontend"
+    },
+    {
+      "participant": "agent",
+      "from": 165,
+      "to": 489,
+      "type": "cloud"
+    },
+    {
+      "participant": "server",
+      "from": 343,
+      "to": 349,
+      "type": "backend"
+    },
+    {
+      "participant": "server",
+      "from": 455,
+      "to": 461,
+      "type": "backend"
+    },
+    {
+      "participant": "server",
+      "from": 549,
+      "to": 555,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "What the director does",
+      "items": [
+        "Plays takes for the artist, never hears them",
+        "Proposes with a reason; each proposal is its own decision in the record"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What waits for the artist",
+      "items": [
+        "Every pick, reveal and delivery: the director has no tool for them",
+        "Ending the session; minutes are the longer of panel and server time"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Take audio never reaches the model",
+      "items": [
+        "Mic mutes before any take plays, and stays muted 400 ms after",
+        "No take plays while a session is still connecting"
+      ]
+    }
+  ]
+}

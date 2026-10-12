@@ -1,0 +1,554 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Crexil agent surfaces: who talks to what",
+    "output": "docs/agentic-map/diagrams/agent-surfaces.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Thakay/crexil",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+    }
+  },
+  "components": [
+    {
+      "id": "artist",
+      "type": "external",
+      "label": "Artist",
+      "sublabel": "a person at the keyboard",
+      "pos": [
+        40,
+        350
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "icon": "person",
+      "sources": [
+        {
+          "path": "docs/PRD.md",
+          "line": 195,
+          "end_line": 197,
+          "label": "law 23: every decision has an author"
+        }
+      ]
+    },
+    {
+      "id": "web-ui",
+      "type": "frontend",
+      "label": "Project surface",
+      "sublabel": "grid · drawer · Filmstrip",
+      "pos": [
+        320,
+        350
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docs/agents.md",
+          "line": 8,
+          "end_line": 11,
+          "label": "one record, three kinds of client"
+        }
+      ]
+    },
+    {
+      "id": "vd-panel",
+      "type": "frontend",
+      "label": "Voice director panel",
+      "sublabel": "6 client tools · microphone in",
+      "pos": [
+        320,
+        230
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "in the browser",
+      "sources": [
+        {
+          "path": "cockpit/web/src/app/voice-director/tools.ts",
+          "line": 1,
+          "end_line": 14,
+          "label": "the six client tools"
+        },
+        {
+          "path": "cockpit/web/src/app/voice-director/Director.tsx",
+          "line": 259,
+          "end_line": 287,
+          "label": "start a session"
+        }
+      ]
+    },
+    {
+      "id": "elevenagents",
+      "type": "cloud",
+      "label": "ElevenAgents",
+      "sublabel": "Claude Haiku 4.5 · eleven_v4_turbo",
+      "pos": [
+        310,
+        50
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tools/voice-director/agent.json",
+          "line": 1,
+          "end_line": 40,
+          "label": "agent config"
+        }
+      ]
+    },
+    {
+      "id": "el-api",
+      "type": "cloud",
+      "label": "ElevenAPI",
+      "sublabel": "Voice Design · Eleven v4 · Sound Effects",
+      "pos": [
+        636,
+        50
+      ],
+      "size": [
+        228,
+        64
+      ],
+      "sources": [
+        {
+          "path": "cockpit/server/app/elevenlabs.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "audio adapter"
+        },
+        {
+          "path": "configs/engines.json",
+          "line": 414,
+          "end_line": 420,
+          "label": "Voice Design row"
+        },
+        {
+          "path": "configs/engines.json",
+          "line": 505,
+          "end_line": 511,
+          "label": "Eleven v4 row"
+        }
+      ]
+    },
+    {
+      "id": "openrouter",
+      "type": "cloud",
+      "label": "OpenRouter",
+      "sublabel": "hosted image models · live prices",
+      "pos": [
+        949,
+        50
+      ],
+      "size": [
+        220,
+        64
+      ],
+      "sources": [
+        {
+          "path": "cockpit/server/app/openrouter.py",
+          "line": 449,
+          "end_line": 462,
+          "label": "live catalogue and endpoint prices"
+        },
+        {
+          "path": "cockpit/server/app/config.py",
+          "line": 79,
+          "end_line": 87,
+          "label": "endpoint, key and providers.json"
+        },
+        {
+          "path": "providers.json",
+          "line": 1,
+          "end_line": 18,
+          "label": "pinned models and price estimates"
+        }
+      ]
+    },
+    {
+      "id": "claude-code",
+      "type": "external",
+      "label": "Claude Code",
+      "sublabel": "or any MCP client",
+      "pos": [
+        40,
+        490
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tools/agent-door/README.md",
+          "line": 18,
+          "end_line": 22,
+          "label": "register the MCP server"
+        }
+      ]
+    },
+    {
+      "id": "mcp-server",
+      "type": "backend",
+      "label": "MCP server",
+      "sublabel": "12 tools · $0 per-run limit",
+      "pos": [
+        320,
+        490
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "tools/agent-door/crexil_mcp.py",
+          "line": 808,
+          "end_line": 925,
+          "label": "tool registry"
+        },
+        {
+          "path": "tools/agent-door/crexil_mcp.py",
+          "line": 931,
+          "end_line": 946,
+          "label": "flags"
+        }
+      ]
+    },
+    {
+      "id": "scripts",
+      "type": "external",
+      "label": "Scripts, pipelines",
+      "sublabel": "a person or an agent",
+      "pos": [
+        40,
+        610
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docs/agents.md",
+          "line": 94,
+          "end_line": 108,
+          "label": "CLI usage"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "backend",
+      "label": "CLI client",
+      "sublabel": "scripts/crexil.py",
+      "pos": [
+        320,
+        610
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "sources": [
+        {
+          "path": "scripts/crexil.py",
+          "line": 1,
+          "end_line": 32,
+          "label": "thin client"
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Crexil server",
+      "sublabel": "shared actions · the only writer",
+      "pos": [
+        650,
+        320
+      ],
+      "size": [
+        200,
+        124
+      ],
+      "tag": "loopback only",
+      "sources": [
+        {
+          "path": "cockpit/server/app/api_crexil.py",
+          "line": 58,
+          "end_line": 93,
+          "label": "refusals and human-only acts"
+        },
+        {
+          "path": "cockpit/server/app/agent_door.py",
+          "line": 1,
+          "end_line": 30,
+          "label": "run view and voice sessions"
+        },
+        {
+          "path": "SECURITY.md",
+          "line": 52,
+          "end_line": 73,
+          "label": "agent rules"
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Store and record",
+      "sublabel": "append-only · authored acts",
+      "pos": [
+        650,
+        510
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "cockpit/server/app/crexil_store.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "store contract"
+        }
+      ]
+    },
+    {
+      "id": "local",
+      "type": "backend",
+      "label": "Local engines",
+      "sublabel": "ComfyUI · 3D runner · Qwen3-TTS",
+      "pos": [
+        960,
+        350
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "tag": "free",
+      "sources": [
+        {
+          "path": "cockpit/server/app/config.py",
+          "line": 33,
+          "end_line": 38,
+          "label": "ComfyUI and 3D runner"
+        },
+        {
+          "path": "cockpit/server/app/config.py",
+          "line": 94,
+          "label": "voice runner"
+        }
+      ]
+    },
+    {
+      "id": "handoff",
+      "type": "database",
+      "label": "Hand-off folder",
+      "sublabel": "character packages",
+      "pos": [
+        960,
+        510
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "cockpit/server/app/crexil_delivery.py",
+          "line": 1,
+          "end_line": 6,
+          "label": "delivery"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "ElevenLabs cloud: off this machine",
+      "wraps": [
+        "elevenagents",
+        "el-api"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "OpenRouter cloud: off this machine",
+      "wraps": [
+        "openrouter"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "This machine",
+      "wraps": [
+        "vd-panel",
+        "web-ui",
+        "mcp-server",
+        "cli",
+        "server",
+        "store",
+        "local",
+        "handoff"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "artist-ui",
+      "from": "artist",
+      "to": "web-ui",
+      "label": "clicks and keys",
+      "variant": "emphasis"
+    },
+    {
+      "id": "artist-voice",
+      "from": "artist",
+      "to": "vd-panel",
+      "label": "speaks"
+    },
+    {
+      "id": "panel-agent",
+      "from": "vd-panel",
+      "to": "elevenagents",
+      "label": "WebRTC: voice, tool calls"
+    },
+    {
+      "id": "ui-server",
+      "from": "web-ui",
+      "to": "server",
+      "label": "human:<name>",
+      "variant": "emphasis"
+    },
+    {
+      "id": "panel-server",
+      "from": "vd-panel",
+      "to": "server",
+      "label": "agent:voice-director · human:<name>",
+      "toSide": "top"
+    },
+    {
+      "id": "client-mcp",
+      "from": "claude-code",
+      "to": "mcp-server",
+      "label": "MCP stdio"
+    },
+    {
+      "id": "mcp-to-server",
+      "from": "mcp-server",
+      "to": "server",
+      "label": "agent:<name>"
+    },
+    {
+      "id": "scripts-cli",
+      "from": "scripts",
+      "to": "cli",
+      "label": "shell"
+    },
+    {
+      "id": "cli-server",
+      "from": "cli",
+      "to": "server",
+      "label": "--actor as stated"
+    },
+    {
+      "id": "server-token",
+      "from": "server",
+      "to": "elevenagents",
+      "label": "token; key stays here",
+      "variant": "security",
+      "fromSide": "top"
+    },
+    {
+      "id": "server-elevenlabs",
+      "from": "server",
+      "to": "el-api",
+      "label": "paid audio",
+      "variant": "dashed",
+      "fromSide": "top"
+    },
+    {
+      "id": "server-openrouter",
+      "from": "server",
+      "to": "openrouter",
+      "label": "image runs",
+      "variant": "dashed",
+      "fromSide": "top"
+    },
+    {
+      "id": "server-local",
+      "from": "server",
+      "to": "local",
+      "label": "local runs"
+    },
+    {
+      "id": "server-store",
+      "from": "server",
+      "to": "store",
+      "label": "writes"
+    },
+    {
+      "id": "server-handoff",
+      "from": "server",
+      "to": "handoff",
+      "label": "delivers",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Who writes as whom",
+      "items": [
+        "Project surface: human:<name>",
+        "Voice director: agent:voice-director; the artist's clicks on its cards as human:<name>",
+        "MCP server: agent:<name>, never a person",
+        "CLI: whatever --actor states"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What stays the artist's",
+      "items": [
+        "403 to agents: reveal, deliver, change limits",
+        "403 to agents: start or end a voice session, resume held paid work",
+        "Pick: recorded under whoever makes it (law 23); no agent tool offers one"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Money gates",
+      "items": [
+        "Voice director runs alone only free, local work",
+        "MCP server: its per-run limit, --max-run-usd, is $0 by default",
+        "Server: every run states a cap; agents' paid work needs a project limit the artist set",
+        "OpenRouter: priced by its live catalogue; a model priced at $0 passes a $0 limit"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Not drawn",
+      "items": [
+        "Sequences: built in the app; agents use HTTP or the CLI, at default limits",
+        "The legacy canvas (#/w): no per-run cap, no author"
+      ]
+    }
+  ]
+}
