@@ -96,7 +96,7 @@ def test_the_director_states_a_prepared_run_as_prepare_run_returns_it():
     # by the director.
     agent = config()
     prompt = agent['conversation_config']['agent']['prompt']['prompt']
-    assert ('Before preparing a run, say which engines and how many takes, and the cap you will set, '
+    assert ('Before preparing a run, say which of those engines and how many takes, and the cap you will set, '
             'but no price until prepare_run returns one.') in prompt
     assert ("When prepare_run returns, say the run's attempts and what the whole run reserves, its reserved_usd exactly "
             'as returned, so it costs up to that amount, or that the run is free when its cost says so; never a price '
@@ -105,6 +105,25 @@ def test_the_director_states_a_prepared_run_as_prepare_run_returns_it():
     prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
     assert prepare['description'].endswith("It returns the run's attempts and reserved_usd, the whole run's reservation, "
                                            'or its cost when the run is free: say those as returned.')
+
+
+def test_the_director_lists_the_engines_before_it_names_one():
+    # The director speaks before it uses a tool, so the engines it names come from list_engines,
+    # never from a guess: it calls list_engines when the artist asks for a run, names or describes
+    # only an engine it returned, and says engines, prices and take labels only as its tools state
+    # them. The panel refuses an id list_engines never returned; these words keep a guess out of
+    # what the artist hears.
+    agent = config()
+    prompt = agent['conversation_config']['agent']['prompt']['prompt']
+    assert ('When the artist asks for a run, call list_engines first, before you name any engine. Never name or '
+            'describe an engine, local or hosted, free or paid, that list_engines has not returned, and use only the '
+            'ids it returned.') in prompt
+    assert prompt.index('call list_engines first') < prompt.index('Before preparing a run')
+    assert 'Say engines, prices and take labels only as your tools state them.' in prompt
+    assert 'Say prices only as your tools state them.' not in prompt
+    tools = {tool['name']: tool for tool in agent['client_tools']}
+    assert tools['list_engines']['description'].endswith('Read-only. Call it before you name or choose an engine.')
+    assert 'Call list_engines first; then say the engines it returned' in tools['prepare_run']['description']
 
 
 def test_the_director_writes_the_preview_line_unless_the_artist_gives_one_and_prepares_in_the_same_turn():
@@ -122,8 +141,8 @@ def test_the_director_writes_the_preview_line_unless_the_artist_gives_one_and_pr
             'voices compare.') in prompt
     assert 'Voice design needs a preview line' not in prompt
     prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
-    assert ('Say the engines, the takes and the cap to the artist first, but no price, then call this in the same '
-            'turn without asking for approval.') in prepare['description']
+    assert ('Call list_engines first; then say the engines it returned, the takes and the cap to the artist, but no '
+            'price, and call this in the same turn without asking for approval.') in prepare['description']
     assert prepare['parameters']['properties']['preview_line']['description'] == (
         "voice-design only: the words every preview speaks. Unless the artist gives one, write it yourself in the "
         "character's voice, about 120 to 150 characters, 25 to 30 words (100 to 1000 accepted, and each character "
@@ -157,7 +176,7 @@ def test_with_no_cap_named_the_director_sets_ten_cents_for_each_attempt_and_keep
     agent = config()
     prompt = agent['conversation_config']['agent']['prompt']['prompt']
     assert ('If the artist names no cap, set a ten-cent cap for each attempt. Keep a cap the artist named; if the run '
-            'needs more, say so and let them name another. Before preparing a run,') in prompt
+            'needs more, say so and let them name another. When the artist asks for a run,') in prompt
     assert 'smallest round' not in prompt
     prepare = next(tool for tool in agent['client_tools'] if tool['name'] == 'prepare_run')
     assert prepare['parameters']['properties']['spending_limit_usd']['description'] == (

@@ -28,7 +28,7 @@ microphone stays muted 400 ms after the take stops, and no take plays while a se
 
 | File | Holds |
 |---|---|
-| `agent.json` | The agent: name, tag, prompt (it writes a voice design's preview line of about 120 to 150 characters unless the artist gives one, and keeps it for the next attempt; it keeps a cap the artist names, or sets ten cents for each attempt; it names no price before `prepare_run` answers, then the run's attempts and reserved total as returned), language model, voice model, how long it waits in silence before it speaks up (30 s, the longest ElevenAgents allows), the session's longest duration, privacy, the provider's call limits, and the six client tools. No key, no account id |
+| `agent.json` | The agent: name, tag, prompt (it calls `list_engines` before it names an engine, and says engines, prices and take labels only as its tools return them; it writes a voice design's preview line of about 120 to 150 characters unless the artist gives one, and keeps it for the next attempt; it keeps a cap the artist names, or sets ten cents for each attempt; it names no price before `prepare_run` answers, then the run's attempts and reserved total as returned), language model, voice model, how long it waits in silence before it speaks up (30 s, the longest ElevenAgents allows), the session's longest duration, privacy, the provider's call limits, and the six client tools. No key, no account id |
 | `apply.py` | Validates `agent.json` and creates or updates the agent and its tools |
 
 The six tool names in `agent.json` must match the panel's handlers in
@@ -69,6 +69,11 @@ Then set the minutes Crexil may spend, and restart the server:
 CREXIL_VOICE_MINUTES_CAP=10        # 0, the default, starts no session
 CREXIL_VOICE_SESSION_MAX_S=300
 ```
+
+After each update, check the director's first answer live, in a project you can spare: `START`,
+ask for one voice design, and see that it names no engine before the log shows `Director used list
+engines`; then `END SESSION` before any `RUN`. The words in `agent.json` steer a language model,
+and only a live session shows what it says.
 
 ## Costs and limits
 
