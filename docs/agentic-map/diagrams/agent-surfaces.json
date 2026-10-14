@@ -9,7 +9,7 @@
       "url": "https://github.com/Thakay/crexil",
       "provider": "github",
       "link_mode": "web",
-      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+      "revision": "2049027ed67d38e4c96a5628e56e213242f140e1"
     }
   },
   "components": [
@@ -39,21 +39,21 @@
     {
       "id": "web-ui",
       "type": "frontend",
-      "label": "Project surface",
+      "label": "Crexil app",
       "sublabel": "grid · drawer · Filmstrip",
       "pos": [
-        320,
+        290,
         350
       ],
       "size": [
-        180,
+        240,
         64
       ],
       "sources": [
         {
           "path": "docs/agents.md",
           "line": 8,
-          "end_line": 11,
+          "end_line": 12,
           "label": "one record, three kinds of client"
         }
       ]
@@ -64,11 +64,11 @@
       "label": "Voice director panel",
       "sublabel": "6 client tools · microphone in",
       "pos": [
-        320,
+        290,
         230
       ],
       "size": [
-        180,
+        240,
         64
       ],
       "tag": "in the browser",
@@ -81,23 +81,23 @@
         },
         {
           "path": "cockpit/web/src/app/voice-director/Director.tsx",
-          "line": 259,
-          "end_line": 287,
+          "line": 290,
+          "end_line": 318,
           "label": "start a session"
         }
       ]
     },
     {
-      "id": "elevenagents",
+      "id": "voice-director",
       "type": "cloud",
-      "label": "ElevenAgents",
-      "sublabel": "Claude Haiku 4.5 · eleven_v4_turbo",
+      "label": "Voice director agent",
+      "sublabel": "on ElevenAgents · Claude Haiku 4.5 · eleven_v4_turbo",
       "pos": [
-        310,
+        250,
         50
       ],
       "size": [
-        200,
+        320,
         64
       ],
       "sources": [
@@ -105,7 +105,7 @@
           "path": "tools/voice-director/agent.json",
           "line": 1,
           "end_line": 40,
-          "label": "agent config"
+          "label": "the voice director's configuration"
         }
       ]
     },
@@ -203,20 +203,20 @@
       "id": "mcp-server",
       "type": "backend",
       "label": "MCP server",
-      "sublabel": "12 tools · $0 per-run limit",
+      "sublabel": "12 tools · $0 per-run limit by default",
       "pos": [
-        320,
+        290,
         490
       ],
       "size": [
-        180,
+        240,
         64
       ],
       "sources": [
         {
           "path": "tools/agent-door/crexil_mcp.py",
           "line": 808,
-          "end_line": 925,
+          "end_line": 928,
           "label": "tool registry"
         },
         {
@@ -243,8 +243,8 @@
       "sources": [
         {
           "path": "docs/agents.md",
-          "line": 94,
-          "end_line": 108,
+          "line": 95,
+          "end_line": 111,
           "label": "CLI usage"
         }
       ]
@@ -255,11 +255,11 @@
       "label": "CLI client",
       "sublabel": "scripts/crexil.py",
       "pos": [
-        320,
+        290,
         610
       ],
       "size": [
-        180,
+        240,
         64
       ],
       "sources": [
@@ -268,6 +268,18 @@
           "line": 1,
           "end_line": 32,
           "label": "thin client"
+        },
+        {
+          "path": "docs/agents.md",
+          "line": 29,
+          "end_line": 31,
+          "label": "one machine, one user: the author as stated"
+        },
+        {
+          "path": "SECURITY.md",
+          "line": 5,
+          "end_line": 24,
+          "label": "single user, localhost, no accounts"
         }
       ]
     },
@@ -310,21 +322,33 @@
       "id": "store",
       "type": "database",
       "label": "Store and record",
-      "sublabel": "append-only · authored acts",
+      "sublabel": "SQLite · append-only events, each authored",
       "pos": [
-        650,
+        625,
         510
       ],
       "size": [
-        200,
+        250,
         64
       ],
       "sources": [
         {
-          "path": "cockpit/server/app/crexil_store.py",
+          "path": "cockpit/server/app/db.py",
           "line": 1,
-          "end_line": 6,
-          "label": "store contract"
+          "end_line": 12,
+          "label": "one SQLite record; events are append-only"
+        },
+        {
+          "path": "cockpit/server/app/db.py",
+          "line": 185,
+          "end_line": 191,
+          "label": "the database refuses to change an event"
+        },
+        {
+          "path": "docs/PRD.md",
+          "line": 58,
+          "end_line": 59,
+          "label": "every change an event, with its author"
         }
       ]
     },
@@ -373,7 +397,7 @@
         {
           "path": "cockpit/server/app/crexil_delivery.py",
           "line": 1,
-          "end_line": 6,
+          "end_line": 7,
           "label": "delivery"
         }
       ]
@@ -384,7 +408,7 @@
       "kind": "region",
       "label": "ElevenLabs cloud: off this machine",
       "wraps": [
-        "elevenagents",
+        "voice-director",
         "el-api"
       ]
     },
@@ -427,7 +451,7 @@
     {
       "id": "panel-agent",
       "from": "vd-panel",
-      "to": "elevenagents",
+      "to": "voice-director",
       "label": "WebRTC: voice, tool calls"
     },
     {
@@ -471,10 +495,11 @@
     {
       "id": "server-token",
       "from": "server",
-      "to": "elevenagents",
+      "to": "voice-director",
       "label": "token; key stays here",
       "variant": "security",
-      "fromSide": "top"
+      "fromSide": "top",
+      "toSide": "right"
     },
     {
       "id": "server-elevenlabs",
@@ -517,17 +542,17 @@
       "dot": "cyan",
       "title": "Who writes as whom",
       "items": [
-        "Project surface: human:<name>",
+        "Crexil app: human:<name>",
         "Voice director: agent:voice-director; the artist's clicks on its cards as human:<name>",
         "MCP server: agent:<name>, never a person",
-        "CLI: whatever --actor states"
+        "CLI: the name --actor states, taken at its word, since Crexil has one local user and no accounts; these rules steer agents and are not a login"
       ]
     },
     {
       "dot": "rose",
       "title": "What stays the artist's",
       "items": [
-        "403 to agents: reveal, deliver, change limits",
+        "403 to agents: reveal, deliver, change a project's or a sequence's limits",
         "403 to agents: start or end a voice session, resume held paid work",
         "Pick: recorded under whoever makes it (law 23); no agent tool offers one"
       ]
@@ -547,7 +572,7 @@
       "title": "Not drawn",
       "items": [
         "Sequences: built in the app; agents use HTTP or the CLI, at default limits",
-        "The legacy canvas (#/w): no per-run cap, no author"
+        "The older canvas view (#/w): no per-run cap, no author"
       ]
     }
   ]

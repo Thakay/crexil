@@ -14,7 +14,7 @@
       "url": "https://github.com/Thakay/crexil",
       "provider": "github",
       "link_mode": "web",
-      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+      "revision": "2049027ed67d38e4c96a5628e56e213242f140e1"
     }
   },
   "participants": [
@@ -41,9 +41,15 @@
       "sources": [
         {
           "path": "cockpit/web/src/app/voice-director/Director.tsx",
-          "line": 259,
-          "end_line": 351,
+          "line": 290,
+          "end_line": 383,
           "label": "start, confirm, pick"
+        },
+        {
+          "path": "cockpit/web/src/app/voice-director/tools.ts",
+          "line": 87,
+          "end_line": 96,
+          "label": "list_engines"
         },
         {
           "path": "cockpit/web/src/app/voice-director/tools.ts",
@@ -56,14 +62,14 @@
     {
       "id": "agent",
       "type": "cloud",
-      "label": "ElevenAgents",
-      "sublabel": "Claude Haiku 4.5",
+      "label": "Voice director",
+      "sublabel": "on ElevenAgents · Claude Haiku 4.5",
       "sources": [
         {
           "path": "tools/voice-director/agent.json",
           "line": 1,
           "end_line": 40,
-          "label": "agent config"
+          "label": "the voice director's configuration"
         }
       ]
     },
@@ -76,7 +82,7 @@
         {
           "path": "cockpit/server/app/agent_door.py",
           "line": 284,
-          "end_line": 370,
+          "end_line": 392,
           "label": "token and sessions"
         },
         {
@@ -110,13 +116,13 @@
   ],
   "segments": [
     {
-      "from": 153,
-      "to": 289,
+      "from": 151,
+      "to": 281,
       "label": "Start"
     },
     {
-      "from": 303,
-      "to": 579,
+      "from": 295,
+      "to": 601,
       "label": "Ask for a run"
     }
   ],
@@ -125,22 +131,22 @@
       "id": "click-start",
       "from": "artist",
       "to": "panel",
-      "y": 165,
+      "y": 163,
       "label": "click Start · up to the price"
     },
     {
       "id": "start-session",
       "from": "panel",
       "to": "server",
-      "y": 193,
-      "label": "start session, as the artist",
+      "y": 185,
+      "label": "start session, as the artist; minutes left checked first",
       "variant": "emphasis"
     },
     {
       "id": "ask-token",
       "from": "server",
       "to": "agent",
-      "y": 221,
+      "y": 213,
       "label": "ask a token with the key",
       "variant": "security"
     },
@@ -148,7 +154,7 @@
       "id": "token-once",
       "from": "server",
       "to": "panel",
-      "y": 249,
+      "y": 241,
       "label": "token, handed over once",
       "variant": "return"
     },
@@ -156,7 +162,7 @@
       "id": "open-webrtc",
       "from": "panel",
       "to": "agent",
-      "y": 277,
+      "y": 269,
       "label": "WebRTC + 6 client tools",
       "variant": "emphasis"
     },
@@ -164,14 +170,29 @@
       "id": "speak",
       "from": "artist",
       "to": "agent",
-      "y": 315,
+      "y": 307,
       "label": "speaks a request (mic audio)"
+    },
+    {
+      "id": "call-engines",
+      "from": "agent",
+      "to": "panel",
+      "y": 335,
+      "label": "tool call: list_engines"
+    },
+    {
+      "id": "engines-back",
+      "from": "panel",
+      "to": "agent",
+      "y": 363,
+      "label": "answer: engines, prices, where each runs",
+      "variant": "return"
     },
     {
       "id": "call-prepare",
       "from": "agent",
       "to": "panel",
-      "y": 343,
+      "y": 391,
       "label": "tool call: prepare_run",
       "variant": "emphasis"
     },
@@ -179,14 +200,14 @@
       "id": "draft-review",
       "from": "panel",
       "to": "server",
-      "y": 371,
+      "y": 419,
       "label": "draft + review, as agent"
     },
     {
       "id": "review-back",
       "from": "server",
       "to": "panel",
-      "y": 399,
+      "y": 447,
       "label": "ready · reserved_usd · token",
       "variant": "return"
     },
@@ -194,14 +215,14 @@
       "id": "auto-submit",
       "from": "panel",
       "to": "server",
-      "y": 427,
+      "y": 475,
       "label": "if free and local: submit as agent"
     },
     {
       "id": "run-card",
       "from": "panel",
       "to": "artist",
-      "y": 455,
+      "y": 497,
       "label": "else: run card with price",
       "variant": "emphasis"
     },
@@ -209,7 +230,7 @@
       "id": "tool-answer",
       "from": "panel",
       "to": "agent",
-      "y": 483,
+      "y": 523,
       "label": "answer: status, price, no media",
       "variant": "return"
     },
@@ -217,7 +238,7 @@
       "id": "click-run",
       "from": "artist",
       "to": "panel",
-      "y": 511,
+      "y": 545,
       "label": "click Run · up to $",
       "variant": "emphasis"
     },
@@ -225,7 +246,7 @@
       "id": "submit-artist",
       "from": "panel",
       "to": "server",
-      "y": 539,
+      "y": 567,
       "label": "review again, submit as artist",
       "variant": "emphasis"
     },
@@ -233,39 +254,39 @@
       "id": "send-attempts",
       "from": "server",
       "to": "engines",
-      "y": 567,
+      "y": 589,
       "label": "send attempts"
     }
   ],
   "activations": [
     {
       "participant": "panel",
-      "from": 165,
-      "to": 573,
+      "from": 163,
+      "to": 595,
       "type": "frontend"
     },
     {
       "participant": "server",
-      "from": 193,
-      "to": 255,
+      "from": 185,
+      "to": 247,
       "type": "backend"
     },
     {
       "participant": "agent",
-      "from": 277,
-      "to": 489,
+      "from": 269,
+      "to": 529,
       "type": "cloud"
     },
     {
       "participant": "server",
-      "from": 371,
-      "to": 573,
+      "from": 419,
+      "to": 595,
       "type": "backend"
     },
     {
       "participant": "engines",
-      "from": 567,
-      "to": 573,
+      "from": 589,
+      "to": 595,
       "type": "backend"
     }
   ],
@@ -274,7 +295,8 @@
       "dot": "emerald",
       "title": "What the director decides",
       "items": [
-        "Engines, attempts per engine, and the cap it states aloud",
+        "Engines from list_engines, attempts, and its own preview line unless the artist gives one",
+        "The run's cap: the artist's when named, else ten cents an attempt, said aloud first; the project's limit stays the artist's",
         "Starts a run alone only when it is free and every engine runs on this machine"
       ]
     },
@@ -283,7 +305,8 @@
       "title": "What waits for the artist",
       "items": [
         "Starting the session: the artist's act, refused to agents",
-        "Any paid run, or a free one that leaves the machine: a card with the price on the button"
+        "Any paid run, or a free one that leaves the machine: a card with the price on the button",
+        "A run over a cap, or at an unknown price: its card lists why, with no Run button"
       ]
     },
     {

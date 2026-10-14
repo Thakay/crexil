@@ -9,7 +9,7 @@
       "url": "https://github.com/Thakay/crexil",
       "provider": "github",
       "link_mode": "web",
-      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+      "revision": "2049027ed67d38e4c96a5628e56e213242f140e1"
     }
   },
   "lanes": [
@@ -70,7 +70,7 @@
       "sources": [
         {
           "path": "docs/agents.md",
-          "line": 64,
+          "line": 65,
           "label": "agents may create projects"
         }
       ]
@@ -103,8 +103,8 @@
       "sources": [
         {
           "path": "docs/agents.md",
-          "line": 40,
-          "end_line": 51,
+          "line": 41,
+          "end_line": 52,
           "label": "review, then submit"
         },
         {
@@ -112,6 +112,35 @@
           "line": 192,
           "end_line": 194,
           "label": "law 22: cap before dispatch"
+        }
+      ]
+    },
+    {
+      "id": "s-refused",
+      "lane": "server",
+      "col": 0,
+      "type": "security",
+      "label": "Refused, nothing sent",
+      "sublabel": "over a cap, or price unknown",
+      "width": 170,
+      "sources": [
+        {
+          "path": "cockpit/server/app/crexil_execution.py",
+          "line": 437,
+          "end_line": 475,
+          "label": "over a cap or price unknown: nothing ready"
+        },
+        {
+          "path": "cockpit/server/app/crexil_execution.py",
+          "line": 526,
+          "end_line": 527,
+          "label": "submit refuses it, whoever asks"
+        },
+        {
+          "path": "docs/PRD.md",
+          "line": 192,
+          "end_line": 194,
+          "label": "law 22: an unknown price counts as over"
         }
       ]
     },
@@ -149,9 +178,15 @@
       "sources": [
         {
           "path": "cockpit/web/src/app/voice-director/Director.tsx",
-          "line": 300,
-          "end_line": 333,
+          "line": 331,
+          "end_line": 364,
           "label": "card confirm"
+        },
+        {
+          "path": "cockpit/web/src/app/voice-director/Director.tsx",
+          "line": 440,
+          "end_line": 448,
+          "label": "Run only on a ready card, with its price"
         }
       ]
     },
@@ -161,13 +196,13 @@
       "col": 3,
       "type": "backend",
       "label": "Engines run",
-      "sublabel": "takes land in the grid",
+      "sublabel": "results land in the grid",
       "width": 150,
       "sources": [
         {
           "path": "cockpit/server/app/agent_door.py",
           "line": 152,
-          "end_line": 217,
+          "end_line": 214,
           "label": "run view for agents"
         }
       ]
@@ -184,7 +219,7 @@
         {
           "path": "tools/agent-door/crexil_mcp.py",
           "line": 699,
-          "end_line": 714,
+          "end_line": 713,
           "label": "never changes the pick"
         }
       ]
@@ -201,7 +236,7 @@
         {
           "path": "cockpit/server/app/api_crexil.py",
           "line": 87,
-          "end_line": 110,
+          "end_line": 103,
           "label": "human_only, limits"
         },
         {
@@ -218,7 +253,7 @@
       "col": 4,
       "type": "frontend",
       "label": "Pick and reveal",
-      "sublabel": "reason kept when given",
+      "sublabel": "reveal: a blind run's engines",
       "width": 150,
       "sources": [
         {
@@ -253,7 +288,7 @@
         {
           "path": "cockpit/server/app/crexil_delivery.py",
           "line": 1,
-          "end_line": 6,
+          "end_line": 7,
           "label": "delivery"
         }
       ]
@@ -279,7 +314,7 @@
       "id": "review-submit",
       "from": "s-review",
       "to": "a-submit",
-      "label": "within caps",
+      "label": "agent may send",
       "variant": "emphasis",
       "fromSide": "right",
       "toSide": "bottom"
@@ -291,6 +326,16 @@
       "label": "else: click",
       "variant": "security",
       "role": "branch"
+    },
+    {
+      "id": "review-refused",
+      "from": "s-review",
+      "to": "s-refused",
+      "label": "over a cap",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "left",
+      "toSide": "right"
     },
     {
       "id": "submit-run",
@@ -349,12 +394,14 @@
       "title": "One set of gates for every agent",
       "items": [
         "The voice director, the MCP server and a CLI run as agent all meet the same server rules",
-        "The record names the author of every step: human:<name> or agent:<name>"
+        "The record names the author of every step: human:<name> or agent:<name>",
+        "Crexil has one local user and no accounts, so each caller states its own name. These rules steer agents; they are not a login",
+        "Over a cap, or at a price Crexil cannot know, a run is refused for everyone, the artist included, and nothing is sent"
       ]
     },
     {
       "dot": "amber",
-      "title": "What 'within caps' means for each",
+      "title": "What each agent may send alone",
       "items": [
         "Voice director: free, and every engine on this machine; anything else becomes a card",
         "MCP server: up to --max-run-usd ($0 default), restating the reviewed amount, and paid work only where the artist set a project limit",
@@ -365,9 +412,9 @@
       "dot": "rose",
       "title": "What stays the artist's",
       "items": [
-        "403: reveal, deliver, change limits",
+        "403: reveal, deliver, change a project's or a sequence's limits",
         "403: start or end a voice session, resume held paid work",
-        "Pick: recorded under whoever makes it (law 23); no agent tool offers one"
+        "Pick: recorded under whoever makes it (law 23), with its reason when given; no agent tool offers one"
       ]
     }
   ]

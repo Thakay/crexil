@@ -36,14 +36,23 @@ it was drawn from.
 ## The diagrams
 
 Open them at [crexil.thakay.dev/agents](https://crexil.thakay.dev/agents/); each one's source is
-the JSON of the same name in [diagrams/](diagrams/).
+the JSON of the same name in [diagrams/](diagrams/). The set opens on `authority-gates`, shown
+below as a picture; online, every box links to the lines it was drawn from.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="brief-to-delivery-dark.png">
+  <img src="brief-to-delivery-light.png" alt="From brief to delivery, in three lanes. Any agent creates a project, prepares a run and sends it only within its own limits. The Crexil server reviews each run and refuses one over a cap or at an unknown price, so nothing is sent. The artist confirms a run the agent may not send, picks, reveals a blind run's engines and delivers; an agent that tries to reveal is refused with 403.">
+</picture>
 
 | Diagram | Type | What it shows |
 |---|---|---|
+| `authority-gates` | Workflow | A run from brief to delivery, in lanes: where every agent stops, what the server refuses, and where the artist takes over |
 | `agent-surfaces` | Architecture | Every way in, the server and the store, the ElevenLabs services and OpenRouter, and the name each writes as |
-| `voice-director-1-ask` | Sequence | A voice session starting, and a run asked for by voice: when it starts at once, when it waits for a click |
+| `voice-director-1-ask` | Sequence | A voice session starting, and a run asked for by voice: the engines it lists first, when the run starts at once, when it waits for a click |
 | `voice-director-2-pick` | Sequence | Playback with the microphone muted, a proposal, the artist's pick, the session's end |
-| `authority-gates` | Workflow | A run from brief to delivery, in lanes: where every agent stops and the artist takes over |
+
+The two pictures are Archify's own PNG export of `authority-gates` (Export, PNG), one in each
+theme, at half its size.
 
 ## Who can do what
 

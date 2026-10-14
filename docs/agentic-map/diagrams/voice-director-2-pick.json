@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "Voice director, part 2: listen, propose, pick",
+    "title": "Voice director, part 2: play, propose, pick",
     "output": "docs/agentic-map/diagrams/voice-director-2-pick.html",
     "viewBox": [
       1085,
@@ -14,7 +14,7 @@
       "url": "https://github.com/Thakay/crexil",
       "provider": "github",
       "link_mode": "web",
-      "revision": "38b0b88046d8e3021158879cbdb62a4f0be1b6bc"
+      "revision": "2049027ed67d38e4c96a5628e56e213242f140e1"
     }
   },
   "participants": [
@@ -41,8 +41,8 @@
       "sources": [
         {
           "path": "cockpit/web/src/app/voice-director/Director.tsx",
-          "line": 259,
-          "end_line": 351,
+          "line": 290,
+          "end_line": 383,
           "label": "start, confirm, pick"
         },
         {
@@ -56,14 +56,14 @@
     {
       "id": "agent",
       "type": "cloud",
-      "label": "ElevenAgents",
-      "sublabel": "Claude Haiku 4.5",
+      "label": "Voice director",
+      "sublabel": "on ElevenAgents · Claude Haiku 4.5",
       "sources": [
         {
           "path": "tools/voice-director/agent.json",
           "line": 1,
           "end_line": 40,
-          "label": "agent config"
+          "label": "the voice director's configuration"
         }
       ]
     },
@@ -76,7 +76,7 @@
         {
           "path": "cockpit/server/app/agent_door.py",
           "line": 284,
-          "end_line": 370,
+          "end_line": 392,
           "label": "token and sessions"
         },
         {
@@ -92,7 +92,7 @@
     {
       "from": 153,
       "to": 289,
-      "label": "Listen"
+      "label": "Play"
     },
     {
       "from": 303,
@@ -122,11 +122,11 @@
       "label": "tool call: play_take 2B"
     },
     {
-      "id": "take-plays",
+      "id": "result-plays",
       "from": "panel",
       "to": "artist",
       "y": 221,
-      "label": "mic muted, then the take plays",
+      "label": "mic muted, then 2B plays",
       "variant": "security"
     },
     {
@@ -251,7 +251,7 @@
       "dot": "emerald",
       "title": "What the director does",
       "items": [
-        "Plays takes for the artist, never hears them",
+        "Plays results for the artist, never hears them",
         "Proposes with a reason; each proposal is its own decision in the record"
       ]
     },
@@ -265,10 +265,10 @@
     },
     {
       "dot": "amber",
-      "title": "Take audio never reaches the model",
+      "title": "Generated audio never reaches the model",
       "items": [
-        "Mic mutes before any take plays, and stays muted 400 ms after",
-        "No take plays while a session is still connecting"
+        "Mic mutes before any result plays, and stays muted 400 ms after",
+        "Nothing plays while a session is still connecting"
       ]
     }
   ]
