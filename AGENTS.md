@@ -1,8 +1,8 @@
 # Crexil: instructions for coding agents
 
-Crexil is a local-first bench for AI-made media: one brief goes to many image engines, the
-takes land in one grid, a chosen take can go on to local 3D engines, and every decision is
-recorded. Start with [README.md](README.md),
+Crexil is a local-first app for AI-made media: one brief goes to several image, voice, sound or 3D
+engines, the takes land in one grid, a chosen take can go on to another engine, and every decision
+is recorded. Start with [README.md](README.md),
 then read what your change touches:
 
 - [docs/PRD.md](docs/PRD.md): the product model (§2) and the 23 binding laws (§3). Code cites

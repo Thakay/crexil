@@ -133,7 +133,8 @@ a hosted engine there (law 21); its runs have no spend cap (law 22); and its eve
 author (law 23). The project surface (`#/projects`) prepares hosted continuations and
 multi-source requests, states run and project limits before dispatch, and records the
 participant behind each preparation, selection, assessment and execution control; an assessment
-carries its reason. View state (canvas positions, viewport and dials) is stored
+carries its reason, while a selection's reason stays optional (the grid asks "Why? Optional"), so a
+pick may carry none (law 23). View state (canvas positions, viewport and dials) is stored
 without events, and image and 3D engine definitions carry no `provider` field yet (§2); audio
 engine definitions declare theirs. The SDXL reference graphs
 load a checkpoint whose card now says non-commercial, and two shipped presets run Refine and

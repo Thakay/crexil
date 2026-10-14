@@ -70,6 +70,11 @@ ElevenLabs sound effect (about $0.001; a test session never reads `.env`). Ruff'
 `cockpit/server/pyproject.toml`; `scripts/check.sh` applies them to `cockpit/server`, `scripts` and
 `tools`.
 
+**On GitHub.** `.github/workflows/check.yml` runs `scripts/check.sh` on every push to `main`, on
+Ubuntu 24.04 with Python 3.12, uv 0.11.14, Node 24.15.0 and the packages in the lock files. It holds
+no secret, and its token only reads the repository. The browser suites and the agent door's tests
+run by hand.
+
 **Hermetic tests.** Every pytest session is sealed before any test module imports the app:
 `tests/conftest.py` and `tools/agent-door/tests/conftest.py` apply `cockpit/server/tests/hermetic.py`. It
 switches python-dotenv off (`PYTHON_DOTENV_DISABLED=1`, python-dotenv 1.2 or later) for the session and every
