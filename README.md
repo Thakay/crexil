@@ -1,52 +1,117 @@
 # Crexil
 
-Crexil is a bench for AI-made media that keeps the decision, not only the output: which take won,
-what it beat, who chose it, and why.
+Crexil is a local-first app that sends one brief to several AI models at once, hosted or on your own
+GPU, to make images, voices, sound effects and 3D models. When a person picks a result, Crexil
+records who picked it, what it was picked over and any reason given, so the decision is kept as well
+as the output. It runs on one machine, for one user. The name stands for Creative Execution and
+Iteration Ledger.
 
-**[Watch the 90-second demo](SEND_TIME_VIDEO_URL)** · [The companion page](SEND_TIME_PAGE_URL): three
-blind A/B casts to try, each with its reveal.
+**[Watch the video](SEND_TIME_VIDEO_URL)** (2:29) · [The whole session](SEND_TIME_FULL_VIDEO_URL)
+(8:25) · [How the agents work](https://crexil.thakay.dev/agents/) (interactive diagrams)
 
-## What it is
+The video follows one game character, a dwarf blacksmith, as its voice is cast with the voice
+director, an agent built on ElevenAgents. The whole session shows it at full length, in chapters.
 
-One brief goes to many engines at once. Images come from hosted models through OpenRouter and from
-local diffusion models through ComfyUI. Voices come from ElevenLabs Voice Design and from Qwen3-TTS,
-an open-weight model on your own GPU. Sound effects come from ElevenLabs, and meshes from TRELLIS.2
-and Hunyuan3D 2.1 on your GPU. Every take lands in one grid whose cells never move. You audition or
-compare the takes, blind if you want, pick one with a one-line reason, and send it on: to another
-engine, or out to a hand-off folder as a character package for a game team.
+## What it does
 
-Every act lands in an append-only record with its author, and a pick with the artist's reason, so
-later the record still answers why each asset exists. People and agents use the same actions. An MCP server
-lets Claude Code, or any MCP client, prepare runs and propose picks, and the voice director, a voice
-agent built on ElevenAgents, does the same by conversation. Agents prepare and propose; spending
-limits, reveals and deliveries stay the artist's, and the voice director's paid runs wait for the
-artist's click.
+One brief goes to several models side by side. Images come from hosted models through OpenRouter
+and from local diffusion models through ComfyUI. Voices come from ElevenLabs Voice Design, with lines
+spoken by Eleven v4, and from Qwen3-TTS, an open-weight model on your own GPU. Sound effects come from
+ElevenLabs Sound Effects, and 3D meshes from TRELLIS.2 and Hunyuan3D 2.1 on your GPU.
 
-Crexil is the front door and the record, never the workbench. It is not a node-graph editor, a chat
-app or a DCC tool.
+The results land in one grid whose cells never move. You compare them, blind if you want, pick one
+with a short reason, and send it on to the next model (concept art to a 3D model, a voice to a
+spoken line) or out to a hand-off folder as one character package laid out for game engines.
 
-## What the demo shows
+In a project, before a run goes out, it shows its price at published rates and what will leave the
+machine. A run over its spending limit, or with a price Crexil can't know, is refused before
+anything is sent. Every decision lands in an append-only record with its author and any reason
+given, so you can still find out later who picked something and why. The older canvas view (`#/w`)
+predates these rules. Its paid image runs have no spending limit, and its writes carry no delivery
+id.
 
-The demo follows one game character, a dwarf blacksmith, through one project.
+People and agents use the same actions. An MCP server lets Claude Code, or any MCP client, prepare
+runs and propose picks, and the voice director does the same by conversation. Agents prepare and
+propose; a project's spending limits, reveals and deliveries stay with a person, and the paid runs
+the voice director prepares wait for a person's click, with the price on the button. Crexil has one
+local user and no accounts, so each caller states its own name in the record, and these rules steer
+agents rather than authenticate anyone.
 
-| Journey | What happens |
-|---|---|
-| Image casting | One character brief goes to three hosted image models. The takes land in a frozen grid, and the artist picks one with a reason. |
-| Voice casting | One voice description goes to ElevenLabs Voice Design and to Qwen3-TTS on the local GPU. The takes play blind, at matched loudness, from the keyboard. The artist picks one with a reason, then reveals which engine made each take. |
-| Sound | Footstep and forge-strike variations from ElevenLabs Sound Effects land as audio takes. |
-| 3D | A chosen image becomes a mesh with TRELLIS.2 on the local GPU. |
-| The record | The Filmstrip shows the character's image, voice, sound and mesh as one family. Each take shows its prompt as typed and as sent, its engine, seed, cost, reason and author, and search finds a pick by its reason. |
-| Delivery | The chosen takes land in the hand-off folder as one character package: art, mesh, voice lines and sound effects, a manifest beside every file, a record summary and the decision record. |
-| Guardrails | A run over its spending limit is refused before any paid call, and an unknown price counts as over the limit. When one engine fails, the others still land, and the failed cell says whether money moved. |
-| The agent door | The voice director prepares runs from what the artist says, and a paid run waits for the artist's click, with its price on the button. Claude Code, through the MCP server, prepares and submits runs within its door's ceiling ($0 unless the artist raises it) and proposes picks with reasons. |
-
-ElevenLabs' terms travel with its takes: an ElevenLabs take never becomes another AI engine's input,
-and the run's drawer says why. What each engine receives is in
+ElevenLabs' terms travel with its results, so ElevenLabs audio never becomes another AI model's
+input, and the run's drawer says why. What each model receives is in
 [SECURITY.md](SECURITY.md#what-leaves-your-machine).
 
-## Run it
+## How it works
 
-You need Python 3.12 with [uv](https://docs.astral.sh/uv/) and Node with npm. No GPU, engine or API
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/agentic-map/brief-to-delivery-dark.png">
+  <img src="docs/agentic-map/brief-to-delivery-light.png" alt="From brief to delivery, where an agent stops. Any agent (the voice director, the MCP server or the CLI) creates a project, prepares a run and submits it. The Crexil server reviews the price, the token and every limit. A run over a cap, or at an unknown price, is refused and nothing is sent. Otherwise the run goes ahead when the agent may send it alone, or waits for the artist to confirm it with the price on the button. Engines run and the results land in the grid. An agent may propose a pick with a reason. The pick is the artist's click, since no agent tool offers one, and the server answers 403 to an agent that tries to reveal a blind run's engines or deliver.">
+</picture>
+
+One Python server, built on FastAPI, is the only writer. It owns one SQLite store, where every
+change is an event with its author. The browser app, in React and TypeScript, the MCP server, the
+command-line client and your own scripts all go through the same local HTTP API, so an agent goes
+through the same reviews and spending limits as a person. Each provider sits behind an adapter, so a
+new model from a provider Crexil already uses, making a kind of output it already handles, is
+configuration. A new provider or a new kind of output needs an adapter. Local models take turns on
+one GPU.
+
+The voice director is an agent on ElevenAgents that talks with the artist through a panel in the
+browser. The server asks ElevenLabs for a short-lived conversation token, so the API key never
+leaves the server, and the agent works through six client tools that call the same API and are
+recorded as `agent:voice-director`. No generated audio, file address or URL ever reaches the agent's
+language model.
+
+The [interactive agent map](https://crexil.thakay.dev/agents/) has this diagram and three more: who
+talks to what, and the voice director's two sessions. Every box links to the lines of code it was
+drawn from. [docs/agentic-map](docs/agentic-map/README.md) is its written reference, and
+[docs/agents.md](docs/agents.md) is the HTTP contract for wiring Crexil into a pipeline or an agent.
+
+## Design note: a paid call goes out at most once
+
+Generation APIs charge per call, and answers get lost: a timeout, a dropped connection, a server
+restart while a call is out. Sending the call again can charge twice. Giving up throws away work
+that was paid for and leaves the cost on screen wrong. Crexil's rule is that a paid call goes out at
+most once. If its answer is lost, Crexil tries to recover the result. If it can't be sure, it marks
+the charge as not confirmed, keeps the money reserved, and never sends the call again on its own.
+
+- **Intent before money.** Right before a paid call, one transaction rechecks the attempt, any
+  cancel and every spending limit, then records that the call is going out. After a restart, an
+  attempt without that record settles at a known zero, and one with it is never sent again
+  (`cockpit/server/app/scheduler.py`, `_collecting_request` and `_recover`).
+- **Recover, never regenerate.** A lost ElevenLabs speech result is found again in the account's
+  history, which is why logging stays on. OpenRouter's kept response and the local voice runner's
+  job id do the same for theirs (`cockpit/server/app/elevenlabs.py`, `_recover_speech`). An account
+  with zero retention keeps no history, so there a lost speech answer stays unconfirmed.
+- **When unsure, bind nothing.** If two history items could match, or another attempt could own the
+  match, nothing is bound and the charge stays unconfirmed (`_own_take`). A lost result is better
+  than a result charged twice.
+- **Every project write is idempotent.** Each request carries a delivery id, and the server keeps a
+  fingerprint of its body with the receipt, which commits with the work, so a submit whose answer
+  was lost replays the same run (`cockpit/server/app/crexil_store.py`, `command`).
+- **Money is checked before it moves:** at review, at submit, at dispatch and right before the send
+  (`cockpit/server/app/crexil_budget.py`).
+- **Plain HTTP, no SDK in between,** so every retry is one the code decides.
+
+This has trade-offs. A lost result may stay uncollected rather than risk a double charge, speech
+stays in the account's ElevenLabs history so it can be recovered, and one process is the only writer
+of one SQLite store, so each guarantee is a transaction. That also means one user on one machine.
+
+The spending limit works on published prices, while the provider bills what it measures; the
+record keeps both. Voice Design and Sound Effects keep no history at ElevenLabs, so a lost answer
+there stays unconfirmed, and so does an OpenRouter answer lost before it arrives. An idempotency key
+on those ElevenLabs calls, or the create-then-get lifecycle its Flows generation APIs already have,
+would let a client fetch such an answer instead of paying for it again.
+
+The tests script each failure against fakes, never a live provider: lost answers, ambiguous
+history, restarts mid-call, replayed submits, limits lowered mid-send. To read the code behind this,
+start with `cockpit/server/app/scheduler.py` (its docstring, then `_recover`) and
+`cockpit/server/app/elevenlabs.py` (its guarantees, then `_own_take`), then the tests in
+`cockpit/server/tests/test_scheduler.py` and `cockpit/server/tests/test_audio_hardening.py`.
+
+## Quick start
+
+You need Python 3.12 with [uv](https://docs.astral.sh/uv/) and Node with npm. No GPU, model or API
 key is needed to run the checks or to look around.
 
 ```bash
@@ -55,10 +120,10 @@ key is needed to run the checks or to look around.
 scripts/check.sh          # ruff, pytest, vitest and the TypeScript checks
 ```
 
-To see it run on throwaway data, with no engine, no key and no folder of yours:
+To see it run on throwaway data, with no model, no key and no folder of yours:
 
 ```bash
-(cd cockpit/web && npm run build)
+(cd cockpit/web && VITE_CREXIL_FRONT_DOOR=projects npm run build)
 mkdir -p /tmp/crexil-dev/handoff
 cd cockpit/server
 COCKPIT_DB=/tmp/crexil-dev/cockpit-v4.sqlite COCKPIT_STAGING_DIR=/tmp/crexil-dev/staging \
@@ -69,9 +134,9 @@ COCKPIT_DB=/tmp/crexil-dev/cockpit-v4.sqlite COCKPIT_STAGING_DIR=/tmp/crexil-dev
 # then open http://localhost:8001
 ```
 
-With no engine there is nothing to generate with, and `/api/health` answers 503 by design.
+With no model there is nothing to generate with, and `/api/health` answers 503 by design.
 
-To make real takes, copy `.env.example` to `.env` and give the installation its engines and keys:
+To make real results, copy `.env.example` to `.env` and give the installation its models and keys:
 `OPENROUTER_API_KEY` for hosted images, `ELEVENLABS_API_KEY` for ElevenLabs voices and sounds,
 `VOICE_RUNNER_URL` for the local voice runner ([tools/tts](tools/tts/README.md)), `THREED_URL` for
 the 3D runner and `COMFYUI_URL` for ComfyUI. Deliveries land in `PROMOTE_DIR`, by default
@@ -79,41 +144,23 @@ the 3D runner and `COMFYUI_URL` for ComfyUI. Deliveries land in `PROMOTE_DIR`, b
 ElevenAgents and a minutes cap. `tools/voice-director/apply.py` creates the agent from `agent.json`
 and prints the id to put in `ELEVENLABS_VOICE_AGENT_ID`. While `CREXIL_VOICE_MINUTES_CAP` is 0, the
 default, no session starts. The steps are in [tools/voice-director](tools/voice-director/README.md).
-`scripts/seed_demo_project.py` builds the demo's project through the HTTP API: it reviews every run
+`scripts/seed_demo_project.py` builds an example project through the HTTP API. It reviews every run
 and prints its price, and it spends only with `--live` and the exact total it reviewed.
 
-The [developer guide](docs/development.md) covers the environment variables, the engines, the browser
-suites and the known traps.
+The [developer guide](docs/development.md) covers the environment variables, the models, the
+browser suites and the known traps.
 
-## The laws
+## Principles
 
-[docs/PRD.md](docs/PRD.md) holds 23 binding laws, and the code cites them as `law N`. In one line each:
+[docs/PRD.md](docs/PRD.md) holds 23 binding laws, and the code cites them as `law N`. These six
+shape it most:
 
-1. One dead engine never stops the others, and one cause gives one message.
-2. No modals: nothing blocks the canvas or the queue.
-3. No status codes, "something went wrong" or stack traces in the primary message.
-4. Every failure offers the next move as a button.
-5. The cost line states time for local work and dollars for hosted work, including "you weren't
-   charged" where money was in play.
-6. The costed action is never the default button, and its price is on its face.
-7. Nothing is silently lost: purge is the only delete, and it is held and explained.
-8. Grid geometry is frozen at Run.
-9. Nothing retries silently.
-10. The queue pauses only when every remaining slot is sure to fail.
-11. Three input triggers only, and no hover toolbars.
-12. Badge, never filter: an engine that cannot do something stays visible, with the reason.
-13. One GPU means local engines take turns, and every surface with a queue says so.
-14. One heavy local job at a time.
-15. Crexil never acts unasked: it never generates, judges, picks or alters a prompt on its own.
-16. The front door and the record, never the workbench.
-17. Observed, never predicted.
-18. Secrets never live in the store.
-19. The server is the only writer.
-20. A new medium is an adapter: a payload, its engines, a body, an inspection surface, a delivery
-    convention and its verbs, and nothing else.
-21. Compatibility is by type, never by provider.
-22. Money never moves without a cap, and an unknown price counts as over it.
-23. Every decision has an author, a pick carries a reason, and delivery is a human act.
+- **1.** One dead engine never stops the others.
+- **9.** Nothing retries silently.
+- **15.** Crexil never acts unasked, and never generates, judges, picks or alters a prompt on its own.
+- **19.** The server is the only writer.
+- **22.** Money never moves without a cap, and an unknown price counts as over it.
+- **23.** Every decision has an author, and delivery is a human act.
 
 ## Stack and tests
 
@@ -121,31 +168,31 @@ suites and the known traps.
 |---|---|
 | Server | Python 3.12, FastAPI and SQLite, with one append-only event record; uv |
 | Client | React, TypeScript and Vite; three.js for meshes; the ElevenLabs React SDK for the voice director |
-| Engines | ComfyUI and OpenRouter for images; ElevenAPI for voices and sounds, over plain HTTP so no SDK retries a paid call; a small runner for Qwen3-TTS; a runner for the 3D engines |
-| Agent door | An MCP server over stdio (`tools/agent-door/`) and the voice director on ElevenAgents (`tools/voice-director/`) |
+| Models | ComfyUI and OpenRouter for images; ElevenAPI for voices and sounds, over plain HTTP so no SDK retries a paid call; a small runner for Qwen3-TTS; a runner for the 3D models |
+| Agents | An MCP server over stdio (`tools/agent-door/`) and the voice director on ElevenAgents (`tools/voice-director/`) |
 
-`scripts/check.sh` runs ruff, more than 2,000 server and client tests (pytest and vitest) and the
-TypeScript checks, with no GPU, engine or key: engines are faked or scripted. `scripts/e2e.sh` runs
-the Playwright browser suites offline against scripted engines, in a loopback-only network namespace
-where the kernel allows one.
+`scripts/check.sh` runs ruff, the server and client tests (pytest and vitest) and the TypeScript
+checks, with no GPU, model or key, since models are faked or scripted. GitHub runs it on every push to
+`main`. `scripts/e2e.sh` runs the Playwright browser suites offline against scripted models, in a
+loopback-only network namespace where the kernel allows one.
 
-## What is here
+## Project layout
 
 | Path | What it holds |
 |---|---|
-| `cockpit/server` | The server: the scheduler, the record, the engine adapters and the HTTP API |
+| `cockpit/server` | The server: the scheduler, the record, the model adapters and the HTTP API |
 | `cockpit/web` | The client, with its unit tests (vitest) and browser tests (Playwright) |
 | `cockpit/openapi.json` | The committed API contract; the client's types are generated from it |
-| `configs/` | Engine and dial tables served to the client, plus example host configuration |
+| `configs/` | Model and dial tables served to the client, plus example host configuration |
 | `presets/`, `workflows/` | Presets and the ComfyUI reference graphs they bind to (adding one is configuration, never code) |
 | `providers.json` | Pins and price notes for hosted image models |
 | `tools/tts/` | The local voice runner for Qwen3-TTS |
-| `tools/3d/` | The 3D lane: a small runner and wrappers around separately installed 3D engines |
+| `tools/3d/` | The 3D lane: a small runner and wrappers around separately installed 3D models |
 | `tools/agent-door/`, `tools/voice-director/` | The MCP server, and the voice director's agent configuration |
-| `scripts/` | Checks, type generation, launchers, the CLI, the demo seed, the model downloader, bench and smoke tools |
-| `bench/` | Fixed bench inputs: briefs and region-edit cases |
+| `scripts/` | Checks, type generation, launchers, the CLI, the example project seed, the model downloader, benchmark and smoke tools |
+| `bench/` | Fixed benchmark inputs: briefs and region-edit cases |
 | `snapshots/pins.json` | The pinned versions of the ComfyUI runtime and its node packs |
-| `docs/` | The product contract and laws, the failure catalogue, the studio and developer guides, third-party terms |
+| `docs/` | The product contract and laws, the failure catalogue, the studio and developer guides, the agent map, third-party terms |
 
 Read before changing behavior: [docs/PRD.md](docs/PRD.md) (the product model and the laws),
 [docs/failure-cases.md](docs/failure-cases.md) (the failure cases the code cites, such as `A1` or
@@ -154,28 +201,23 @@ Read before changing behavior: [docs/PRD.md](docs/PRD.md) (the product model and
 [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) (conventions for people and for coding
 agents).
 
-## Status
+## Status and limits
 
 - **Single user, local first.** The server binds to localhost and has no accounts. Read
   [SECURITY.md](SECURITY.md) before you expose it anywhere.
 - **Developed on Linux under WSL2** with one NVIDIA GPU. Other platforms are untested.
 - **There is no installer yet.** The checks, the build and an isolated instance run from a clean
-  checkout; the engines are separate installations.
-- **Engines and models are not included.** ComfyUI, the voice and 3D engines and every model weight
-  have their own licences. Some weights that the reference graphs and the 3D lane use are
-  non-commercial or limited by territory: read [docs/third-party.md](docs/third-party.md) before any
-  commercial use.
+  checkout; the engines and models are separate installations.
+- **Engines and models are not included.** ComfyUI, the voice and 3D engines and every model
+  weight have their own licences. Some weights that the reference graphs and the 3D lane use are
+  non-commercial or limited by territory, so read [docs/third-party.md](docs/third-party.md) before
+  any commercial use.
 
-Built for my own use. Issues are read, and pull requests are reviewed when I can.
-
-## History
-
-This repository starts at the point where Crexil was separated from the private repository it grew
-up in. The earlier history is not included, and the first commits add the existing application area
-by area rather than replaying how it was written. I built Crexil with AI coding tools, and the history
-says so: every commit that changes the code carries a `Co-authored-by` trailer for the tool that
-worked on it, Claude on each of them, and Codex as well on the commit that imported the project
-surface.
+This repository starts where Crexil was split from the private repository it grew up in, so its
+first commits add the existing app area by area. It is built with AI coding agents under the laws in
+`docs/PRD.md` and the failure catalogue in `docs/failure-cases.md`, and every commit that changes
+the code carries a `Co-authored-by` trailer for the tools that worked on it.
+[CONTRIBUTING.md](CONTRIBUTING.md) explains how to propose a change.
 
 ## License
 
