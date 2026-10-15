@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="archify-index 0.1.0">
+<title>How Crexil’s agents work</title>
+<script>
+  // The stored theme is applied before first paint, so a dark page never flashes light.
+  document.documentElement.classList.add('js');
+  try { const t = localStorage.getItem('archify-index-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (_) {}
+</script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7; --bar: #ffffff; --line: #d9dde3; --text: #17202b; --muted: #5b6573;
+    --hover: #eef1f5; --accent: #0f766e; --accent-text: #ffffff; --pill: #e7ebf0; --pill-on: rgba(255, 255, 255, .2); --focus: #2563eb;
+  }
+  :root[data-theme="dark"] { --bg: #0b0f17; --bar: #121826; --line: #263042; --text: #e6e9ef; --muted: #9aa4b5;
+      --hover: #1b2334; --accent: #2dd4bf; --accent-text: #04130f; --pill: #1f2a3c; --pill-on: rgba(4, 19, 15, .16); --focus: #60a5fa; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0b0f17; --bar: #121826; --line: #263042; --text: #e6e9ef; --muted: #9aa4b5;
+      --hover: #1b2334; --accent: #2dd4bf; --accent-text: #04130f; --pill: #1f2a3c; --pill-on: rgba(4, 19, 15, .16); --focus: #60a5fa; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; padding: 6px 12px 2px;
+    background: var(--bar); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 15px; margin: 0 0 0 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side { margin-left: auto; display: flex; gap: 14px; align-items: center; color: var(--muted); font-size: 12px; }
+  .side a { color: inherit; }
+  .side select { font: inherit; color: var(--text); background: var(--bar); border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 4px; }
+  [role="tablist"] { flex: 1 0 100%; display: flex; gap: 4px; padding: 4px; overflow-x: auto; scrollbar-width: thin; }
+  [role="tablist"][data-more~="end"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+  [role="tablist"][data-more~="start"] { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent); }
+  [role="tablist"][data-more="start end"] { -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
+  [role="tab"] { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 3px 8px; font-size: 13px;
+    border: 0; border-radius: 6px; background: transparent; color: var(--text); font-family: inherit;
+    white-space: nowrap; cursor: pointer; }
+  [role="tab"]:hover { background: var(--hover); }
+  [role="tab"][aria-selected="true"] { background: var(--accent); color: var(--accent-text); }
+  [role="tab"]:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .key { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .75; }
+  .type { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--pill); color: var(--muted); }
+  [aria-selected="true"] .type { background: var(--pill-on); color: inherit; }
+  .hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  main { position: relative; flex: 1; min-height: 0; }
+  [role="tabpanel"] { position: absolute; inset: 0; visibility: hidden; }
+  .js [role="tabpanel"].shown { visibility: visible; }
+  iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
+  .fallback { padding: 24px 16px; max-width: 720px; }
+  .fallback li { margin: 6px 0; }
+  .fallback a { color: var(--text); }
+  @media (max-width: 720px) { .side .hint { display: none; } }
+</style>
+<style>
+  .map-intro { flex: 1 0 100%; max-width: 80em; margin: 0 4px 2px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+  .map-intro a { color: var(--text); }
+  .map-phone { display: none; }
+  @media (max-width: 720px) { .map-intro { font-size: 12px; } .map-phone { display: inline; } }
+</style>
+</head>
+<body>
+  <header>
+    <h1>How Crexil’s agents work</h1>
+    <div class="side">
+      <span class="hint" aria-hidden="true">Keys 1 to 9, ← →</span>
+      <label>Theme
+        <select id="archify-index-theme">
+          <option value="auto">Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <a id="archify-index-alone" href="diagrams/authority-gates.html" target="_blank" rel="noopener">Open alone</a>
+    </div>
+    <p class="map-intro">I’m Kay. I built Crexil and its voice director, an agent that runs on ElevenLabs’ ElevenAgents. Crexil calls Voice Design, Eleven v4 and Sound Effects through ElevenAPI. Start with <a href="#authority-gates">From brief to delivery</a>, and click any box marked SRC to find the exact lines of code it was drawn from.<span class="map-phone"> On a phone, drag a diagram to see all of it.</span></p>
+    <div role="tablist" aria-label="Diagrams" aria-describedby="archify-index-keys">
+      <button type="button" role="tab" id="tab-authority-gates" aria-controls="panel-authority-gates" aria-selected="true" tabindex="0" aria-keyshortcuts="1"><span class="key" aria-hidden="true">1</span><span>From brief to delivery: where an agent stops</span><span class="type">Workflow</span></button>
+      <button type="button" role="tab" id="tab-agent-surfaces" aria-controls="panel-agent-surfaces" aria-selected="false" tabindex="-1" aria-keyshortcuts="2"><span class="key" aria-hidden="true">2</span><span>Crexil agent surfaces: who talks to what</span><span class="type">Architecture</span></button>
+      <button type="button" role="tab" id="tab-voice-director-1-ask" aria-controls="panel-voice-director-1-ask" aria-selected="false" tabindex="-1" aria-keyshortcuts="3"><span class="key" aria-hidden="true">3</span><span>Voice director, part 1: start and ask for a run</span><span class="type">Sequence</span></button>
+      <button type="button" role="tab" id="tab-voice-director-2-pick" aria-controls="panel-voice-director-2-pick" aria-selected="false" tabindex="-1" aria-keyshortcuts="4"><span class="key" aria-hidden="true">4</span><span>Voice director, part 2: play, propose, pick</span><span class="type">Sequence</span></button>
+    </div>
+    <span id="archify-index-keys" class="hidden">Keys 1 to 9 choose a diagram and the arrow keys move between them while this page has focus. Inside a diagram, its own keys apply; click the top bar to come back.</span>
+  </header>
+  <main>
+    <noscript>
+      <div class="fallback">
+        <p>Switching diagrams needs JavaScript. Each diagram also opens on its own:</p>
+        <ul>
+          <li><a href="diagrams/authority-gates.html">From brief to delivery: where an agent stops</a> · Workflow</li>
+          <li><a href="diagrams/agent-surfaces.html">Crexil agent surfaces: who talks to what</a> · Architecture</li>
+          <li><a href="diagrams/voice-director-1-ask.html">Voice director, part 1: start and ask for a run</a> · Sequence</li>
+          <li><a href="diagrams/voice-director-2-pick.html">Voice director, part 2: play, propose, pick</a> · Sequence</li>
+        </ul>
+      </div>
+    </noscript>
+    <div role="tabpanel" id="panel-authority-gates" aria-labelledby="tab-authority-gates" class="shown">
+      <iframe title="From brief to delivery: where an agent stops"></iframe>
+    </div>
+    <div role="tabpanel" id="panel-agent-surfaces" aria-labelledby="tab-agent-surfaces" inert aria-hidden="true">
+      <iframe title="Crexil agent surfaces: who talks to what"></iframe>
+    </div>
+    <div role="tabpanel" id="panel-voice-director-1-ask" aria-labelledby="tab-voice-director-1-ask" inert aria-hidden="true">
+      <iframe title="Voice director, part 1: start and ask for a run"></iframe>
+    </div>
+    <div role="tabpanel" id="panel-voice-director-2-pick" aria-labelledby="tab-voice-director-2-pick" inert aria-hidden="true">
+      <iframe title="Voice director, part 2: play, propose, pick"></iframe>
+    </div>
+  </main>
+<script type="application/json" id="archify-index-data">{"title":"How Crexil’s agents work","embed":false,"openAloneLabel":"Open {title} alone, in a new tab","diagrams":[{"title":"From brief to delivery: where an agent stops","href":"diagrams/authority-gates.html","slug":"authority-gates"},{"title":"Crexil agent surfaces: who talks to what","href":"diagrams/agent-surfaces.html","slug":"agent-surfaces"},{"title":"Voice director, part 1: start and ask for a run","href":"diagrams/voice-director-1-ask.html","slug":"voice-director-1-ask"},{"title":"Voice director, part 2: play, propose, pick","href":"diagrams/voice-director-2-pick.html","slug":"voice-director-2-pick"}]}</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('archify-index-data').textContent);
+  const root = document.documentElement;
+  const tablist = document.querySelector('[role="tablist"]');
+  const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+  const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+  const frames = panels.map(panel => panel.querySelector('iframe'));
+  const alone = document.getElementById('archify-index-alone');
+  const themeControl = document.getElementById('archify-index-theme');
+  const dark = window.matchMedia('(prefers-color-scheme: dark)');
+  const STORE = 'archify-index-theme';
+  let active = -1;
+  let theme = 'auto';
+  try { theme = localStorage.getItem(STORE) || 'auto'; } catch (_) {}
+  if (!['auto', 'light', 'dark'].includes(theme)) theme = 'auto';
+
+  const hashSlug = () => { try { return decodeURIComponent(location.hash.slice(1)); } catch (_) { return ''; } };
+  const fromHash = () => data.diagrams.findIndex(d => d.slug === hashSlug());
+
+  // The theme every diagram is opened with, so the index and its diagrams always agree.
+  const resolved = () => theme === 'auto' ? (dark.matches ? 'dark' : 'light') : theme;
+  const address = index => {
+    const params = new URLSearchParams({theme: resolved()});
+    if (data.embed) params.set('embed', '1');
+    return data.diagrams[index].href + '?' + params;
+  };
+
+  // The shown diagram loads first; the others load one after another once it has, so the first
+  // view is quick, later switches are instant, and memory grows one page at a time.
+  const started = new Set();
+  const start = index => {
+    if (started.has(index)) return;
+    started.add(index);
+    frames[index].src = address(index);
+  };
+  const queue = () => {
+    const next = frames.findIndex((_, index) => !started.has(index));
+    if (next === -1) return;
+    frames[next].addEventListener('load', queue, {once: true});
+    start(next);
+  };
+  const begin = index => {
+    if (started.has(index)) return;
+    frames[index].addEventListener('load', queue, {once: true});
+    start(index);
+  };
+
+  // Scrolls the tab row alone: scrollIntoView would also scroll a page that embeds the index and
+  // move the browser's Tab starting point past the tabs.
+  const reveal = index => {
+    const tab = tabs[index].getBoundingClientRect();
+    const row = tablist.getBoundingClientRect();
+    if (tab.left < row.left) tablist.scrollLeft -= row.left - tab.left + 48;
+    else if (tab.right > row.right) tablist.scrollLeft += tab.right - row.right + 48;
+  };
+
+  // Shows one diagram. A click or a number key adds a step to the browser's history; arrow keys and
+  // the first view replace the current step, so Back is not a replay of every key press.
+  function show(index, {focus = false, push = true} = {}) {
+    if (index < 0 || index >= tabs.length) index = 0;
+    if (index !== active) {
+      active = index;
+      tabs.forEach((tab, i) => {
+        const on = i === index;
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+        panels[i].classList.toggle('shown', on);
+        panels[i].toggleAttribute('inert', !on);
+        panels[i].setAttribute('aria-hidden', String(!on));
+      });
+      reveal(index);
+      begin(index);
+      alone.href = address(index);
+      alone.setAttribute('aria-label', data.openAloneLabel.replace('{title}', data.diagrams[index].title));
+      document.title = data.diagrams[index].title + ' · ' + data.title;
+    }
+    if (focus || tabs.includes(document.activeElement)) tabs[index].focus();
+    const slug = data.diagrams[index].slug;
+    if (hashSlug() !== slug) {
+      if (push) location.hash = encodeURIComponent(slug);
+      else history.replaceState(null, '', '#' + encodeURIComponent(slug));
+    }
+  }
+
+  // A new theme reloads the shown diagram first and the others one by one, as on first load.
+  function applyTheme() {
+    if (theme === 'auto') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+    themeControl.value = theme;
+    if (active < 0) return;
+    started.forEach(index => { if (index !== active) frames[index].removeAttribute('src'); });
+    started.clear();
+    begin(active);
+    alone.href = address(active);
+  }
+
+  // Fades the tab row's edge where more tabs are scrolled out of view.
+  const edges = () => {
+    const more = [];
+    if (tablist.scrollLeft > 1) more.push('start');
+    if (tablist.scrollLeft + tablist.clientWidth < tablist.scrollWidth - 1) more.push('end');
+    if (more.length) tablist.setAttribute('data-more', more.join(' '));
+    else tablist.removeAttribute('data-more');
+  };
+  tablist.addEventListener('scroll', edges, {passive: true});
+  window.addEventListener('resize', edges);
+
+  tabs.forEach((tab, index) => tab.addEventListener('click', () => show(index)));
+  tablist.addEventListener('keydown', event => {
+    const last = tabs.length - 1;
+    const moves = {ArrowRight: active + 1, ArrowLeft: active - 1, Home: 0, End: last};
+    if (!(event.key in moves)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    show((moves[event.key] + tabs.length) % tabs.length, {focus: true, push: false});
+  });
+  document.addEventListener('keydown', event => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
+    if (event.target.closest && event.target.closest('select, input, textarea')) return;
+    const digit = Number(event.key);
+    if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, tabs.length)) show(digit - 1);
+    else if (event.key === 'ArrowRight') show((active + 1) % tabs.length, {push: false});
+    else if (event.key === 'ArrowLeft') show((active - 1 + tabs.length) % tabs.length, {push: false});
+  });
+  themeControl.addEventListener('change', () => {
+    theme = themeControl.value;
+    try { localStorage.setItem(STORE, theme); } catch (_) {}
+    applyTheme();
+  });
+  dark.addEventListener('change', () => { if (theme === 'auto') applyTheme(); });
+  // An address that names no diagram is put back in step with the one shown.
+  window.addEventListener('hashchange', () => {
+    const index = fromHash();
+    show(index === -1 ? active : index, {push: false});
+  });
+
+  applyTheme();
+  show(fromHash(), {push: false});
+  edges();
+})();
+</script>
+</body>
+</html>

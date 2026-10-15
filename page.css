@@ -1,0 +1,294 @@
+/* The companion page in Crexil's own look: the app's tokens (cockpit/web/src/styles/tokens.css),
+   its type (IBM Plex Sans and Mono, served from this folder) and its idioms: the take plate with
+   its progress line and footer strip, the record card, money in gold, audio in rose, selection in
+   blue, and held work in dashed gold. The page reads at a larger size than the app's dense 13 px.
+   Dark only, as the app is. */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+}
+
+:root {
+  --bg-canvas: #08090b;
+  --bg-frame: #0b0d10;
+  --panel: #101317;
+  --panel-alt: #0e1114;
+  --card: #121519;
+  --input: #15191e;
+  --hairline: #23282e;
+  --border: #2f353c;
+  --border-strong: #3a424a;
+  --text: #e4e8eb;
+  --secondary: #98a1a9;
+  --muted: #5f686f;
+  --faint: #4a5158;
+  --accent: #7fb2ff;
+  --money: #d2a24c;
+  --medium-audio: #e283c6;
+  --tint-accent: rgba(127, 178, 255, 0.07);
+  --tint-money: rgba(210, 162, 76, 0.05);
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --r-control: 3px;
+  --r-inner: 4px;
+  --r-panel: 5px;
+  --r-frame: 6px;
+  --focus-outline: 2px solid var(--accent);
+  --focus-offset: 1px;
+  --col: 720px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text);
+  font: 15px/1.65 var(--font-ui);
+}
+
+:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-offset); }
+
+a { color: var(--accent); text-decoration: underline; text-decoration-color: rgba(127, 178, 255, 0.4);
+    text-underline-offset: 3px; }
+a:hover { color: var(--text); text-decoration-color: var(--text); }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: default; }
+
+p { margin: 0 0 12px; }
+
+/* the app's mono label: small capitals that name a thing */
+.label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--secondary);
+  margin: 0 0 6px;
+}
+
+.wrap { width: 100%; max-width: calc(var(--col) + 32px); margin: 0 auto; padding: 0 16px; }
+
+main.wrap { padding-bottom: 56px; }
+
+section { padding-top: 48px; }
+section > h2 { font-size: 21px; font-weight: 600; line-height: 1.3; margin: 0 0 12px; }
+.sub { color: var(--secondary); }
+
+/* ── the top: who, the claim and the paragraph, then the video ── */
+.intro { padding-top: 40px; }
+.intro h1 { font-size: 28px; font-weight: 600; line-height: 1.25; margin: 0 0 2px; letter-spacing: -0.005em; }
+.who { color: var(--secondary); margin-bottom: 14px; }
+.lead { font-size: 16.5px; line-height: 1.6; }
+
+/* ── the video: a plate in the app's idiom; the player loads on press ── */
+.video { position: relative; margin-top: 18px; aspect-ratio: 16 / 9; border: 1px solid var(--border);
+         border-radius: var(--r-frame); overflow: hidden; background: linear-gradient(155deg, #1a2026, #14181c); }
+.video-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.video-play { position: absolute; inset: 0; width: 100%; display: flex; flex-direction: column; align-items: center;
+              justify-content: center; gap: 10px; background: none; border: 0; padding: 16px; text-align: center; }
+.video.has-still .video-play { background: linear-gradient(180deg, rgba(8, 9, 11, 0.1), rgba(8, 9, 11, 0.62)); }
+.video-play:hover .video-icon { border-color: var(--accent); color: var(--accent); }
+.video-icon { width: 60px; height: 60px; border-radius: 50%; border: 1px solid var(--border-strong); display: grid;
+              place-items: center; color: var(--text); background: rgba(11, 13, 16, 0.6); }
+.video-icon svg { width: 20px; height: 20px; margin-left: 3px; }
+.video-title { font-size: 17px; font-weight: 600; }
+.video-meta { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+              color: var(--secondary); }
+.video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+/* the small link line under the video plate and under the loop picture: a 44 px target */
+.video-link, .loop-link { margin: 4px 0 0; }
+.video-link a, .loop-link a { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; }
+/* an unfilled plate reads as held work: the app's dashed gold cell */
+.video.unfilled { border: 1px dashed var(--money); background: var(--tint-money); }
+.video.unfilled .video-play { cursor: default; }
+.preview { display: none; color: var(--money); }
+.video.unfilled .preview, .casting.held .preview { display: block; }
+
+/* ── the loop: the video's story as one picture under the vision, the full column on a phone and
+   at most 560 px in the one column, left-aligned with the text; on a wide screen it sits beside the
+   vision, as wide as its column ── */
+.loop { margin: 18px 0 0; }
+.loop img { display: block; width: 100%; max-width: 560px; height: auto; }
+
+/* ── the casting ── */
+.keys { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0 0 12px; padding: 8px 12px; list-style: none;
+        border: 1px solid var(--hairline); border-radius: var(--r-inner); background: var(--panel-alt);
+        font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+        color: var(--secondary); }
+.keys kbd { font-family: var(--font-mono); color: var(--text); border: 1px solid var(--border);
+            border-radius: var(--r-control); padding: 0 5px; margin-right: 6px; background: var(--input); }
+
+.casting { padding: 16px; border: 1px solid var(--hairline); border-radius: var(--r-panel); background: var(--panel); }
+.casting.held { border: 1px dashed var(--money); background: var(--tint-money); }
+.casting .preview { margin: 0 0 12px; }
+
+.faces { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+
+/* a voice's face: the plate, then the footer strip, as the grid room draws a take */
+.face { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 0; text-align: left;
+        background: var(--card); border: 1px solid var(--border); border-radius: var(--r-panel); overflow: hidden; }
+.face:hover:enabled { border-color: var(--border-strong); }
+.face:disabled { opacity: 0.55; }
+.plate { position: relative; height: 104px; display: flex; align-items: center; justify-content: center;
+         background: linear-gradient(100deg, #14181c, #1b2027, #14181c); }
+.digit { font-family: var(--font-mono); font-size: 30px; line-height: 1; color: var(--secondary); }
+.track { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 2px; background: var(--hairline);
+         border-radius: 1px; overflow: hidden; }
+.fill { display: block; height: 100%; width: 100%; background: var(--medium-audio); transform: scaleX(0);
+        transform-origin: left; }
+.strip { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--hairline);
+         font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+         color: var(--secondary); white-space: nowrap; }
+.strip-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.strip-r { flex: none; }
+
+.face.playing { border-color: var(--medium-audio); }
+.face.playing .digit { color: var(--text); }
+.face.picked { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(127, 178, 255, 0.14); }
+.face.picked .digit { color: var(--accent); }
+
+/* the working line: what plays, then the choice */
+.status { min-height: 1.5em; margin: 12px 0 0; color: var(--secondary); font-size: 13.5px; line-height: 1.5; }
+.choose { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.btn { min-height: 44px; padding: 8px 14px; border: 1px solid var(--border); border-radius: var(--r-control);
+       background: var(--card); color: var(--text); font-size: 13.5px; line-height: 1.3; }
+.btn:hover:enabled { border-color: var(--accent); }
+.btn-quiet { min-height: 44px; padding: 8px 12px; border: 1px dashed var(--border); border-radius: var(--r-control);
+             background: none; color: var(--secondary); font-family: var(--font-mono); font-size: 10.5px;
+             letter-spacing: 0.1em; text-transform: uppercase; }
+.btn-quiet:hover:enabled { color: var(--text); border-color: var(--border-strong); }
+.btn:disabled, .btn-quiet:disabled { opacity: 0.55; }
+
+.reveal { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--hairline); }
+.reveal:focus { outline: none; }
+.reveal:focus-visible { outline: var(--focus-outline); outline-offset: 4px; }
+.reveal h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; line-height: 1.4; }
+.reveal > p { margin-bottom: 10px; }
+
+/* the record card, as the record room draws a decision */
+.card { margin: 0 0 16px; border: 1px solid var(--border); border-radius: var(--r-panel); background: var(--card); }
+.card-head { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--hairline); }
+.card-body { padding: 12px 14px 14px; }
+.card-title { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+.reason { margin: 0 0 10px; padding-left: 12px; border-left: 2px solid var(--accent); }
+.byline { margin: 0; color: var(--secondary); font-size: 13.5px; line-height: 1.5; }
+.money { font-family: var(--font-mono); color: var(--money); }
+
+/* the line's player: one plate on a row, with the same progress line */
+.say { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px;
+       padding: 10px 14px 16px; text-align: left; background: var(--card); border: 1px solid var(--border);
+       border-radius: var(--r-panel); }
+.say:hover:enabled { border-color: var(--border-strong); }
+.say:disabled { opacity: 0.55; }
+.say.playing { border-color: var(--medium-audio); }
+.say-icon { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border-strong);
+            display: grid; place-items: center; }
+.say-icon svg { width: 14px; height: 14px; }
+.say .icon-play { margin-left: 2px; }
+.say .icon-pause, .say.playing .icon-play { display: none; }
+.say.playing .icon-pause { display: block; }
+.say.playing .say-icon { border-color: var(--medium-audio); color: var(--medium-audio); }
+.say-words { min-width: 0; }
+.say .track { left: 14px; right: 14px; bottom: 7px; }
+
+/* ── what Crexil does today ── */
+.facts { margin: 0; padding-left: 18px; }
+.facts li { margin-bottom: 10px; }
+.facts li::marker { color: var(--faint); }
+
+/* ── get in touch ── */
+.links { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+.links a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border: 1px solid var(--border);
+           border-radius: var(--r-control); background: var(--card); color: var(--text); text-decoration: none; }
+.links a:hover { border-color: var(--accent); color: var(--accent); }
+
+footer { border-top: 1px solid var(--hairline); background: var(--bg-frame); }
+footer p { margin: 0; padding: 16px 0 20px; color: var(--secondary); font-size: 13px; }
+
+@media (max-width: 560px) {
+  body { font-size: 15.5px; }
+  .intro { padding-top: 28px; }
+  .intro h1 { font-size: 24px; }
+  section { padding-top: 40px; }
+  .casting { padding: 12px; }
+  .faces { gap: 8px; }
+  .plate { height: 92px; }
+  .strip { padding: 6px 8px; letter-spacing: 0.02em; }
+  .choose .btn { flex: 1 1 0; }
+  .btn-quiet { flex: 1 0 100%; }
+  .keys { display: none; }
+}
+
+@media (hover: none) {
+  .keys { display: none; }
+}
+
+/* The note under the video, and the whole session's chapters */
+.video-note { margin: 0; color: var(--secondary); font-size: 13.5px; line-height: 1.5; }
+.chapters { margin: 4px 0 0; padding: 0; list-style: none; }
+.chapters a { display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 15px; }
+.chapters .at { flex: none; min-width: 3.2em; font-family: var(--font-mono); font-size: 13px; color: var(--secondary); }
+
+/* ── a wide screen: the page widens and pairs what belongs together (the words and the video at
+   the top, the vision and its picture, the casting's words and its voices, the whole session and
+   its chapters, where it came from and how to get in touch); the six facts take the full width as
+   a grid of cells. A phone keeps the one column above. ── */
+@media (min-width: 1100px) {
+  .wrap { max-width: 1152px; }
+  main > section:not(.intro), main > .pair { margin-top: 64px; padding-top: 56px; border-top: 1px solid var(--hairline); }
+  section > p, .keys { max-width: var(--col); }
+
+  .intro { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); column-gap: 56px; align-items: center;
+           padding-top: 72px; }
+  .intro h1 { font-size: 38px; margin-bottom: 6px; }
+  .lead { font-size: 18px; }
+  .intro-media .video { margin-top: 0; }
+
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 56px;
+           grid-template-rows: auto auto auto auto 1fr; }
+  .split > * { grid-column: 1; }
+  .split > .loop, .split > .casting { grid-column: 2; grid-row: 1 / span 5; margin: 0; align-self: start; }
+  .split .loop img { max-width: 100%; }
+
+  .today .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 0; list-style: none; }
+  .today .facts li { margin: 0; padding: 14px 18px; border: 1px solid var(--hairline); border-radius: var(--r-panel);
+                     background: var(--panel); }
+
+  .session { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); column-gap: 32px;
+             grid-template-rows: auto auto auto 1fr;
+             grid-template-areas: "head head" "text text" "video chapters" "link chapters"; }
+  .session > h2 { grid-area: head; }
+  .session > p:not(.video-link) { grid-area: text; }
+  .session > .video { grid-area: video; }
+  .session > .video-link { grid-area: link; }
+  .session > .chapters { grid-area: chapters; align-self: start; margin-top: 18px; padding: 8px 16px;
+                         border: 1px solid var(--hairline); border-radius: var(--r-panel); background: var(--panel); }
+
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 56px; }
+  .pair > section { padding-top: 0; }
+}

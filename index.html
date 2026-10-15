@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; frame-src https://www.youtube-nocookie.com https://www.loom.com; base-uri 'none'; form-action 'none'">
+<meta name="robots" content="noindex">
+<title>Kay · Crexil</title>
+<meta name="description" content="In this video, I make a game character’s voice with my AI voice director.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://crexil.thakay.dev/">
+<meta property="og:title" content="Kay · building a game character with ElevenLabs">
+<meta property="og:description" content="In this video, I make a game character’s voice with my AI voice director.">
+<meta property="og:image" content="https://crexil.thakay.dev/still.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+<meta name="theme-color" content="#08090b">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="page.css">
+<script src="page.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <section class="intro" aria-labelledby="intro-title">
+    <div class="intro-text">
+    <h1 id="intro-title">Hi, I’m Kay.</h1>
+    <p class="who">Software engineer in Vancouver, Canada.</p>
+    <p class="lead">I build tools that let people and agents make things together, and I care most about
+      the part that keeps a team reaching for them a month later.</p>
+    <p>Crexil, short for Creative Execution and Iteration Ledger, grew out of AI tooling I built for an
+      indie game team. It takes a game character from its first concept art to a 3D model and a voice,
+      with agents doing the trying while I steer. Come watch the voice come together, with my voice
+      director on ElevenAgents.</p>
+    </div>
+
+    <div class="intro-media">
+    <div class="video" data-video="main" data-title="Kay and an AI voice director make a game character’s voice">
+      <button class="video-play" type="button">
+        <span class="video-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 2.5v15l13-7.5z" fill="currentColor"/></svg></span>
+        <span class="video-title">Watch<span data-video-length></span></span>
+        <span class="video-meta" data-captions hidden>With captions</span>
+      </button>
+    </div>
+    <p class="video-link"><a data-video-link="main" href="https://youtu.be/XT5cHs28bCs" target="_blank" rel="noopener">Open the video on YouTube</a></p>
+    <p class="video-note">The narration is an Instant Voice Clone of my voice on Eleven v4. The lines
+      captioned “Kay:” are me, live on the microphone, talking to my voice director.</p>
+    </div>
+  </section>
+
+  <section class="split" aria-labelledby="vision-title">
+    <h2 id="vision-title">Where I think this is going</h2>
+    <p>I believe agents will do more and more of the iterating. Given a brief, a budget and the right
+      tools, they’ll try, compare and refine faster than any of us. People will set the direction, decide
+      at the checkpoints that matter, and take over at any point. If every decision is kept, a team can
+      trust that work and build on it, and come back to replay it when a better model arrives.</p>
+    <p>I’ve built the core of that loop on ElevenLabs’ APIs and ElevenAgents, and helping other teams build
+      theirs is the work I’d most like to do. Games are where I started, but the same questions come up
+      when a phone company lets a voice agent change a customer’s plan. What will it cost, and who said
+      yes? In Crexil, the price shows before a run goes out, and the record names who approved it.</p>
+    <figure class="loop">
+      <img src="agent-loop.png" width="1440" height="1500" alt="In this loop, you describe the voice aloud; my voice director, an agent I built on ElevenAgents, prepares the run and shows its price; you approve paid runs; ElevenLabs’ Voice Design makes the voices; and you give a note to go round again, or pick one for ElevenLabs’ Eleven v4 to speak a line in. I built the voice director and the record that keeps every decision, with who made it." loading="lazy" decoding="async">
+    </figure>
+    <p class="loop-link"><a href="agents/">For engineers: the detailed diagrams, where every box links to the code and docs it was drawn from.</a></p>
+  </section>
+
+  <section class="split" aria-labelledby="cast-title">
+    <h2 id="cast-title">Which voice would you cast?</h2>
+    <p>Here are the three voices ElevenLabs’ Voice Design made for Ori, a dwarf blacksmith, on the
+      second try in the video. Pick the one you’d cast, then see which one I picked and why.</p>
+    <ul class="keys">
+      <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>Play a voice</li>
+      <li><kbd>Space</kbd>Pause or resume</li>
+    </ul>
+    <noscript><p class="sub">Listening needs JavaScript. The rest of the page works without it.</p></noscript>
+
+    <div class="casting" data-casting>
+      <div class="faces">
+        <button class="face" type="button" data-voice disabled><span class="plate"><span class="digit" aria-hidden="true">1</span><span class="track"><span class="fill"></span></span></span><span class="strip"><span class="strip-l">Voice 1</span><span class="strip-r" data-seconds></span></span></button>
+        <button class="face" type="button" data-voice disabled><span class="plate"><span class="digit" aria-hidden="true">2</span><span class="track"><span class="fill"></span></span></span><span class="strip"><span class="strip-l">Voice 2</span><span class="strip-r" data-seconds></span></span></button>
+        <button class="face" type="button" data-voice disabled><span class="plate"><span class="digit" aria-hidden="true">3</span><span class="track"><span class="fill"></span></span></span><span class="strip"><span class="strip-l">Voice 3</span><span class="strip-r" data-seconds></span></span></button>
+      </div>
+      <p class="status" aria-live="polite" data-status></p>
+      <div class="choose" data-choose-row>
+        <button class="btn" type="button" data-choose="1" disabled>I’d cast 1</button>
+        <button class="btn" type="button" data-choose="2" disabled>I’d cast 2</button>
+        <button class="btn" type="button" data-choose="3" disabled>I’d cast 3</button>
+        <button class="btn-quiet" type="button" data-choose="" disabled>Just show me</button>
+      </div>
+      <div class="reveal" data-reveal tabindex="-1" role="region" aria-labelledby="cast-verdict" hidden>
+        <h3 id="cast-verdict" data-verdict></h3>
+        <div class="card">
+          <p class="label card-head">From the record · <span data-date></span></p>
+          <div class="card-body">
+            <p class="card-title" data-card-title></p>
+            <p class="reason">“<span data-reason></span>”</p>
+            <p class="byline">Picked by Kay · prepared by my voice director · <span class="money" data-price></span> at published rates for the one call that made all three</p>
+          </div>
+        </div>
+        <p>Then I asked the agent for a line in that voice, on Eleven v4.</p>
+        <button class="say" type="button" data-line disabled>
+          <span class="say-icon" aria-hidden="true"><svg class="icon-play" viewBox="0 0 20 20"><path d="M4 2.5v15l13-7.5z" fill="currentColor"/></svg><svg class="icon-pause" viewBox="0 0 20 20"><path d="M4 3h4v14h-4zm8 0h4v14h-4z" fill="currentColor"/></svg></span>
+          <span class="say-words">“<span data-words></span>”</span>
+          <span class="track"><span class="fill"></span></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="today" aria-labelledby="today-title">
+    <h2 id="today-title">What Crexil does today</h2>
+    <ul class="facts">
+      <li>One brief can go to several AI models side by side, whether they’re paid services or open models on
+        a local GPU, and it works the same way for images, 3D, voice and sound. A new model from a
+        provider it already uses, for a kind of output Crexil already handles, is configuration, not
+        code.</li>
+      <li>A character’s concept art, its 3D model, its voice and its lines stay together, each linked to
+        what it was made from.</li>
+      <li>Agents do the work between checkpoints, the same way whether you talk to one, like my voice director
+        on ElevenAgents, or script one, like Claude Code or any MCP client. They try models, take your
+        notes and build on the versions you keep. At the checkpoints you set, a person makes the call.
+        Agents get no tool to change a project’s spending limit or hand off the final folder, and the
+        server refuses the hand-off to any agent. Each caller says whether it’s a person or an agent,
+        since Crexil runs for one user with no accounts.</li>
+      <li>In a project, every run shows its price at published rates, and what will leave the machine,
+        before it runs. One over its limit, or with a price Crexil can’t know, is refused before
+        anything is sent.</li>
+      <li>Every decision in a project is kept with who made it and any reason they gave. When AI can make
+        dozens of versions in minutes, that record is how a team stays clear on what it chose and who
+        answers for it.</li>
+      <li>Each character leaves as one folder laid out for game engines, and a studio’s own scripts can make
+        the same calls the app makes, through one local HTTP API. Under it is a Python server, FastAPI
+        on SQLite, with a React and TypeScript app on top.</li>
+    </ul>
+  </section>
+
+  <section class="session" aria-labelledby="session-title">
+    <h2 id="session-title">The whole session</h2>
+    <p>The video is cut down from one real session. Here it is at full length, in my own live voice,
+      with nothing narrated over it. It keeps the rough parts: the app refuses my voice director’s
+      first plan, the director mishears my limit, and two runs are stopped before they go out. I paused the
+      recording a few times between steps; each pause is marked.</p>
+
+    <div class="video has-still" data-video="session" data-captions-on data-title="The whole session: Kay and an AI voice director make a game character’s voice">
+      <img class="video-still" src="still-session.jpg" alt="" loading="lazy" decoding="async">
+      <button class="video-play" type="button">
+        <span class="video-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M4 2.5v15l13-7.5z" fill="currentColor"/></svg></span>
+        <span class="video-title">Watch the whole session · 8:25</span>
+        <span class="video-meta">With captions</span>
+      </button>
+    </div>
+    <p class="video-link"><a data-video-link="session" href="https://youtu.be/H8sqfgHGU4Y" target="_blank" rel="noopener">Open the whole session on YouTube</a></p>
+    <ol class="chapters">
+      <li><a href="https://youtu.be/H8sqfgHGU4Y" data-at="0" target="_blank" rel="noopener"><span class="at">0:00</span>The art and its 3D model</a></li>
+      <li><a href="https://youtu.be/H8sqfgHGU4Y?t=29" data-at="29" target="_blank" rel="noopener"><span class="at">0:29</span>Session one with my voice director</a></li>
+      <li><a href="https://youtu.be/H8sqfgHGU4Y?t=176" data-at="176" target="_blank" rel="noopener"><span class="at">2:56</span>My pick, with my reason</a></li>
+      <li><a href="https://youtu.be/H8sqfgHGU4Y?t=192" data-at="192" target="_blank" rel="noopener"><span class="at">3:12</span>Session two: a line in the picked voice</a></li>
+      <li><a href="https://youtu.be/H8sqfgHGU4Y?t=298" data-at="298" target="_blank" rel="noopener"><span class="at">4:58</span>Checking the record</a></li>
+      <li><a href="https://youtu.be/H8sqfgHGU4Y?t=319" data-at="319" target="_blank" rel="noopener"><span class="at">5:19</span>Two runs the app refuses</a></li>
+      <li><a href="https://youtu.be/H8sqfgHGU4Y?t=427" data-at="427" target="_blank" rel="noopener"><span class="at">7:07</span>The record, the next day</a></li>
+    </ol>
+  </section>
+
+  <div class="pair">
+  <section aria-labelledby="origin-title">
+    <h2 id="origin-title">Where it came from</h2>
+    <p>I worked closely with a four-person indie game team for two months, leading their AI tooling. Their
+      artists wanted a character’s art, voices, sounds and 3D model made with AI and kept track of in
+      one place. What stuck was the way of working, with agents running the complex tools and the
+      artists free to focus on the creative work.</p>
+    <p>Building for them taught me that a good model gets a tool tried, but it doesn’t keep it in daily
+      use. A team also needs to know what a run will cost before it runs, to trust what an agent did,
+      and to find out later why something was picked. This version is built around those.</p>
+    <p>ElevenLabs now brings much of this to teams in Flows, with credits shown before a run and approvals
+      along the way, and for most teams it’s the right place to start. I built Crexil by hand to learn
+      the parts underneath, down to a record that keeps every pick with what it beat and an agent’s
+      proposal beside it.</p>
+  </section>
+
+  <section aria-labelledby="contact-title">
+    <h2 id="contact-title">Get in touch</h2>
+    <p>Crexil is a sample of how I think and build, not a product I’m pitching. I’d love to work with
+      ElevenLabs’ customers on that same part, the one that keeps a team reaching for what they built a
+      month later. If you’d like to talk, here’s where to find me.</p>
+    <p class="links"><a href="https://www.linkedin.com/in/kasra-amini-y/">LinkedIn</a><a href="https://github.com/Thakay/crexil">The code on GitHub</a></p>
+  </section>
+  </div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Crexil is open source under the Apache 2.0 licence. No cookies here, and nothing loads from another
+      site until you play a video.</p>
+  </div>
+</footer>
+</body>
+</html>
