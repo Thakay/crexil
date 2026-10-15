@@ -6,7 +6,7 @@ records who picked it, what it was picked over and any reason given, so the deci
 as the output. It runs on one machine, for one user. The name stands for Creative Execution and
 Iteration Ledger.
 
-**[Watch the video](SEND_TIME_VIDEO_URL)** (2:29) · [The whole session](SEND_TIME_FULL_VIDEO_URL)
+**[Watch the video](https://youtu.be/XT5cHs28bCs)** (2:29) · [The whole session](https://youtu.be/H8sqfgHGU4Y)
 (8:25) · [How the agents work](https://crexil.thakay.dev/agents/) (interactive diagrams)
 
 The video follows one game character, a dwarf blacksmith, as its voice is cast with the voice
